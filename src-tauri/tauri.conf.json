@@ -1,0 +1,56 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Yumi",
+  "version": "1.0.0",
+  "identifier": "com.yumi.app",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "Yumi - AI虚拟人物伴侣",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 900,
+        "minHeight": 600,
+        "resizable": true,
+        "fullscreen": false,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": ""
+    },
+    "publisher": "Yumi Team",
+    "shortDescription": "Yumi - 本地AI虚拟人物伴侣",
+    "longDescription": "Yumi是一个基于本地LLM的AI虚拟人物伴侣，支持长期记忆、情绪分析和个性化对话。",
+    "category": "Utility",
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "shell": {
+      "open": true
+    }
+  }
+}

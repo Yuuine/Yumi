@@ -1,0 +1,80 @@
+import js from '@eslint/js'
+import typescript from '@typescript-eslint/eslint-plugin'
+import typescriptParser from '@typescript-eslint/parser'
+import vue from 'eslint-plugin-vue'
+import vueParser from 'vue-eslint-parser'
+import prettier from 'eslint-plugin-prettier'
+
+export default [
+  {
+    ignores: [
+      'node_modules/',
+      'dist/',
+      'target/',
+      'src/auto-imports.d.ts',
+      'src/components.d.ts',
+      '*.local',
+    ],
+  },
+  js.configs.recommended,
+  {
+    files: ['**/*.vue', '**/*.ts', '**/*.tsx'],
+    languageOptions: {
+      parser: vueParser,
+      parserOptions: {
+        parser: typescriptParser,
+        ecmaVersion: 'latest',
+        sourceType: 'module',
+        extraFileExtensions: ['.vue'],
+      },
+      globals: {
+        console: 'readonly',
+        process: 'readonly',
+        window: 'readonly',
+        document: 'readonly',
+        localStorage: 'readonly',
+        sessionStorage: 'readonly',
+        fetch: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
+        setInterval: 'readonly',
+        clearInterval: 'readonly',
+        NodeJS: 'readonly',
+        AbortController: 'readonly',
+        URLSearchParams: 'readonly',
+        TextDecoder: 'readonly',
+        HTMLElement: 'readonly',
+        vi: 'readonly',
+        beforeEach: 'readonly',
+        afterEach: 'readonly',
+        describe: 'readonly',
+        it: 'readonly',
+        test: 'readonly',
+        expect: 'readonly',
+        __dirname: 'readonly',
+      },
+    },
+    plugins: {
+      '@typescript-eslint': typescript,
+      vue,
+      prettier,
+    },
+    rules: {
+      'prettier/prettier': 'error',
+      'no-console': 'off',
+      'no-debugger': 'warn',
+      'no-unused-vars': 'off',
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/explicit-function-return-type': 'off',
+      '@typescript-eslint/explicit-module-boundary-types': 'off',
+      'vue/multi-word-component-names': 'off',
+      'vue/no-v-html': 'warn',
+      'vue/require-default-prop': 'off',
+      'vue/require-explicit-emits': 'warn',
+      'vue/component-api-style': ['error', ['script-setup']],
+      'vue/define-emits-declaration': ['error', 'type-based'],
+      'vue/define-props-declaration': ['error', 'type-based'],
+    },
+  },
+]

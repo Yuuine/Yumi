@@ -1,0 +1,112 @@
+"""
+Yumi Backend - FastAPI 服务
+"""
+import logging
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from .core import settings, setup_exception_handlers
+from .database import init_db
+from .routers import chat, memory, user
+from .routers import settings as settings_router
+from .services.emotion import EmotionEngine
+from .services.llm import LLMService
+from .services.memory import MemoryEngine
+from .services.prompt_builder import PromptBuilder
+
+logging.basicConfig(
+    level=getattr(logging, settings.logging.level),
+    format=settings.logging.format,
+)
+logger = logging.getLogger(__name__)
+
+memory_engine: MemoryEngine | None = None
+emotion_engine: EmotionEngine | None = None
+llm_service: LLMService | None = None
+prompt_builder: PromptBuilder | None = None
+
+
+async def lifespan(app: FastAPI):
+    global memory_engine, emotion_engine, llm_service, prompt_builder
+
+    logger.info("Initializing Yumi backend services...")
+
+    await init_db()
+
+    memory_engine = MemoryEngine()
+    await memory_engine.initialize()
+
+    emotion_engine = EmotionEngine()
+    await emotion_engine.initialize()
+
+    llm_service = LLMService()
+
+    prompt_builder = PromptBuilder(memory_engine, emotion_engine)
+
+    app.state.memory_engine = memory_engine
+    app.state.emotion_engine = emotion_engine
+    app.state.llm_service = llm_service
+    app.state.prompt_builder = prompt_builder
+
+    logger.info("Yumi backend services initialized successfully")
+
+    yield
+
+    logger.info("Shutting down Yumi backend services...")
+    if memory_engine:
+        await memory_engine.close()
+
+
+app = FastAPI(
+    title="Yumi API",
+    description="Yumi AI虚拟人物伴侣后端服务",
+    version=settings.app.version,
+    lifespan=lifespan,
+)
+
+setup_exception_handlers(app)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.server.cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(chat.router, prefix="/api", tags=["chat"])
+app.include_router(memory.router, prefix="/api", tags=["memory"])
+app.include_router(user.router, prefix="/api", tags=["user"])
+app.include_router(settings_router.router, prefix="/api", tags=["settings"])
+
+
+@app.get("/")
+async def root():
+    return {
+        "message": f"{settings.app.name} API v{settings.app.version}",
+        "status": "running",
+    }
+
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}
+
+
+if __name__ == "__main__":
+    import sys
+    from pathlib import Path
+
+    project_root = Path(__file__).resolve().parent.parent
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
+
+    import uvicorn
+
+    uvicorn.run(
+        "backend.main:app",
+        host=settings.server.host,
+        port=settings.server.port,
+        reload=settings.app.debug,
+    )

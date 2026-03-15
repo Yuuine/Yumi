@@ -1,0 +1,44 @@
+app:
+  name: "Yumi"
+  version: "1.0.0"
+  debug: false
+
+server:
+  host: "127.0.0.1"
+  port: 8000
+  cors_origins:
+    - "http://localhost:1420"
+    - "http://127.0.0.1:1420"
+    - "tauri://localhost"
+
+database:
+  type: "sqlite"
+  path: "data/yumi.db"
+
+vector_db:
+  type: "chromadb"
+  persist_dir: "data/chroma"
+  collection_name: "echo_memory"
+
+llm:
+  api_endpoint: "http://127.0.0.1:11434/v1"
+  api_key: ""
+  model_name: "llama3.1:8b"
+  max_tokens: 4096
+  default_temperature: 0.85
+  timeout: 60
+
+memory:
+  recent_context_limit: 8
+  rag_top_k: 6
+  summary_trigger_turns: 70
+  decay_rate: 0.003
+  min_decay_factor: 0.1
+
+emotion:
+  detection_enabled: true
+  model: "keyword"
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

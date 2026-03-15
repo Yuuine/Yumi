@@ -1,0 +1,12 @@
+avoid-breaking-exported-api = true
+cognitive-complexity-threshold = 25
+doc-valid-idents = [
+    "OpenAI",
+    "ChromaDB",
+    "SQLite",
+    "Vue",
+    "TypeScript",
+    "JavaScript",
+    "FastAPI",
+    "Pydantic",
+]
