@@ -44,6 +44,14 @@
 <script setup lang="ts">
 import { ref, computed, nextTick } from 'vue'
 
+interface Props {
+  disabled?: boolean
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  disabled: false,
+})
+
 const emit = defineEmits<{
   send: [content: string]
 }>()
@@ -62,6 +70,7 @@ function adjustHeight() {
 }
 
 function handleSend() {
+  if (props.disabled) return
   const content = inputText.value.trim()
   if (!content) return
 

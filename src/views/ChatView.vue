@@ -6,7 +6,7 @@
       <MessageList ref="messageListRef" :messages="chatStore.messages" @copy="handleCopy" />
     </div>
 
-    <ChatInput @send="handleSend" />
+    <ChatInput @send="handleSend" :disabled="chatStore.isLoading" />
 
     <ModelsModal :visible="showModelsModal" @close="closeModelsModal" />
   </div>
@@ -18,21 +18,13 @@ import { useChatStore } from '@/stores'
 import { SidebarNav } from '@/components/sidebar'
 import { MessageList, ChatInput } from '@/components/chat'
 import ModelsModal from '@/components/models/ModelsModal.vue'
-import type { ChatMessage } from '@/types'
 
 const chatStore = useChatStore()
 const messageListRef = ref<InstanceType<typeof MessageList> | null>(null)
 const showModelsModal = ref(false)
 
-function handleSend(content: string) {
-  const newMessage: ChatMessage = {
-    id: `user-${Date.now()}`,
-    role: 'user',
-    content,
-    timestamp: new Date().toISOString(),
-  }
-
-  messageListRef.value?.addMessage(newMessage)
+async function handleSend(content: string) {
+  await chatStore.sendMessage(content)
 }
 
 function handleCopy(content: string) {

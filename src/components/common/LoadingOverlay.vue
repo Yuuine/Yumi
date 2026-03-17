@@ -88,7 +88,8 @@ watch(
     } else {
       stopTimer()
     }
-  }
+  },
+  { immediate: true }
 )
 
 onUnmounted(() => {

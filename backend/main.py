@@ -68,6 +68,11 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down Yumi backend services...")
     if memory_engine:
         await memory_engine.close()
+    if emotion_engine:
+        await emotion_engine.close()
+    if llm_service:
+        await llm_service.close()
+    logger.info("Yumi backend services shut down complete")
 
 
 app = FastAPI(

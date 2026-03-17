@@ -281,7 +281,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, onMounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useModelsStore } from '@/stores'
 import { API_PROVIDERS, PROVIDER_NAMES, PROVIDER_OPTIONS, getModelCapabilities } from '@/constants'
 import type { ModelConfig } from '@/types'
@@ -338,6 +338,7 @@ const dialogCallback = ref<(() => void) | null>(null)
 const toastVisible = ref(false)
 const toastMessage = ref('')
 const toastType = ref<'success' | 'error' | 'warning'>('success')
+let toastTimer: ReturnType<typeof setTimeout> | null = null
 
 const formData = reactive({
   providerId: 'deepseek',
@@ -352,11 +353,15 @@ const availableModels = computed(() => {
 })
 
 function showToast(message: string, type: 'success' | 'error' | 'warning' = 'success') {
+  if (toastTimer) {
+    clearTimeout(toastTimer)
+  }
   toastMessage.value = message
   toastType.value = type
   toastVisible.value = true
-  setTimeout(() => {
+  toastTimer = setTimeout(() => {
     toastVisible.value = false
+    toastTimer = null
   }, 2500)
 }
 
@@ -573,6 +578,13 @@ function formatTestResponse(response: string): string {
 onMounted(async () => {
   if (props.visible) {
     await modelsStore.loadModels()
+  }
+})
+
+onUnmounted(() => {
+  if (toastTimer) {
+    clearTimeout(toastTimer)
+    toastTimer = null
   }
 })
 </script>

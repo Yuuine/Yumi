@@ -6,22 +6,23 @@ from __future__ import annotations
 import json
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from ..core import LLMException, MemoryException, get_logger, settings
+from ..core import LLMException, MemoryException, NoActiveModelException, get_logger, settings
 from ..database import get_db
 from ..services.emotion import EmotionData
+from ..routers.models import decrypt_api_key
 
 router = APIRouter()
 logger = get_logger(__name__)
 
 
 class ChatRequest(BaseModel):
-    userId: str
-    message: str
-    temperature: float | None = 0.85
+    userId: str = Field(..., min_length=1, max_length=100, description="用户ID")
+    message: str = Field(..., min_length=1, max_length=10000, description="消息内容")
+    temperature: float | None = Field(0.85, ge=0.0, le=2.0, description="温度参数")
     stream: bool = False
 
 
@@ -44,12 +45,41 @@ class ChatHistory(BaseModel):
     messages: list[ChatMessage]
 
 
+async def _get_active_model_config() -> dict | None:
+    """从数据库获取活动模型配置"""
+    try:
+        async with await get_db() as db:
+            cursor = await db.execute(
+                """SELECT provider_id, base_url, api_key, model_name
+                   FROM model_configs
+                   WHERE is_enabled = 1
+                   LIMIT 1"""
+            )
+            row = await cursor.fetchone()
+
+            if row:
+                return {
+                    "provider_id": row[0],
+                    "base_url": row[1],
+                    "api_key": decrypt_api_key(row[2]) if row[2] else "",
+                    "model_name": row[3],
+                }
+            return None
+    except Exception as e:
+        logger.error("Failed to get active model config: %s", e)
+        return None
+
+
 @router.post("/chat", response_model=ChatResponse)
 async def send_message(request: ChatRequest, req: Request):
     memory_engine = req.app.state.memory_engine
     emotion_engine = req.app.state.emotion_engine
     llm_service = req.app.state.llm_service
     prompt_builder = req.app.state.prompt_builder
+
+    active_model = await _get_active_model_config()
+    if not active_model:
+        raise NoActiveModelException()
 
     try:
         user_emotion = await emotion_engine.analyze(request.message)
@@ -69,6 +99,10 @@ async def send_message(request: ChatRequest, req: Request):
         reply = await llm_service.chat(
             messages=messages,
             temperature=request.temperature,
+            provider_id=active_model["provider_id"],
+            base_url=active_model["base_url"],
+            api_key=active_model["api_key"],
+            model_name=active_model["model_name"],
         )
 
         assistant_emotion = await emotion_engine.analyze(reply)
@@ -104,7 +138,9 @@ async def send_message(request: ChatRequest, req: Request):
             user_id=request.userId,
             content=f"用户: {request.message}\n助手: {reply}",
             metadata={
-                "emotion": user_emotion.model_dump(),
+                "emotion_valence": user_emotion.valence,
+                "emotion_arousal": user_emotion.arousal,
+                "emotion_label": user_emotion.label,
                 "timestamp": datetime.now().isoformat(),
             },
         )
@@ -130,7 +166,7 @@ async def send_message(request: ChatRequest, req: Request):
         raise
     except Exception as e:
         logger.exception("Unexpected error in chat endpoint: %s", e)
-        raise HTTPException(status_code=500, detail="服务器内部错误") from e
+        raise
 
 
 @router.get("/chat/history", response_model=ChatHistory)
@@ -177,7 +213,13 @@ async def stream_chat(
     llm_service = req.app.state.llm_service
     prompt_builder = req.app.state.prompt_builder
 
+    active_model = await _get_active_model_config()
+
     async def generate():
+        if not active_model:
+            yield f"data: {json.dumps({'error': '没有可用的模型，请先在模型管理中添加并启用一个模型'})}\n\n"
+            return
+
         try:
             user_emotion = await emotion_engine.analyze(message)
 
@@ -197,6 +239,10 @@ async def stream_chat(
             async for chunk in llm_service.stream_chat(
                 messages=messages,
                 temperature=temperature,
+                provider_id=active_model["provider_id"],
+                base_url=active_model["base_url"],
+                api_key=active_model["api_key"],
+                model_name=active_model["model_name"],
             ):
                 full_reply += chunk
                 yield f"data: {json.dumps({'content': chunk})}\n\n"
@@ -234,7 +280,9 @@ async def stream_chat(
                 user_id=userId,
                 content=f"用户: {message}\n助手: {full_reply}",
                 metadata={
-                    "emotion": user_emotion.model_dump(),
+                    "emotion_valence": user_emotion.valence,
+                    "emotion_arousal": user_emotion.arousal,
+                    "emotion_label": user_emotion.label,
                     "timestamp": datetime.now().isoformat(),
                 },
             )

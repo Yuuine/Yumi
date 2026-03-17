@@ -258,3 +258,9 @@ class EmotionEngine:
         }
 
         return empathy_map.get(label, "")
+
+    async def close(self) -> None:
+        if self.analyzer and hasattr(self.analyzer, 'close'):
+            await self.analyzer.close()
+        self._initialized = False
+        logger.info("Emotion engine closed")

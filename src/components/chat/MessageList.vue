@@ -30,35 +30,7 @@ const emit = defineEmits<{
 
 const containerRef = ref<HTMLElement | null>(null)
 
-const mockMessages: ChatMessage[] = [
-  {
-    id: '1',
-    role: 'user',
-    content: '你好，今天天气怎么样？',
-    timestamp: new Date(Date.now() - 300000).toISOString(),
-  },
-  {
-    id: '2',
-    role: 'assistant',
-    content: '你好！今天天气晴朗，温度适宜，非常适合外出散步。你有什么计划吗？',
-    timestamp: new Date(Date.now() - 240000).toISOString(),
-  },
-  {
-    id: '3',
-    role: 'user',
-    content: '我想去公园走走，你觉得怎么样？',
-    timestamp: new Date(Date.now() - 180000).toISOString(),
-  },
-  {
-    id: '4',
-    role: 'assistant',
-    content:
-      '这是个很棒的想法！去公园散步可以让你放松心情，享受大自然的美景。记得带上水和防晒霜哦！',
-    timestamp: new Date(Date.now() - 120000).toISOString(),
-  },
-]
-
-const displayMessages = ref<ChatMessage[]>([...mockMessages])
+const displayMessages = ref<ChatMessage[]>([])
 
 onMounted(() => {
   scrollToBottom()
@@ -67,12 +39,10 @@ onMounted(() => {
 watch(
   () => props.messages,
   newMessages => {
-    if (newMessages.length > 0) {
-      displayMessages.value = [...mockMessages, ...newMessages]
-    }
+    displayMessages.value = [...newMessages]
     nextTick(scrollToBottom)
   },
-  { deep: true }
+  { deep: true, immediate: true }
 )
 
 function scrollToBottom() {
@@ -82,7 +52,6 @@ function scrollToBottom() {
 }
 
 function handleCopy(content: string) {
-  // TODO: 实现消息复制逻辑
   emit('copy', content)
 }
 

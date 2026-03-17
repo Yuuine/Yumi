@@ -4,12 +4,15 @@ Model Management API Router
 from __future__ import annotations
 
 import base64
+import os
 import time
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 import httpx
+from cryptography.fernet import Fernet
 from fastapi import APIRouter
 from pydantic import BaseModel
 
@@ -17,6 +20,42 @@ from ..core import get_logger
 
 router = APIRouter()
 logger = get_logger(__name__)
+
+_ENCRYPTION_KEY: bytes | None = None
+_KEY_FILE = Path(__file__).parent.parent.parent / "data" / ".encryption_key"
+
+
+def _get_encryption_key() -> bytes:
+    global _ENCRYPTION_KEY
+    if _ENCRYPTION_KEY is not None:
+        return _ENCRYPTION_KEY
+
+    key_str = os.environ.get("YUMI_ENCRYPTION_KEY")
+    if key_str:
+        _ENCRYPTION_KEY = base64.urlsafe_b64decode(key_str.encode())
+        return _ENCRYPTION_KEY
+
+    if _KEY_FILE.exists():
+        try:
+            _ENCRYPTION_KEY = _KEY_FILE.read_bytes()
+            logger.debug("Loaded encryption key from file")
+            return _ENCRYPTION_KEY
+        except Exception as e:
+            logger.warning("Failed to read encryption key file: %s", e)
+
+    _ENCRYPTION_KEY = Fernet.generate_key()
+    try:
+        _KEY_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _KEY_FILE.write_bytes(_ENCRYPTION_KEY)
+        logger.info("Generated and saved new encryption key")
+    except Exception as e:
+        logger.warning("Failed to save encryption key file: %s", e)
+
+    return _ENCRYPTION_KEY
+
+
+def _get_fernet() -> Fernet:
+    return Fernet(_get_encryption_key())
 
 
 class ModelConfig(BaseModel):
@@ -57,16 +96,26 @@ class ModelTestResponse(BaseModel):
 def encrypt_api_key(api_key: str) -> str:
     if not api_key:
         return ""
-    encoded = base64.b64encode(api_key.encode()).decode()
-    return f"enc:{encoded}"
+    try:
+        fernet = _get_fernet()
+        encrypted = fernet.encrypt(api_key.encode())
+        return f"enc:{base64.urlsafe_b64encode(encrypted).decode()}"
+    except Exception as e:
+        logger.error("Failed to encrypt API key: %s", e)
+        return ""
 
 
 def decrypt_api_key(encrypted_key: str) -> str:
-    if not encrypted_key or not encrypted_key.startswith("enc:"):
-        return encrypted_key or ""
+    if not encrypted_key:
+        return ""
+    if not encrypted_key.startswith("enc:"):
+        return encrypted_key
     try:
-        return base64.b64decode(encrypted_key[4:]).decode()
-    except Exception:
+        fernet = _get_fernet()
+        encrypted_bytes = base64.urlsafe_b64decode(encrypted_key[4:].encode())
+        return fernet.decrypt(encrypted_bytes).decode()
+    except Exception as e:
+        logger.error("Failed to decrypt API key: %s", e)
         return ""
 
 

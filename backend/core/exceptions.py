@@ -113,3 +113,15 @@ class RateLimitException(YumiException):
         details: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(message, code, details)
+
+
+class NoActiveModelException(YumiException):
+    """没有可用模型异常"""
+
+    def __init__(
+        self,
+        message: str = "没有可用的模型，请先在模型管理中添加并启用一个模型",
+        code: str = "NO_ACTIVE_MODEL",
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message, code, details)
