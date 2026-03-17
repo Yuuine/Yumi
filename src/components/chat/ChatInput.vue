@@ -65,8 +65,6 @@ function handleSend() {
   const content = inputText.value.trim()
   if (!content) return
 
-  console.log(`[模拟] 发送消息：${content}`)
-  // TODO: 连接发送API
   emit('send', content)
 
   inputText.value = ''

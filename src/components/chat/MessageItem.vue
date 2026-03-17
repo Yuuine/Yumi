@@ -1,7 +1,8 @@
 <template>
   <div class="message-item" :class="message.role">
     <div class="message-bubble">
-      <div class="message-text">{{ message.content }}</div>
+      <MarkdownRenderer v-if="message.role === 'assistant'" :content="message.content" />
+      <div v-else class="message-text">{{ message.content }}</div>
     </div>
     <MessageActionsFooter :message="message" @copy="handleCopy" />
   </div>
@@ -10,6 +11,7 @@
 <script setup lang="ts">
 import type { ChatMessage } from '@/types'
 import MessageActionsFooter from './MessageActionsFooter.vue'
+import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
 
 interface Props {
   message: ChatMessage

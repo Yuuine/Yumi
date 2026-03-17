@@ -81,3 +81,54 @@ export interface MemoryStats {
   newestMemory?: string
   avgImportance: number
 }
+
+export type ModelType = 'text' | 'image' | 'audio' | 'video'
+export type TestStatus = 'untested' | 'passed' | 'failed'
+
+export interface ModelConfig {
+  id: string
+  providerId: string
+  name: string
+  baseUrl: string
+  apiKey: string
+  modelName: string
+  customModelName?: string
+  modelType: ModelType
+  maxTokens: number
+  temperature: number
+  isEnabled: boolean
+  isTested: boolean
+  testStatus: TestStatus
+  lastTestAt?: string
+  lastTestMessage?: string
+  editCount: number
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface ModelConfigInput {
+  providerId?: string
+  name: string
+  baseUrl: string
+  apiKey: string
+  modelName: string
+  customModelName?: string
+  modelType?: ModelType
+  maxTokens?: number
+  temperature?: number
+  isEnabled?: boolean
+}
+
+export interface ModelTestRequest {
+  baseUrl: string
+  apiKey: string
+  modelName: string
+  testMessage?: string
+}
+
+export interface ModelTestResponse {
+  success: boolean
+  message: string
+  response?: string
+  latency?: number
+}

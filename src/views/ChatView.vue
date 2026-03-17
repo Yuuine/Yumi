@@ -1,12 +1,14 @@
 <template>
   <div class="chat-view">
-    <SidebarNav />
+    <SidebarNav @open-models="openModelsModal" />
 
     <div class="chat-main">
       <MessageList ref="messageListRef" :messages="chatStore.messages" @copy="handleCopy" />
     </div>
 
     <ChatInput @send="handleSend" />
+
+    <ModelsModal :visible="showModelsModal" @close="closeModelsModal" />
   </div>
 </template>
 
@@ -15,10 +17,12 @@ import { ref } from 'vue'
 import { useChatStore } from '@/stores'
 import { SidebarNav } from '@/components/sidebar'
 import { MessageList, ChatInput } from '@/components/chat'
+import ModelsModal from '@/components/models/ModelsModal.vue'
 import type { ChatMessage } from '@/types'
 
 const chatStore = useChatStore()
 const messageListRef = ref<InstanceType<typeof MessageList> | null>(null)
+const showModelsModal = ref(false)
 
 function handleSend(content: string) {
   const newMessage: ChatMessage = {
@@ -29,14 +33,18 @@ function handleSend(content: string) {
   }
 
   messageListRef.value?.addMessage(newMessage)
-
-  // TODO: 连接后端发送API
-  // await chatStore.sendMessage(content)
 }
 
 function handleCopy(content: string) {
-  // TODO: 实现剪贴板复制逻辑
-  console.log('[模拟] 复制消息内容：', content)
+  window.navigator.clipboard.writeText(content)
+}
+
+function openModelsModal() {
+  showModelsModal.value = true
+}
+
+function closeModelsModal() {
+  showModelsModal.value = false
 }
 </script>
 
@@ -46,13 +54,5 @@ function handleCopy(content: string) {
   flex-direction: column;
   height: 100vh;
   background: #ffffff;
-  position: relative;
-}
-
-.chat-main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
 }
 </style>

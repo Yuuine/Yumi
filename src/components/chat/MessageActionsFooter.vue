@@ -28,8 +28,6 @@ const emit = defineEmits<{
 }>()
 
 function handleCopy() {
-  console.log(`[模拟] 复制消息：${props.message.content}`)
-  // TODO: 实现剪贴板复制逻辑
   emit('copy', props.message.content)
 }
 </script>

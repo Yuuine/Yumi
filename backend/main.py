@@ -10,6 +10,7 @@ from .core import settings, setup_exception_handlers
 from .database import init_db
 from .routers import chat, memory, user
 from .routers import settings as settings_router
+from .routers import models
 from .services.emotion import EmotionEngine
 from .services.llm import LLMService
 from .services.memory import MemoryEngine
@@ -79,6 +80,7 @@ app.include_router(chat.router, prefix="/api", tags=["chat"])
 app.include_router(memory.router, prefix="/api", tags=["memory"])
 app.include_router(user.router, prefix="/api", tags=["user"])
 app.include_router(settings_router.router, prefix="/api", tags=["settings"])
+app.include_router(models.router, prefix="/api", tags=["models"])
 
 
 @app.get("/")
