@@ -5,15 +5,14 @@ Implements: 8 recent + 6 RAG + 6 intent prediction
 from __future__ import annotations
 
 import json
-import logging
 from typing import Any
 
-from ..core import settings
+from ..core import get_logger, settings
 from ..database import get_db
 from .emotion import EmotionData, EmotionEngine
 from .memory import MemoryEngine
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class PromptBuilder:

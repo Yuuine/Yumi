@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { ModelConfig, ModelTestRequest, ModelTestResponse } from '@/types'
 import { modelsApi } from '@/api/models'
+import { logger } from '@/utils/logger'
 
 export const useModelsStore = defineStore('models', () => {
   const models = ref<ModelConfig[]>([])
@@ -17,7 +18,7 @@ export const useModelsStore = defineStore('models', () => {
     try {
       models.value = await modelsApi.getModels()
     } catch (error) {
-      console.error('Failed to load models:', error)
+      logger.error('ModelsStore', 'Failed to load models', error)
       models.value = []
     } finally {
       isLoading.value = false
@@ -28,7 +29,7 @@ export const useModelsStore = defineStore('models', () => {
     try {
       activeModel.value = await modelsApi.getActiveModel()
     } catch (error) {
-      console.error('Failed to load active model:', error)
+      logger.error('ModelsStore', 'Failed to load active model', error)
     }
   }
 
@@ -39,7 +40,7 @@ export const useModelsStore = defineStore('models', () => {
       await loadModels()
       return newModel
     } catch (error) {
-      console.error('Failed to create model:', error)
+      logger.error('ModelsStore', 'Failed to create model', error)
       throw error
     } finally {
       isLoading.value = false
@@ -52,7 +53,7 @@ export const useModelsStore = defineStore('models', () => {
       models.value.unshift(newModel)
       return newModel
     } catch (error) {
-      console.error('Failed to create model:', error)
+      logger.error('ModelsStore', 'Failed to create model', error)
       throw error
     }
   }
@@ -63,7 +64,7 @@ export const useModelsStore = defineStore('models', () => {
       await modelsApi.updateModel(modelId, config)
       await loadModels()
     } catch (error) {
-      console.error('Failed to update model:', error)
+      logger.error('ModelsStore', 'Failed to update model', error)
       throw error
     } finally {
       isLoading.value = false
@@ -79,7 +80,7 @@ export const useModelsStore = defineStore('models', () => {
       }
       return updatedModel
     } catch (error) {
-      console.error('Failed to update model:', error)
+      logger.error('ModelsStore', 'Failed to update model', error)
       throw error
     }
   }
@@ -90,7 +91,7 @@ export const useModelsStore = defineStore('models', () => {
       await modelsApi.deleteModel(modelId)
       await loadModels()
     } catch (error) {
-      console.error('Failed to delete model:', error)
+      logger.error('ModelsStore', 'Failed to delete model', error)
       throw error
     } finally {
       isLoading.value = false
@@ -105,7 +106,7 @@ export const useModelsStore = defineStore('models', () => {
         models.value.splice(index, 1)
       }
     } catch (error) {
-      console.error('Failed to delete model:', error)
+      logger.error('ModelsStore', 'Failed to delete model', error)
       throw error
     }
   }
@@ -122,7 +123,7 @@ export const useModelsStore = defineStore('models', () => {
       }
       return result
     } catch (error) {
-      console.error('Failed to enable model:', error)
+      logger.error('ModelsStore', 'Failed to enable model', error)
       throw error
     }
   }
@@ -139,7 +140,7 @@ export const useModelsStore = defineStore('models', () => {
       }
       return result
     } catch (error) {
-      console.error('Failed to disable model:', error)
+      logger.error('ModelsStore', 'Failed to disable model', error)
       throw error
     }
   }
@@ -151,7 +152,7 @@ export const useModelsStore = defineStore('models', () => {
       testResult.value = await modelsApi.testModel(request)
       return testResult.value
     } catch (error) {
-      console.error('Failed to test model:', error)
+      logger.error('ModelsStore', 'Failed to test model', error)
       throw error
     } finally {
       isTesting.value = false
@@ -165,7 +166,7 @@ export const useModelsStore = defineStore('models', () => {
       await loadModels()
       return result
     } catch (error) {
-      console.error('Failed to test model:', error)
+      logger.error('ModelsStore', 'Failed to test model', error)
       throw error
     } finally {
       isTesting.value = false

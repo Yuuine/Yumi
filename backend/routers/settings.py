@@ -3,12 +3,14 @@ Settings API Router
 """
 
 from fastapi import APIRouter, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 router = APIRouter()
 
 
 class AppSettings(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     api_endpoint: str = "http://127.0.0.1:11434/v1"
     api_key: str = ""
     model_name: str = "llama3.1:8b"

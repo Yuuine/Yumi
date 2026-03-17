@@ -6,26 +6,14 @@
           <div class="modal-header">
             <h2 class="modal-title">模型管理</h2>
             <div class="header-actions">
-              <button class="add-btn" @click="showAddDialog">
+              <button class="add-btn" @click="showAddDialog" :disabled="isTestingModel">
                 <IconAdd class="btn-icon" />
                 <span>添加</span>
               </button>
-              <button class="close-btn" @click="handleClose" aria-label="关闭">
+              <button class="close-btn" @click="handleClose" aria-label="关闭" :disabled="isTestingModel">
                 <IconClose />
               </button>
             </div>
-          </div>
-
-          <div class="tabs-nav">
-            <button
-              v-for="tab in tabs"
-              :key="tab.id"
-              class="tab-item"
-              :class="{ active: activeTab === tab.id }"
-              @click="activeTab = tab.id"
-            >
-              {{ tab.label }}
-            </button>
           </div>
 
           <div class="modal-body">
@@ -37,22 +25,30 @@
               <span>加载中...</span>
             </div>
 
-            <div v-else-if="filteredModels.length === 0" class="empty-state">
+            <div v-else-if="modelsStore.models.length === 0" class="empty-state">
               <IconError class="empty-icon" />
               <p>暂无模型配置</p>
             </div>
 
             <div v-else class="models-list">
-              <div v-for="model in filteredModels" :key="model.id" class="model-card">
+              <div v-for="model in modelsStore.models" :key="model.id" class="model-card">
                 <div class="card-left">
                   <div class="model-name">{{ model.name }}</div>
                   <div class="model-tags">
                     <span class="tag tag-provider">{{ providerNames[model.providerId] || model.providerId }}</span>
                     <span class="tag tag-model">{{ model.modelName }}</span>
-                    <span v-if="model.modelName.includes('reasoner')" class="tag tag-reasoning">
+                    <span v-if="getCapabilities(model.modelName).toolCall" class="tag tag-tool">
+                      工具调用
+                    </span>
+                    <span v-if="getCapabilities(model.modelName).reasoning" class="tag tag-reasoning">
                       推理模式
                     </span>
-                    <span v-else class="tag tag-tool">工具调用</span>
+                    <span v-if="getCapabilities(model.modelName).webSearch" class="tag tag-websearch">
+                      联网搜索
+                    </span>
+                    <span v-if="getCapabilities(model.modelName).multimodal" class="tag tag-multimodal">
+                      多模态
+                    </span>
                     <span v-if="model.isEnabled" class="tag tag-enabled">已启用</span>
                     <span v-else class="tag tag-disabled">已禁用</span>
                   </div>
@@ -62,16 +58,16 @@
                   <button
                     class="action-btn"
                     @click="handleTest(model)"
-                    :disabled="modelsStore.isTesting"
+                    :disabled="modelsStore.isTesting || isTestingModel"
                   >
                     <IconLink :stroke-width="1.5" />
                     <span>测试</span>
                   </button>
-                  <button class="action-btn" @click="handleEdit(model)">
+                  <button class="action-btn" @click="handleEdit(model)" :disabled="isTestingModel">
                     <IconEdit :stroke-width="1.5" />
                     <span>编辑</span>
                   </button>
-                  <button class="action-btn" @click="handleClone(model)">
+                  <button class="action-btn" @click="handleClone(model)" :disabled="isTestingModel">
                     <IconCopy :stroke-width="1.5" />
                     <span>克隆</span>
                   </button>
@@ -79,12 +75,13 @@
                     class="action-btn"
                     :class="model.isEnabled ? 'disable-btn' : 'enable-btn'"
                     @click="handleToggle(model)"
+                    :disabled="isTestingModel"
                   >
                     <IconDisable v-if="model.isEnabled" :stroke-width="1.5" />
                     <IconSuccess v-else :stroke-width="1.5" />
                     <span>{{ model.isEnabled ? '禁用' : '启用' }}</span>
                   </button>
-                  <button class="action-btn delete-btn" @click="handleDelete(model.id)">
+                  <button class="action-btn delete-btn" @click="handleDelete(model.id)" :disabled="isTestingModel">
                     <IconDelete :stroke-width="1.5" />
                     <span>删除</span>
                   </button>
@@ -92,6 +89,14 @@
               </div>
             </div>
           </div>
+
+          <LoadingOverlay
+            :visible="isTestingModel"
+            :text="`正在测试「${testingModelName}」连接...`"
+            :show-timeout="true"
+            :timeout="60000"
+            @timeout="handleTestTimeout"
+          />
         </div>
       </div>
     </Transition>
@@ -233,7 +238,7 @@
             </button>
           </div>
 
-          <div class="dialog-body">
+          <div class="dialog-body test-dialog-body">
             <div v-if="modelsStore.testResult" class="test-result">
               <div
                 class="test-status"
@@ -246,7 +251,9 @@
 
               <div v-if="modelsStore.testResult.response" class="test-response">
                 <div class="response-label">模型响应:</div>
-                <MarkdownRenderer :content="modelsStore.testResult.response" />
+                <div class="response-content">
+                  <MarkdownRenderer :content="formatTestResponse(modelsStore.testResult.response)" />
+                </div>
               </div>
 
               <div v-if="modelsStore.testResult.latency" class="test-latency">
@@ -276,10 +283,11 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { useModelsStore } from '@/stores'
-import { API_PROVIDERS, PROVIDER_NAMES, PROVIDER_OPTIONS } from '@/constants'
+import { API_PROVIDERS, PROVIDER_NAMES, PROVIDER_OPTIONS, getModelCapabilities } from '@/constants'
 import type { ModelConfig } from '@/types'
 import Dialog from '@/components/common/Dialog.vue'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
+import LoadingOverlay from '@/components/common/LoadingOverlay.vue'
 import {
   IconClose,
   IconSuccess,
@@ -304,21 +312,21 @@ const emit = defineEmits<{
 
 const modelsStore = useModelsStore()
 
-const tabs = [
-  { id: 'text', label: '文本模型' },
-  { id: 'image', label: '图像模型' },
-]
-
 const providerConfig = API_PROVIDERS
 const providerNames = PROVIDER_NAMES
 const providerOptions = PROVIDER_OPTIONS
 
-const activeTab = ref('text')
+function getCapabilities(modelName: string) {
+  return getModelCapabilities(modelName)
+}
+
 const formDialogVisible = ref(false)
 const testDialogVisible = ref(false)
 const isEditing = ref(false)
 const editingId = ref<string | null>(null)
 const isSubmitting = ref(false)
+const isTestingModel = ref(false)
+const testingModelName = ref('')
 
 const dialogVisible = ref(false)
 const dialogTitle = ref('')
@@ -366,18 +374,6 @@ function openApiKeyPage() {
     window.open(url, '_blank')
   }
 }
-
-const filteredModels = computed(() => {
-  return modelsStore.models.filter(model => {
-    if (activeTab.value === 'text') {
-      return model.modelType === 'text' || !model.modelType
-    }
-    if (activeTab.value === 'image') {
-      return model.modelType === 'image'
-    }
-    return false
-  })
-})
 
 function handleClose() {
   emit('close')
@@ -483,6 +479,9 @@ async function handleTest(model: ModelConfig) {
     return
   }
 
+  isTestingModel.value = true
+  testingModelName.value = model.name
+
   try {
     await modelsStore.testModel({
       baseUrl: model.baseUrl,
@@ -492,7 +491,16 @@ async function handleTest(model: ModelConfig) {
     testDialogVisible.value = true
   } catch {
     showDialog('测试失败', '请检查网络连接和 API 配置', 'error')
+  } finally {
+    isTestingModel.value = false
+    testingModelName.value = ''
   }
+}
+
+function handleTestTimeout() {
+  isTestingModel.value = false
+  testingModelName.value = ''
+  showDialog('测试超时', '连接超时，请检查网络或稍后重试', 'warning')
 }
 
 async function handleSubmit() {
@@ -505,13 +513,16 @@ async function handleSubmit() {
     return
   }
 
+  const selectedModel = availableModels.value.find(m => m.value === formData.modelName)
+  const modelType = selectedModel?.modelType || 'text'
+
   const config: Omit<ModelConfig, 'id'> = {
     providerId: formData.providerId,
     name: formData.name,
     baseUrl: formData.baseUrl,
     apiKey: formData.apiKey,
     modelName: formData.modelName,
-    modelType: 'text',
+    modelType: modelType,
     maxTokens: 4096,
     temperature: 0.85,
     isEnabled: false,
@@ -547,6 +558,18 @@ watch(
   }
 )
 
+function formatTestResponse(response: string): string {
+  if (!response) return ''
+  return response
+    .replace(
+      /\*\*推理过程:\*\*\n([\s\S]*?)(?=\n\n\*\*回答:\*\*|\n\n---|\n\n$|$)/g,
+      (_, reasoning) => {
+        return `<div class="reasoning-block"><div class="reasoning-label">推理过程</div><div class="reasoning-content">${reasoning.trim()}</div></div>\n\n`
+      }
+    )
+    .replace(/\*\*回答:\*\*\n?/g, '<div class="answer-label">回答</div>\n\n')
+}
+
 onMounted(async () => {
   if (props.visible) {
     await modelsStore.loadModels()
@@ -569,6 +592,7 @@ onMounted(async () => {
 }
 
 .models-modal {
+  position: relative;
   background: #ffffff;
   border-radius: 12px;
   width: 960px;
@@ -645,33 +669,6 @@ onMounted(async () => {
   svg {
     width: 20px;
     height: 20px;
-  }
-}
-
-.tabs-nav {
-  display: flex;
-  padding: 0 24px;
-  border-bottom: 1px solid #e5e7eb;
-
-  .tab-item {
-    padding: 12px 24px;
-    background: transparent;
-    border: none;
-    border-bottom: 2px solid transparent;
-    font-size: var(--font-size-xs);
-    color: #666666;
-    cursor: pointer;
-    transition: all 0.2s;
-    margin-bottom: -1px;
-
-    &:hover {
-      color: #333333;
-    }
-
-    &.active {
-      color: #333333;
-      border-bottom-color: #ff9500;
-    }
   }
 }
 
@@ -811,6 +808,16 @@ onMounted(async () => {
   &.tag-reasoning {
     background: #fef3c7;
     color: #ff9500;
+  }
+
+  &.tag-websearch {
+    background: #e0f2fe;
+    color: #0284c7;
+  }
+
+  &.tag-multimodal {
+    background: #fce7f3;
+    color: #db2777;
   }
 
   &.tag-enabled {
@@ -1096,9 +1103,19 @@ onMounted(async () => {
 .test-dialog {
   background: #ffffff;
   border-radius: 12px;
-  width: 480px;
+  width: 560px;
   max-width: 90vw;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+}
+
+.test-dialog-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 24px;
 }
 
 .test-result {
@@ -1136,12 +1153,18 @@ onMounted(async () => {
       margin-bottom: 8px;
     }
 
-    .markdown-content {
+    .response-content {
       background: #f9fafb;
       border: 1px solid #e5e7eb;
       border-radius: 8px;
       padding: 12px 16px;
-      font-size: var(--font-size-sm);
+      max-height: 400px;
+      overflow-y: auto;
+
+      .markdown-content {
+        font-size: var(--font-size-sm);
+        line-height: 1.6;
+      }
     }
   }
 

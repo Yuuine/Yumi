@@ -13,6 +13,8 @@ from .exceptions import (
     ValidationException,
     YumiException,
 )
+from .logging import YumiLogger, get_logger, log_with_context, request_id_var
+from .middleware import RequestTracingMiddleware, SlowRequestMiddleware
 
 __all__ = [
     "Settings",
@@ -27,4 +29,10 @@ __all__ = [
     "NotFoundException",
     "AuthenticationException",
     "RateLimitException",
+    "YumiLogger",
+    "get_logger",
+    "log_with_context",
+    "request_id_var",
+    "RequestTracingMiddleware",
+    "SlowRequestMiddleware",
 ]

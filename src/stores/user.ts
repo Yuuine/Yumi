@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { UserProfile, BigFiveTraits, UserPreferences } from '@/types'
 import { userApi } from '@/api/user'
+import { logger } from '@/utils/logger'
 
 export const useUserStore = defineStore('user', () => {
   const profile = ref<UserProfile>({
@@ -33,7 +34,7 @@ export const useUserStore = defineStore('user', () => {
       profile.value = loaded
       isLoaded.value = true
     } catch (error) {
-      console.error('Failed to load profile:', error)
+      logger.error('UserStore', 'Failed to load profile', error)
     } finally {
       isLoading.value = false
     }
@@ -49,7 +50,7 @@ export const useUserStore = defineStore('user', () => {
       profile.value = updated
       return updated
     } catch (error) {
-      console.error('Failed to update profile:', error)
+      logger.error('UserStore', 'Failed to update profile', error)
       throw error
     } finally {
       isLoading.value = false

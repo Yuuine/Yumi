@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { AppSettings } from '@/types'
 import { settingsApi } from '@/api/settings'
+import { logger } from '@/utils/logger'
 
 export const useSettingsStore = defineStore('settings', () => {
   const settings = ref<AppSettings>({
@@ -29,7 +30,7 @@ export const useSettingsStore = defineStore('settings', () => {
       theme.value = loaded.theme
       isLoaded.value = true
     } catch (error) {
-      console.error('Failed to load settings:', error)
+      logger.error('SettingsStore', 'Failed to load settings', error)
     } finally {
       isLoading.value = false
     }
@@ -48,7 +49,7 @@ export const useSettingsStore = defineStore('settings', () => {
       }
       return updated
     } catch (error) {
-      console.error('Failed to update settings:', error)
+      logger.error('SettingsStore', 'Failed to update settings', error)
       throw error
     } finally {
       isLoading.value = false

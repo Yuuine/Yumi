@@ -42,3 +42,9 @@ emotion:
 logging:
   level: "INFO"
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  dir: "logs"
+  enable_file: true
+  enable_json: false
+  max_file_size_mb: 10
+  backup_count: 5
+  retention_days: 30

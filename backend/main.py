@@ -1,12 +1,14 @@
 """
 Yumi Backend - FastAPI 服务
 """
-import logging
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .core import settings, setup_exception_handlers
+from .core.logging import YumiLogger, get_logger
+from .core.middleware import RequestTracingMiddleware, SlowRequestMiddleware
 from .database import init_db
 from .routers import chat, memory, user
 from .routers import settings as settings_router
@@ -16,11 +18,20 @@ from .services.llm import LLMService
 from .services.memory import MemoryEngine
 from .services.prompt_builder import PromptBuilder
 
-logging.basicConfig(
-    level=getattr(logging, settings.logging.level),
-    format=settings.logging.format,
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+log_dir = PROJECT_ROOT / settings.logging.dir
+YumiLogger.setup(
+    level=settings.logging.level,
+    log_dir=log_dir,
+    app_name=settings.app.name.lower(),
+    app_version=settings.app.version,
+    environment="development" if settings.app.debug else "production",
+    max_file_size=settings.logging.max_file_size_mb * 1024 * 1024,
+    backup_count=settings.logging.backup_count,
+    enable_file_log=settings.logging.enable_file,
+    enable_json_format=settings.logging.enable_json,
 )
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 memory_engine: MemoryEngine | None = None
 emotion_engine: EmotionEngine | None = None
@@ -67,6 +78,9 @@ app = FastAPI(
 )
 
 setup_exception_handlers(app)
+
+app.add_middleware(SlowRequestMiddleware, threshold_ms=1000)
+app.add_middleware(RequestTracingMiddleware)
 
 app.add_middleware(
     CORSMiddleware,

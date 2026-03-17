@@ -4,6 +4,7 @@ import type { ChatMessage, ChatRequest, ChatResponse } from '@/types'
 import { chatApi } from '@/api/chat'
 import type { ApiError } from '@/api/http-client'
 import dayjs from 'dayjs'
+import { logger } from '@/utils/logger'
 
 export const useChatStore = defineStore('chat', () => {
   const messages = ref<ChatMessage[]>([])
@@ -59,7 +60,7 @@ export const useChatStore = defineStore('chat', () => {
       conversationCount.value++
 
       if (response.newSummary) {
-        console.info('Memory summary updated:', response.newSummary)
+        logger.info('ChatStore', 'Memory summary updated', { summary: response.newSummary })
       }
 
       return response
@@ -202,7 +203,7 @@ export const useChatStore = defineStore('chat', () => {
       const history = await chatApi.getHistory(currentUserId.value, 50)
       messages.value = history.messages
     } catch (error) {
-      console.error('Failed to load history:', error)
+      logger.error('ChatStore', 'Failed to load history', error)
     }
   }
 

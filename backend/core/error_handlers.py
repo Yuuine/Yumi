@@ -3,7 +3,6 @@
 """
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from fastapi import FastAPI, Request, status
@@ -12,8 +11,9 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from .exceptions import YumiException
+from .logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ErrorResponse:

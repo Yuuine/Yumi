@@ -175,5 +175,29 @@ const renderedContent = computed(() => {
       background: #f9fafb;
     }
   }
+
+  :deep(.reasoning-block) {
+    margin: 8px 0;
+
+    .reasoning-label {
+      font-size: 11px;
+      font-weight: 500;
+      color: #9ca3af;
+      margin-bottom: 4px;
+    }
+
+    .reasoning-content {
+      font-size: 12px;
+      color: #9ca3af;
+      line-height: 1.5;
+    }
+  }
+
+  :deep(.answer-label) {
+    font-size: var(--font-size-xs);
+    font-weight: 500;
+    color: #6b7280;
+    margin: 8px 0 4px;
+  }
 }
 </style>

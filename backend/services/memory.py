@@ -4,7 +4,6 @@ Implements Ebbinghaus decay, semantic deduplication, and LLM summarization
 """
 from __future__ import annotations
 
-import logging
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -13,9 +12,9 @@ from typing import Any
 import chromadb
 import numpy as np
 
-from ..core import MemoryException, settings
+from ..core import MemoryException, get_logger, settings
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class MemoryEngine:
@@ -23,7 +22,10 @@ class MemoryEngine:
         persist_dir = Path(settings.vector_db.persist_dir)
         persist_dir.mkdir(parents=True, exist_ok=True)
 
-        self.client = chromadb.PersistentClient(path=str(persist_dir))
+        self.client = chromadb.PersistentClient(
+            path=str(persist_dir),
+            settings=chromadb.Settings(anonymized_telemetry=False),
+        )
         self.collection = None
         self.turn_counts: dict[str, int] = {}
         self._embedding_cache: dict[str, list[float]] = {}

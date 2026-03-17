@@ -30,6 +30,7 @@ declare module 'vue' {
     IconLink: typeof import('./components/icons/IconLink.vue')['default']
     IconSuccess: typeof import('./components/icons/IconSuccess.vue')['default']
     IconWarning: typeof import('./components/icons/IconWarning.vue')['default']
+    LoadingOverlay: typeof import('./components/common/LoadingOverlay.vue')['default']
     MarkdownRenderer: typeof import('./components/common/MarkdownRenderer.vue')['default']
     MessageActionsFooter: typeof import('./components/chat/MessageActionsFooter.vue')['default']
     MessageItem: typeof import('./components/chat/MessageItem.vue')['default']

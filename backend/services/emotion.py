@@ -4,14 +4,13 @@ Supports keyword-based analysis and optional transformer model
 """
 from __future__ import annotations
 
-import logging
 from abc import ABC, abstractmethod
 
 from pydantic import BaseModel
 
-from ..core import settings
+from ..core import get_logger, settings
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class EmotionData(BaseModel):

@@ -6,6 +6,7 @@
 export interface ModelOption {
   label: string
   value: string
+  modelType?: 'text' | 'image'
 }
 
 /** 提供商配置类型 */
@@ -49,7 +50,7 @@ export const API_PROVIDERS: Record<string, ProviderConfig> = {
     models: [
       { label: 'Kimi K2.5', value: 'kimi-k2.5' },
       { label: 'Kimi K2 Turbo Preview', value: 'kimi-k2-turbo-preview' },
-      { label: 'Moonshot V1 128K Vision Preview', value: 'moonshot-v1-128k-vision-preview' },
+      { label: 'Moonshot V1 128K Vision Preview', value: 'moonshot-v1-128k-vision-preview', modelType: 'image' },
     ],
     apiKeyUrl: 'https://platform.moonshot.cn/console/api-keys',
   },
@@ -74,6 +75,56 @@ export const PROVIDER_OPTIONS = Object.entries(PROVIDER_NAMES).map(([value, labe
   value,
   label,
 }))
+
+/** 模型能力配置 */
+export interface ModelCapabilities {
+  toolCall: boolean
+  reasoning: boolean
+  webSearch: boolean
+  multimodal: boolean
+  imageRecognition: boolean
+}
+
+export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
+  'deepseek-chat': {
+    toolCall: true,
+    reasoning: false,
+    webSearch: false,
+    multimodal: false,
+    imageRecognition: false,
+  },
+  'deepseek-reasoner': {
+    toolCall: true,
+    reasoning: true,
+    webSearch: false,
+    multimodal: false,
+    imageRecognition: false,
+  },
+  'kimi-k2-turbo-preview': {
+    toolCall: true,
+    reasoning: false,
+    webSearch: true,
+    multimodal: false,
+    imageRecognition: false,
+  },
+  'kimi-k2.5': {
+    toolCall: true,
+    reasoning: true,
+    webSearch: true,
+    multimodal: true,
+    imageRecognition: true,
+  },
+}
+
+export function getModelCapabilities(modelName: string): ModelCapabilities {
+  return MODEL_CAPABILITIES[modelName.toLowerCase()] || {
+    toolCall: false,
+    reasoning: false,
+    webSearch: false,
+    multimodal: false,
+    imageRecognition: false,
+  }
+}
 
 /** 颜色常量 */
 export const COLORS = {

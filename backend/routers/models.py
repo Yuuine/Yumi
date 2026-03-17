@@ -4,7 +4,6 @@ Model Management API Router
 from __future__ import annotations
 
 import base64
-import logging
 import time
 import uuid
 from datetime import datetime
@@ -14,8 +13,10 @@ import httpx
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+from ..core import get_logger
+
 router = APIRouter()
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ModelConfig(BaseModel):
@@ -270,76 +271,24 @@ async def disable_model(model_id: str):
 
 @router.post("/test", response_model=ModelTestResponse)
 async def test_model(request: ModelTestRequest):
-    url = f"{request.baseUrl.rstrip('/')}/chat/completions"
+    from ..services.llm import LLMService
 
-    headers = {"Content-Type": "application/json"}
-    if request.apiKey:
-        headers["Authorization"] = f"Bearer {request.apiKey}"
-
-    payload = {
-        "model": request.modelName,
-        "messages": [
-            {"role": "user", "content": request.testMessage},
-        ],
-        "max_tokens": 100,
-        "temperature": 0.7,
-    }
+    llm_service = LLMService()
 
     try:
-        start_time = time.time()
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(url, json=payload, headers=headers)
-            latency = time.time() - start_time
-
-            if response.status_code != 200:
-                return ModelTestResponse(
-                    success=False,
-                    message=f"API 返回错误: HTTP {response.status_code}",
-                    latency=latency,
-                )
-
-            data = response.json()
-            
-            choices = data.get("choices", [])
-            if not choices:
-                return ModelTestResponse(
-                    success=False,
-                    message="API 返回数据格式错误: 缺少 choices",
-                    latency=latency,
-                )
-            
-            message = choices[0].get("message", {})
-            
-            content = message.get("content")
-            reasoning_content = message.get("reasoning_content")
-            
-            response_parts = []
-            if reasoning_content:
-                response_parts.append(f"**推理过程:**\n{reasoning_content}")
-            if content:
-                response_parts.append(f"**回答:**\n{content}")
-            
-            if response_parts:
-                final_response = "\n\n".join(response_parts)
-            else:
-                final_response = "模型返回成功，但无内容输出"
-            
-            return ModelTestResponse(
-                success=True,
-                message="连接成功",
-                response=final_response,
-                latency=round(latency, 2),
-            )
-
-    except httpx.TimeoutException:
-        return ModelTestResponse(
-            success=False,
-            message="连接超时，请检查网络或 API 地址",
+        success, message, content, latency = await llm_service.test_connection(
+            provider_id="custom",
+            base_url=request.baseUrl,
+            api_key=request.apiKey,
+            model_name=request.modelName,
+            test_message=request.testMessage or "你好，请简单介绍一下你自己。",
         )
-    except httpx.ConnectError:
+
         return ModelTestResponse(
-            success=False,
-            message="无法连接到服务器，请检查 API 地址是否正确",
+            success=success,
+            message=message,
+            response=content,
+            latency=latency,
         )
     except Exception as e:
         logger.error("Model test error: %s", e)

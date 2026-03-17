@@ -3,13 +3,11 @@ Database initialization and configuration
 """
 from __future__ import annotations
 
-import logging
-
 import aiosqlite
 
-from .core import settings
+from .core import get_logger, settings
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 async def init_db() -> None:

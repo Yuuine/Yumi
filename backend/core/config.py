@@ -63,7 +63,7 @@ class VectorDBConfig(BaseSettings):
 
 
 class LLMConfig(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="YUMI_LLM_")
+    model_config = SettingsConfigDict(env_prefix="YUMI_LLM_", protected_namespaces=())
 
     api_endpoint: str = "http://127.0.0.1:11434/v1"
     api_key: str = ""
@@ -95,6 +95,12 @@ class LoggingConfig(BaseSettings):
 
     level: str = "INFO"
     format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    dir: str = "logs"
+    enable_file: bool = True
+    enable_json: bool = False
+    max_file_size_mb: int = 10
+    backup_count: int = 5
+    retention_days: int = 30
 
 
 class Settings(BaseSettings):
