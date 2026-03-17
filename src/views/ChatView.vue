@@ -1,83 +1,58 @@
 <template>
   <div class="chat-view">
-    <SideMenu
-      :role-name="userStore.profile.roleName"
-      :conversation-count="chatStore.conversationCount"
-      :memory-count="memoryStats?.totalMemories || 0"
-      :active-menu="activeMenu"
-    />
+    <SidebarNav />
 
-    <ChatContainer
-      :messages="chatStore.messages"
-      :is-loading="chatStore.isLoading"
-      :role-name="userStore.profile.roleName"
-      @send="handleSend"
-      @clear="clearChat"
-    />
+    <div class="chat-main">
+      <MessageList ref="messageListRef" :messages="chatStore.messages" @copy="handleCopy" />
+    </div>
+
+    <ChatInput @send="handleSend" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
-import { useRoute } from 'vue-router'
-import { ElMessageBox } from 'element-plus'
-import { useChatStore, useUserStore, useSettingsStore } from '@/stores'
-import { memoryApi } from '@/api'
-import type { MemoryStats } from '@/types'
-import { SideMenu } from '@/components/sidebar'
-import { ChatContainer } from '@/components/chat'
+import { ref } from 'vue'
+import { useChatStore } from '@/stores'
+import { SidebarNav } from '@/components/sidebar'
+import { MessageList, ChatInput } from '@/components/chat'
+import type { ChatMessage } from '@/types'
 
-const route = useRoute()
 const chatStore = useChatStore()
-const userStore = useUserStore()
-const settingsStore = useSettingsStore()
+const messageListRef = ref<InstanceType<typeof MessageList> | null>(null)
 
-const memoryStats = ref<MemoryStats | null>(null)
-
-const activeMenu = ref(route.path)
-
-watch(
-  () => route.path,
-  path => {
-    activeMenu.value = path
+function handleSend(content: string) {
+  const newMessage: ChatMessage = {
+    id: `user-${Date.now()}`,
+    role: 'user',
+    content,
+    timestamp: new Date().toISOString(),
   }
-)
 
-onMounted(async () => {
-  await Promise.all([userStore.loadProfile(), settingsStore.loadSettings(), loadMemoryStats()])
-})
+  messageListRef.value?.addMessage(newMessage)
 
-async function loadMemoryStats() {
-  try {
-    memoryStats.value = await memoryApi.getStats(chatStore.currentUserId)
-  } catch (error) {
-    console.error('Failed to load memory stats:', error)
-  }
+  // TODO: 连接后端发送API
+  // await chatStore.sendMessage(content)
 }
 
-async function handleSend(content: string) {
-  await chatStore.sendMessage(content)
-  await loadMemoryStats()
-}
-
-async function clearChat() {
-  try {
-    await ElMessageBox.confirm('确定要清空所有对话记录吗？', '确认清空', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning',
-    })
-    chatStore.clearMessages()
-  } catch {
-    // User cancelled
-  }
+function handleCopy(content: string) {
+  // TODO: 实现剪贴板复制逻辑
+  console.log('[模拟] 复制消息内容：', content)
 }
 </script>
 
 <style lang="scss" scoped>
 .chat-view {
   display: flex;
+  flex-direction: column;
   height: 100vh;
-  background: var(--bg-primary);
+  background: #ffffff;
+  position: relative;
+}
+
+.chat-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 </style>
