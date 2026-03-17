@@ -112,7 +112,7 @@ function handleSend() {
   border: none;
   outline: none;
   background: transparent;
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   line-height: 1.5;
   resize: none;
   max-height: 160px;

@@ -65,7 +65,7 @@ function handleCopy(content: string) {
 }
 
 .message-text {
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   white-space: pre-wrap;
 }
 </style>

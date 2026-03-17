@@ -122,13 +122,13 @@ const emotionLabel = computed(() => {
       margin-bottom: 4px;
 
       .message-role {
-        font-size: 13px;
+        font-size: var(--font-size-xs);
         font-weight: 500;
         color: var(--text-primary);
       }
 
       .message-time {
-        font-size: 12px;
+        font-size: var(--font-size-xs);
         color: var(--text-secondary);
       }
     }

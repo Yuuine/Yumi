@@ -36,7 +36,7 @@ defineProps<Props>()
 
   p {
     margin: 0;
-    font-size: 14px;
+    font-size: var(--font-size-xs);
   }
 }
 </style>

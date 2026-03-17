@@ -44,6 +44,15 @@ export const API_PROVIDERS: Record<string, ProviderConfig> = {
     ],
     apiKeyUrl: 'https://console.anthropic.com/settings/keys',
   },
+  kimi: {
+    baseUrl: 'https://api.moonshot.cn/v1',
+    models: [
+      { label: 'Kimi K2.5', value: 'kimi-k2.5' },
+      { label: 'Kimi K2 Turbo Preview', value: 'kimi-k2-turbo-preview' },
+      { label: 'Moonshot V1 128K Vision Preview', value: 'moonshot-v1-128k-vision-preview' },
+    ],
+    apiKeyUrl: 'https://platform.moonshot.cn/console/api-keys',
+  },
   custom: {
     baseUrl: '',
     models: [{ label: '自定义模型', value: 'custom' }],
@@ -51,12 +60,27 @@ export const API_PROVIDERS: Record<string, ProviderConfig> = {
   },
 }
 
+/** 提供商显示名称映射 */
+export const PROVIDER_NAMES: Record<string, string> = {
+  openai: 'OpenAI',
+  deepseek: 'DeepSeek',
+  anthropic: 'Anthropic',
+  kimi: 'Kimi',
+  custom: '自定义',
+}
+
+/** 提供商选项列表（用于下拉选择） */
+export const PROVIDER_OPTIONS = Object.entries(PROVIDER_NAMES).map(([value, label]) => ({
+  value,
+  label,
+}))
+
 /** 颜色常量 */
 export const COLORS = {
   PRIMARY: '#3b82f6',
   SECONDARY: '#ff9500',
   SUCCESS: '#10b981',
-  WARNING: '#ff9500',
+  WARNING: '#f59e0b',
   DANGER: '#ef4444',
   TEXT_PRIMARY: '#333333',
   TEXT_SECONDARY: '#666666',
@@ -86,12 +110,4 @@ export const ANIMATION_DURATION = {
   FAST: 0.15,
   NORMAL: 0.2,
   SLOW: 0.25,
-} as const
-
-/** 模型标签类型 */
-export const MODEL_TAG_TYPES = {
-  MODEL: 'model',
-  TOOL: 'tool',
-  REASONING: 'reasoning',
-  DISABLED: 'disabled',
 } as const

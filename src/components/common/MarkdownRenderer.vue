@@ -25,7 +25,7 @@ const renderedContent = computed(() => {
 
 <style lang="scss" scoped>
 .markdown-content {
-  font-size: 15px;
+  font-size: var(--font-size-lg);
   line-height: 1.6;
   color: #333333;
   word-break: break-word;
@@ -114,7 +114,7 @@ const renderedContent = computed(() => {
       background: transparent;
       padding: 0;
       color: inherit;
-      font-size: 13px;
+      font-size: var(--font-size-xs);
       line-height: 1.5;
     }
   }

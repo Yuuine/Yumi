@@ -34,13 +34,13 @@ defineProps<Props>()
 
     .stat-value {
       display: block;
-      font-size: 24px;
+      font-size: var(--font-size-xxl);
       font-weight: 600;
       color: var(--el-color-primary);
     }
 
     .stat-label {
-      font-size: 12px;
+      font-size: var(--font-size-xs);
       color: var(--text-secondary);
     }
   }

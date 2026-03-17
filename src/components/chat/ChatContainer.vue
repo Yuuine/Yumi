@@ -81,7 +81,7 @@ watch(
 
     h3 {
       margin: 0;
-      font-size: 16px;
+      font-size: var(--font-size-md);
       font-weight: 500;
       color: var(--text-primary);
     }

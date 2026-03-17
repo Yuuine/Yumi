@@ -287,7 +287,7 @@ async def test_model(request: ModelTestRequest):
 
     try:
         start_time = time.time()
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(url, json=payload, headers=headers)
             latency = time.time() - start_time
 
@@ -299,12 +299,35 @@ async def test_model(request: ModelTestRequest):
                 )
 
             data = response.json()
-            content = data["choices"][0]["message"]["content"]
-
+            
+            choices = data.get("choices", [])
+            if not choices:
+                return ModelTestResponse(
+                    success=False,
+                    message="API 返回数据格式错误: 缺少 choices",
+                    latency=latency,
+                )
+            
+            message = choices[0].get("message", {})
+            
+            content = message.get("content")
+            reasoning_content = message.get("reasoning_content")
+            
+            response_parts = []
+            if reasoning_content:
+                response_parts.append(f"**推理过程:**\n{reasoning_content}")
+            if content:
+                response_parts.append(f"**回答:**\n{content}")
+            
+            if response_parts:
+                final_response = "\n\n".join(response_parts)
+            else:
+                final_response = "模型返回成功，但无内容输出"
+            
             return ModelTestResponse(
                 success=True,
                 message="连接成功",
-                response=content,
+                response=final_response,
                 latency=round(latency, 2),
             )
 
@@ -383,14 +406,25 @@ async def _perform_test(base_url: str, api_key: str, model_name: str) -> dict:
 
     try:
         start_time = time.time()
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(url, json=payload, headers=headers)
             latency = time.time() - start_time
 
             if response.status_code == 200:
+                data = response.json()
+                choices = data.get("choices", [])
+                if choices:
+                    message = choices[0].get("message", {})
+                    has_content = message.get("content") or message.get("reasoning_content")
+                    if has_content:
+                        return {
+                            "success": True,
+                            "message": f"连接成功 ({latency:.2f}s)",
+                            "latency": latency,
+                        }
                 return {
                     "success": True,
-                    "message": f"连接成功 ({latency:.2f}s)",
+                    "message": f"连接成功 ({latency:.2f}s) - 无内容返回",
                     "latency": latency,
                 }
             else:

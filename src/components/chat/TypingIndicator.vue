@@ -48,7 +48,7 @@ defineProps<Props>()
   }
 
   .typing-text {
-    font-size: 13px;
+    font-size: var(--font-size-xs);
     color: var(--text-secondary);
   }
 }

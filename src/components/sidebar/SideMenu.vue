@@ -61,14 +61,14 @@ defineProps<Props>()
     }
 
     .character-name {
-      font-size: 20px;
+      font-size: var(--font-size-xl);
       font-weight: 600;
       color: var(--text-primary);
       margin: 0 0 4px;
     }
 
     .character-desc {
-      font-size: 13px;
+      font-size: var(--font-size-xs);
       color: var(--text-secondary);
       margin: 0;
     }

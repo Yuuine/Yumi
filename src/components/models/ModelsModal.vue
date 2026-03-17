@@ -7,23 +7,11 @@
             <h2 class="modal-title">模型管理</h2>
             <div class="header-actions">
               <button class="add-btn" @click="showAddDialog">
-                <svg
-                  class="btn-icon"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
+                <IconAdd class="btn-icon" />
                 <span>添加</span>
               </button>
               <button class="close-btn" @click="handleClose" aria-label="关闭">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
+                <IconClose />
               </button>
             </div>
           </div>
@@ -50,17 +38,7 @@
             </div>
 
             <div v-else-if="filteredModels.length === 0" class="empty-state">
-              <svg
-                class="empty-icon"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.5"
-              >
-                <rect x="3" y="3" width="18" height="18" rx="2" />
-                <line x1="9" y1="9" x2="15" y2="15" />
-                <line x1="15" y1="9" x2="9" y2="15" />
-              </svg>
+              <IconError class="empty-icon" />
               <p>暂无模型配置</p>
             </div>
 
@@ -86,24 +64,15 @@
                     @click="handleTest(model)"
                     :disabled="modelsStore.isTesting"
                   >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-                      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-                    </svg>
+                    <IconLink :stroke-width="1.5" />
                     <span>测试</span>
                   </button>
                   <button class="action-btn" @click="handleEdit(model)">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                    </svg>
+                    <IconEdit :stroke-width="1.5" />
                     <span>编辑</span>
                   </button>
                   <button class="action-btn" @click="handleClone(model)">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                      <rect x="9" y="9" width="13" height="13" rx="2" />
-                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                    </svg>
+                    <IconCopy :stroke-width="1.5" />
                     <span>克隆</span>
                   </button>
                   <button
@@ -111,35 +80,12 @@
                     :class="model.isEnabled ? 'disable-btn' : 'enable-btn'"
                     @click="handleToggle(model)"
                   >
-                    <svg
-                      v-if="model.isEnabled"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="1.5"
-                    >
-                      <circle cx="12" cy="12" r="10" />
-                      <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
-                    </svg>
-                    <svg
-                      v-else
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="1.5"
-                    >
-                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                      <polyline points="22 4 12 14.01 9 11.01" />
-                    </svg>
+                    <IconDisable v-if="model.isEnabled" :stroke-width="1.5" />
+                    <IconSuccess v-else :stroke-width="1.5" />
                     <span>{{ model.isEnabled ? '禁用' : '启用' }}</span>
                   </button>
                   <button class="action-btn delete-btn" @click="handleDelete(model.id)">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                      <polyline points="3 6 5 6 21 6" />
-                      <path
-                        d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
-                      />
-                    </svg>
+                    <IconDelete :stroke-width="1.5" />
                     <span>删除</span>
                   </button>
                 </div>
@@ -160,10 +106,7 @@
           <div class="dialog-header">
             <h3>{{ isEditing ? '编辑模型' : '添加模型' }}</h3>
             <button class="close-btn" @click="formDialogVisible = false" aria-label="关闭">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
+              <IconClose />
             </button>
           </div>
 
@@ -179,20 +122,11 @@
                     class="form-select"
                     @change="handleProviderChange"
                   >
-                    <option value="openai">OpenAI</option>
-                    <option value="deepseek">DeepSeek</option>
-                    <option value="anthropic">Anthropic</option>
-                    <option value="custom">自定义</option>
+                    <option v-for="opt in providerOptions" :key="opt.value" :value="opt.value">
+                      {{ opt.label }}
+                    </option>
                   </select>
-                  <svg
-                    class="select-arrow"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                  >
-                    <polyline points="6 9 12 15 18 9" />
-                  </svg>
+                  <IconChevronDown class="select-arrow" />
                 </div>
               </div>
 
@@ -221,11 +155,7 @@
                     @click="openApiKeyPage"
                     aria-label="获取 API 密钥"
                   >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                      <polyline points="15 3 21 3 21 9" />
-                      <line x1="10" y1="14" x2="21" y2="3" />
-                    </svg>
+                    <IconLink :stroke-width="1.5" />
                   </button>
                 </div>
               </div>
@@ -299,10 +229,7 @@
           <div class="dialog-header">
             <h3>测试结果</h3>
             <button class="close-btn" @click="testDialogVisible = false" aria-label="关闭">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
+              <IconClose />
             </button>
           </div>
 
@@ -312,21 +239,8 @@
                 class="test-status"
                 :class="modelsStore.testResult.success ? 'success' : 'error'"
               >
-                <svg
-                  v-if="modelsStore.testResult.success"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                  <polyline points="22 4 12 14.01 9 11.01" />
-                </svg>
-                <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="10" />
-                  <line x1="15" y1="9" x2="9" y2="15" />
-                  <line x1="9" y1="9" x2="15" y2="15" />
-                </svg>
+                <IconSuccess v-if="modelsStore.testResult.success" />
+                <IconError v-else />
                 <span>{{ modelsStore.testResult.message }}</span>
               </div>
 
@@ -350,21 +264,9 @@
 
     <Transition name="toast">
       <div v-if="toastVisible" class="toast" :class="`toast-${toastType}`">
-        <svg
-          v-if="toastType === 'success'"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-        >
-          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-          <polyline points="22 4 12 14.01 9 11.01" />
-        </svg>
-        <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10" />
-          <line x1="12" y1="8" x2="12" y2="12" />
-          <line x1="12" y1="16" x2="12.01" y2="16" />
-        </svg>
+        <IconSuccess v-if="toastType === 'success'" />
+        <IconWarning v-else-if="toastType === 'warning'" />
+        <IconInfo v-else />
         <span>{{ toastMessage }}</span>
       </div>
     </Transition>
@@ -374,10 +276,23 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { useModelsStore } from '@/stores'
-import { API_PROVIDERS } from '@/constants'
+import { API_PROVIDERS, PROVIDER_NAMES, PROVIDER_OPTIONS } from '@/constants'
 import type { ModelConfig } from '@/types'
 import Dialog from '@/components/common/Dialog.vue'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
+import {
+  IconClose,
+  IconSuccess,
+  IconWarning,
+  IconError,
+  IconAdd,
+  IconEdit,
+  IconDelete,
+  IconCopy,
+  IconLink,
+  IconChevronDown,
+  IconDisable,
+} from '@/components/icons'
 
 const props = defineProps<{
   visible: boolean
@@ -395,13 +310,8 @@ const tabs = [
 ]
 
 const providerConfig = API_PROVIDERS
-
-const providerNames: Record<string, string> = {
-  openai: 'OpenAI',
-  deepseek: 'DeepSeek',
-  anthropic: 'Anthropic',
-  custom: '自定义',
-}
+const providerNames = PROVIDER_NAMES
+const providerOptions = PROVIDER_OPTIONS
 
 const activeTab = ref('text')
 const formDialogVisible = ref(false)
@@ -419,7 +329,7 @@ const dialogCallback = ref<(() => void) | null>(null)
 
 const toastVisible = ref(false)
 const toastMessage = ref('')
-const toastType = ref<'success' | 'error'>('success')
+const toastType = ref<'success' | 'error' | 'warning'>('success')
 
 const formData = reactive({
   providerId: 'deepseek',
@@ -433,7 +343,7 @@ const availableModels = computed(() => {
   return providerConfig[formData.providerId]?.models || []
 })
 
-function showToast(message: string, type: 'success' | 'error' = 'success') {
+function showToast(message: string, type: 'success' | 'error' | 'warning' = 'success') {
   toastMessage.value = message
   toastType.value = type
   toastVisible.value = true
@@ -569,7 +479,7 @@ async function handleDelete(modelId: string) {
 
 async function handleTest(model: ModelConfig) {
   if (!model.apiKey) {
-    showDialog('无法测试', '请先配置 API 密钥', 'warning')
+    showToast('请先配置 API 密钥', 'warning')
     return
   }
 
@@ -678,7 +588,7 @@ onMounted(async () => {
 
   .modal-title {
     margin: 0;
-    font-size: 20px;
+    font-size: var(--font-size-xl);
     font-weight: 600;
     color: #333333;
   }
@@ -699,7 +609,7 @@ onMounted(async () => {
   color: #ffffff;
   border: none;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   cursor: pointer;
   transition: background 0.2s;
@@ -748,7 +658,7 @@ onMounted(async () => {
     background: transparent;
     border: none;
     border-bottom: 2px solid transparent;
-    font-size: 14px;
+    font-size: var(--font-size-xs);
     color: #666666;
     cursor: pointer;
     transition: all 0.2s;
@@ -851,7 +761,7 @@ onMounted(async () => {
 }
 
 .model-name {
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   font-weight: 500;
   color: #333333;
   line-height: 22px;
@@ -877,7 +787,7 @@ onMounted(async () => {
   align-items: center;
   padding: 2px 8px;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   font-weight: 400;
   line-height: 16px;
   white-space: nowrap;
@@ -930,7 +840,7 @@ onMounted(async () => {
   background: transparent;
   border: none;
   border-radius: 6px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: #666666;
   cursor: pointer;
   transition: all 0.2s;
@@ -992,7 +902,7 @@ onMounted(async () => {
 
   h3 {
     margin: 0;
-    font-size: 20px;
+    font-size: var(--font-size-xl);
     font-weight: 600;
     color: #333333;
   }
@@ -1012,7 +922,7 @@ onMounted(async () => {
   }
 
   .section-title {
-    font-size: 14px;
+    font-size: var(--font-size-xs);
     font-weight: 600;
     color: #333333;
     margin-bottom: 12px;
@@ -1030,7 +940,7 @@ onMounted(async () => {
 
 .form-label {
   display: block;
-  font-size: 14px;
+  font-size: var(--font-size-xs);
   font-weight: 400;
   color: #666666;
   margin-bottom: 4px;
@@ -1056,7 +966,7 @@ onMounted(async () => {
   background: #f9fafb;
   border: 1px solid #d1d5db;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: var(--font-size-xs);
   color: #333333;
   transition: all 0.2s ease-out;
 
@@ -1088,7 +998,7 @@ onMounted(async () => {
   background: #f9fafb;
   border: 1px solid #d1d5db;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: var(--font-size-xs);
   color: #333333;
   cursor: pointer;
   appearance: none;
@@ -1154,7 +1064,7 @@ onMounted(async () => {
   padding: 10px 20px;
   border: none;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
@@ -1198,7 +1108,7 @@ onMounted(async () => {
     gap: 8px;
     padding: 12px;
     border-radius: 8px;
-    font-size: 14px;
+    font-size: var(--font-size-xs);
 
     svg {
       width: 20px;
@@ -1220,7 +1130,7 @@ onMounted(async () => {
     margin-top: 16px;
 
     .response-label {
-      font-size: 13px;
+      font-size: var(--font-size-xs);
       font-weight: 500;
       color: #666666;
       margin-bottom: 8px;
@@ -1231,7 +1141,7 @@ onMounted(async () => {
       border: 1px solid #e5e7eb;
       border-radius: 8px;
       padding: 12px 16px;
-      font-size: 15px;
+      font-size: var(--font-size-sm);
     }
   }
 
@@ -1261,6 +1171,7 @@ onMounted(async () => {
   svg {
     width: 18px;
     height: 18px;
+    flex-shrink: 0;
   }
 
   &.toast-success {
@@ -1269,6 +1180,10 @@ onMounted(async () => {
 
   &.toast-error {
     background: #ef4444;
+  }
+
+  &.toast-warning {
+    background: #f59e0b;
   }
 }
 

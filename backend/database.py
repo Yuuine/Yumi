@@ -127,6 +127,7 @@ async def init_db() -> None:
                 ('openai', 'openai', 'OpenAI', 'OpenAI GPT 系列模型'),
                 ('deepseek', 'deepseek', 'DeepSeek', 'DeepSeek AI - 高性能大语言模型，支持深度思考模式'),
                 ('anthropic', 'anthropic', 'Anthropic', 'Claude 系列模型'),
+                ('kimi', 'kimi', 'Kimi', 'Moonshot AI - Kimi 系列模型，支持长文本和视觉理解'),
                 ('custom', 'custom', '自定义', '自定义 API 提供商')
         """)
 
