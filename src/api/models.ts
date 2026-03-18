@@ -1,28 +1,128 @@
-import type {
-  ModelConfig,
-  ModelTestRequest,
-  ModelTestResponse,
-  ModelType,
-  TestStatus,
-} from '@/types'
+import type { ModelConfig, ModelTestRequest, ModelTestResponse, ModelType, TestStatus } from '@/types'
 import { httpClient } from './http-client'
+
+interface ApiModelData {
+  id: string
+  provider_id?: string
+  providerId?: string
+  name: string
+  base_url?: string
+  baseUrl?: string
+  api_key?: string
+  apiKey?: string
+  model_name?: string
+  modelName?: string
+  custom_model_name?: string
+  customModelName?: string
+  model_type?: ModelType
+  modelType?: ModelType
+  max_tokens?: number
+  maxTokens?: number
+  temperature?: number
+  is_enabled?: boolean
+  isEnabled?: boolean
+  is_tested?: boolean
+  isTested?: boolean
+  test_status?: TestStatus
+  testStatus?: TestStatus
+  last_test_at?: string
+  lastTestAt?: string
+  last_test_message?: string
+  lastTestMessage?: string
+  edit_count?: number
+  editCount?: number
+  created_at?: string
+  createdAt?: string
+  updated_at?: string
+  updatedAt?: string
+}
+
+const DEFAULT_MODEL_CONFIG: Omit<
+  ModelConfig,
+  'id' | 'providerId' | 'name' | 'baseUrl' | 'apiKey' | 'modelName'
+> = {
+  modelType: 'text',
+  maxTokens: 4096,
+  temperature: 0.85,
+  isEnabled: false,
+  isTested: false,
+  testStatus: 'untested',
+  editCount: 0,
+}
+
+function transformToModelConfig(data: ApiModelData): ModelConfig {
+  return {
+    id: data.id,
+    providerId: data.provider_id ?? data.providerId ?? '',
+    name: data.name,
+    baseUrl: data.base_url ?? data.baseUrl ?? '',
+    apiKey: data.api_key ?? data.apiKey ?? '',
+    modelName: data.model_name ?? data.modelName ?? '',
+    customModelName: data.custom_model_name ?? data.customModelName,
+    modelType: data.model_type ?? data.modelType ?? DEFAULT_MODEL_CONFIG.modelType,
+    maxTokens: data.max_tokens ?? data.maxTokens ?? DEFAULT_MODEL_CONFIG.maxTokens,
+    temperature: data.temperature ?? DEFAULT_MODEL_CONFIG.temperature,
+    isEnabled: data.is_enabled ?? data.isEnabled ?? DEFAULT_MODEL_CONFIG.isEnabled,
+    isTested: data.is_tested ?? data.isTested ?? DEFAULT_MODEL_CONFIG.isTested,
+    testStatus: data.test_status ?? data.testStatus ?? DEFAULT_MODEL_CONFIG.testStatus,
+    lastTestAt: data.last_test_at ?? data.lastTestAt,
+    lastTestMessage: data.last_test_message ?? data.lastTestMessage,
+    editCount: data.edit_count ?? data.editCount ?? DEFAULT_MODEL_CONFIG.editCount,
+    createdAt: data.created_at ?? data.createdAt,
+    updatedAt: data.updated_at ?? data.updatedAt,
+  }
+}
+
+function transformToApiFormat(
+  config: Partial<ModelConfig> & { apiKeyUnchanged?: boolean }
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {}
+
+  const mapping: Record<string, keyof typeof config> = {
+    providerId: 'providerId',
+    name: 'name',
+    baseUrl: 'baseUrl',
+    apiKey: 'apiKey',
+    modelName: 'modelName',
+    customModelName: 'customModelName',
+    modelType: 'modelType',
+    maxTokens: 'maxTokens',
+    temperature: 'temperature',
+    isEnabled: 'isEnabled',
+    isTested: 'isTested',
+    testStatus: 'testStatus',
+    lastTestAt: 'lastTestAt',
+    lastTestMessage: 'lastTestMessage',
+    editCount: 'editCount',
+  }
+
+  for (const [apiKey, configKey] of Object.entries(mapping)) {
+    const value = config[configKey]
+    if (value !== undefined) {
+      result[apiKey] = value
+    }
+  }
+
+  if (config.apiKeyUnchanged !== undefined) {
+    result.apiKeyUnchanged = config.apiKeyUnchanged
+  }
+
+  return result
+}
 
 export const modelsApi = {
   async getModels(): Promise<ModelConfig[]> {
-    const data = await httpClient.get<Record<string, unknown>[]>('/models')
-    return data.map(item => transformToModelConfig(item))
+    const data = await httpClient.get<ApiModelData[]>('/models')
+    return data.map(transformToModelConfig)
   },
 
   async createModel(config: Omit<ModelConfig, 'id'>): Promise<ModelConfig> {
-    const result = await httpClient.post<Record<string, unknown>>(
-      '/models',
-      transformToApiFormat(config)
-    )
+    const result = await httpClient.post<ApiModelData>('/models', transformToApiFormat(config))
     return transformToModelConfig(result)
   },
 
   async updateModel(modelId: string, config: Partial<ModelConfig>): Promise<ModelConfig> {
-    const result = await httpClient.put<Record<string, unknown>>(
+    const result = await httpClient.put<ApiModelData>(
       `/models/${modelId}`,
       transformToApiFormat(config)
     )
@@ -56,60 +156,18 @@ export const modelsApi = {
 
   async testModelById(
     modelId: string
-  ): Promise<{ success: boolean; message: string; latency?: number }> {
+  ): Promise<{
+    success: boolean
+    message: string
+    response?: string
+    reasoning?: string
+    latency?: number
+  }> {
     return httpClient.post(`/models/${modelId}/test`)
   },
 
   async getActiveModel(): Promise<ModelConfig | null> {
-    const data = await httpClient.get<Record<string, unknown> | null>('/active')
+    const data = await httpClient.get<ApiModelData | null>('/active')
     return data ? transformToModelConfig(data) : null
   },
-}
-
-function transformToModelConfig(data: Record<string, unknown>): ModelConfig {
-  return {
-    id: data.id as string,
-    providerId: (data.providerId || data.provider_id) as string,
-    name: data.name as string,
-    baseUrl: (data.baseUrl || data.base_url) as string,
-    apiKey: (data.apiKey || data.api_key || '') as string,
-    modelName: (data.modelName || data.model_name) as string,
-    customModelName: (data.customModelName || data.custom_model_name) as string | undefined,
-    modelType: (data.modelType || data.model_type || 'text') as ModelType,
-    maxTokens: (data.maxTokens || data.max_tokens || 4096) as number,
-    temperature: (data.temperature ?? 0.85) as number,
-    isEnabled: (data.isEnabled ?? data.is_enabled ?? false) as boolean,
-    isTested: (data.isTested ?? data.is_tested ?? false) as boolean,
-    testStatus: (data.testStatus || data.test_status || 'untested') as TestStatus,
-    lastTestAt: (data.lastTestAt || data.last_test_at) as string | undefined,
-    lastTestMessage: (data.lastTestMessage || data.last_test_message) as string | undefined,
-    editCount: (data.editCount ?? data.edit_count ?? 0) as number,
-    createdAt: (data.createdAt || data.created_at) as string | undefined,
-    updatedAt: (data.updatedAt || data.updated_at) as string | undefined,
-  }
-}
-
-function transformToApiFormat(config: Partial<ModelConfig>): Record<string, unknown> {
-  const result: Record<string, unknown> = {}
-
-  if (config.providerId !== undefined) result.providerId = config.providerId
-  if (config.name !== undefined) result.name = config.name
-  if (config.baseUrl !== undefined) result.baseUrl = config.baseUrl
-  if (config.apiKey !== undefined) result.apiKey = config.apiKey
-  if (config.modelName !== undefined) result.modelName = config.modelName
-  if (config.customModelName !== undefined) result.customModelName = config.customModelName
-  if (config.modelType !== undefined) result.modelType = config.modelType
-  if (config.maxTokens !== undefined) result.maxTokens = config.maxTokens
-  if (config.temperature !== undefined) result.temperature = config.temperature
-  if (config.isEnabled !== undefined) result.isEnabled = config.isEnabled
-  if (config.isTested !== undefined) result.isTested = config.isTested
-  if (config.testStatus !== undefined) result.testStatus = config.testStatus
-  if (config.lastTestAt !== undefined) result.lastTestAt = config.lastTestAt
-  if (config.lastTestMessage !== undefined) result.lastTestMessage = config.lastTestMessage
-  if (config.editCount !== undefined) result.editCount = config.editCount
-  if ((config as { apiKeyUnchanged?: boolean }).apiKeyUnchanged !== undefined) {
-    result.apiKeyUnchanged = (config as { apiKeyUnchanged?: boolean }).apiKeyUnchanged
-  }
-
-  return result
 }

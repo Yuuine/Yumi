@@ -50,6 +50,8 @@ export default [
         Blob: 'readonly',
         URL: 'readonly',
         Event: 'readonly',
+        MouseEvent: 'readonly',
+        Node: 'readonly',
         vi: 'readonly',
         beforeEach: 'readonly',
         afterEach: 'readonly',

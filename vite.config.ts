@@ -51,11 +51,34 @@ export default defineConfig({
     target: ['es2021', 'chrome100', 'safari13'],
     minify: !process.env.TAURI_DEBUG ? 'esbuild' : false,
     sourcemap: !!process.env.TAURI_DEBUG,
+    chunkSizeWarningLimit: 600,
     rollupOptions: {
       output: {
-        manualChunks: {
-          'element-plus': ['element-plus'],
-          vendor: ['vue', 'vue-router', 'pinia'],
+        manualChunks: id => {
+          if (id.includes('node_modules')) {
+            if (id.includes('element-plus')) {
+              if (id.includes('element-plus/es/components')) {
+                const componentMatch = id.match(/element-plus\/es\/components\/([^/]+)/)
+                if (componentMatch) {
+                  return `el-${componentMatch[1]}`
+                }
+              }
+              return 'element-plus'
+            }
+            if (id.includes('vue') || id.includes('pinia') || id.includes('vue-router')) {
+              return 'vue-vendor'
+            }
+            if (id.includes('axios')) {
+              return 'axios'
+            }
+            if (id.includes('marked') || id.includes('dompurify')) {
+              return 'markdown'
+            }
+            if (id.includes('dayjs')) {
+              return 'dayjs'
+            }
+            return 'vendor'
+          }
         },
       },
     },

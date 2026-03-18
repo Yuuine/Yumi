@@ -7,17 +7,9 @@ export {}
 
 declare module 'vue' {
   export interface GlobalComponents {
-    ChatContainer: typeof import('./components/chat/ChatContainer.vue')['default']
     ChatInput: typeof import('./components/chat/ChatInput.vue')['default']
-    ChatMessage: typeof import('./components/ChatMessage.vue')['default']
     Dialog: typeof import('./components/common/Dialog.vue')['default']
-    ElAvatar: typeof import('element-plus/es')['ElAvatar']
-    ElButton: typeof import('element-plus/es')['ElButton']
     ElConfigProvider: typeof import('element-plus/es')['ElConfigProvider']
-    ElIcon: typeof import('element-plus/es')['ElIcon']
-    ElMenu: typeof import('element-plus/es')['ElMenu']
-    ElMenuItem: typeof import('element-plus/es')['ElMenuItem']
-    EmptyState: typeof import('./components/chat/EmptyState.vue')['default']
     IconAdd: typeof import('./components/icons/IconAdd.vue')['default']
     IconChat: typeof import('./components/icons/IconChat.vue')['default']
     IconCheck: typeof import('./components/icons/IconCheck.vue')['default']
@@ -42,13 +34,14 @@ declare module 'vue' {
     MessageActionsFooter: typeof import('./components/chat/MessageActionsFooter.vue')['default']
     MessageItem: typeof import('./components/chat/MessageItem.vue')['default']
     MessageList: typeof import('./components/chat/MessageList.vue')['default']
+    ModelCard: typeof import('./components/models/ModelCard.vue')['default']
+    ModelForm: typeof import('./components/models/ModelForm.vue')['default']
     ModelsModal: typeof import('./components/models/ModelsModal.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     SettingsModal: typeof import('./components/settings/SettingsModal.vue')['default']
     SidebarNav: typeof import('./components/sidebar/SidebarNav.vue')['default']
-    SideMenu: typeof import('./components/sidebar/SideMenu.vue')['default']
-    StatsPanel: typeof import('./components/sidebar/StatsPanel.vue')['default']
-    TypingIndicator: typeof import('./components/chat/TypingIndicator.vue')['default']
+    TestResultDialog: typeof import('./components/models/TestResultDialog.vue')['default']
+    Toast: typeof import('./components/common/Toast.vue')['default']
   }
 }

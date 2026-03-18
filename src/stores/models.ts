@@ -222,7 +222,8 @@ export const useModelsStore = defineStore('models', () => {
         success: result.success,
         message: result.message,
         latency: result.latency,
-        response: (result as { response?: string }).response,
+        response: result.response,
+        reasoning: result.reasoning,
       }
       await loadModels()
       return testResult.value

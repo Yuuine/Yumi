@@ -1,7 +1,4 @@
-export { default as ChatContainer } from './ChatContainer.vue'
 export { default as MessageList } from './MessageList.vue'
 export { default as MessageItem } from './MessageItem.vue'
 export { default as MessageActionsFooter } from './MessageActionsFooter.vue'
 export { default as ChatInput } from './ChatInput.vue'
-export { default as TypingIndicator } from './TypingIndicator.vue'
-export { default as EmptyState } from './EmptyState.vue'
