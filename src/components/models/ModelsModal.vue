@@ -134,7 +134,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, watch, onMounted } from 'vue'
-import { useModelsStore } from '@/stores'
+import { useModelsStore, useSettingsStore } from '@/stores'
 import { useToast, useConfirmDialog } from '@/composables'
 import type { ModelConfig } from '@/types'
 import { logger } from '@/utils/logger'
@@ -155,6 +155,7 @@ const emit = defineEmits<{
 }>()
 
 const modelsStore = useModelsStore()
+const settingsStore = useSettingsStore()
 const toast = useToast()
 const confirmDialog = useConfirmDialog()
 
@@ -263,7 +264,7 @@ async function handleTest(model: ModelConfig): Promise<void> {
   testingModelName.value = model.name
 
   try {
-    await modelsStore.testModelById(model.id)
+    await modelsStore.testModelById(model.id, settingsStore.verboseTest)
     testDialogVisible.value = true
   } catch (error) {
     logger.error('ModelsModal', 'Failed to test model', error)

@@ -96,6 +96,7 @@ class ModelTestRequest(BaseModel):
     apiKey: str
     modelName: str
     testMessage: Optional[str] = "你好，请简单介绍一下你自己。"
+    verbose: bool = True
 
 
 class ModelTestResponse(BaseModel):
@@ -585,12 +586,19 @@ async def test_model(request: ModelTestRequest):
             test_message=request.testMessage or "你好，请简单介绍一下你自己。",
         )
 
-        return ModelTestResponse(
-            success=success,
-            message=message,
-            response=content,
-            latency=latency,
-        )
+        if request.verbose:
+            return ModelTestResponse(
+                success=success,
+                message=message,
+                response=content,
+                latency=latency,
+            )
+        else:
+            return ModelTestResponse(
+                success=success,
+                message=message,
+                latency=latency,
+            )
     except Exception as e:
         logger.error("Model test error: %s", e)
         return ModelTestResponse(
@@ -599,9 +607,16 @@ async def test_model(request: ModelTestRequest):
         )
 
 
+class ModelTestByIdRequest(BaseModel):
+    verbose: bool = True
+
+
 @router.post("/models/{model_id}/test")
-async def test_model_by_id(model_id: str):
+async def test_model_by_id(model_id: str, request: ModelTestByIdRequest = None):
     from ..database import get_db
+
+    verbose = request.verbose if request else True
+    logger.info("Testing model by id: %s, verbose: %s", model_id, verbose)
 
     try:
         async with get_db() as db:
@@ -620,7 +635,7 @@ async def test_model_by_id(model_id: str):
             if not api_key:
                 return {"success": False, "message": "请先配置 API 密钥"}
 
-            test_result = await _perform_test(base_url, api_key, model_name)
+            test_result = await _perform_test(base_url, api_key, model_name, verbose)
             now = datetime.utcnow().isoformat()
 
             await db.execute(
@@ -645,15 +660,25 @@ async def test_model_by_id(model_id: str):
         raise
 
 
-async def _perform_test(base_url: str, api_key: str, model_name: str) -> dict:
+async def _perform_test(
+    base_url: str, api_key: str, model_name: str, verbose: bool = True
+) -> dict:
     cleaned_url = _clean_base_url(base_url)
     url = f"{cleaned_url}/chat/completions"
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
-    payload = {
-        "model": model_name,
-        "messages": [{"role": "user", "content": "你好，请简单介绍一下你自己。"}],
-        "max_tokens": 1024,
-    }
+
+    if verbose:
+        payload = {
+            "model": model_name,
+            "messages": [{"role": "user", "content": "你好，请简单介绍一下你自己。"}],
+            "max_tokens": 1024,
+        }
+    else:
+        payload = {
+            "model": model_name,
+            "messages": [{"role": "user", "content": "ping"}],
+            "max_tokens": 5,
+        }
 
     try:
         start_time = time.time()
@@ -662,40 +687,49 @@ async def _perform_test(base_url: str, api_key: str, model_name: str) -> dict:
             latency = time.time() - start_time
 
             if response.status_code == 200:
-                data = response.json()
-                choices = data.get("choices", [])
-                if choices:
-                    message = choices[0].get("message", {})
-                    content = message.get("content")
-                    reasoning_content = message.get("reasoning_content")
-                    if content or reasoning_content:
-                        return {
-                            "success": True,
-                            "message": f"连接成功 ({latency:.3f}s)",
-                            "latency": latency,
-                            "response": content,
-                            "reasoning": reasoning_content,
-                        }
-                return {
-                    "success": True,
-                    "message": f"连接成功 ({latency:.3f}s) - 无内容返回",
-                    "latency": latency,
-                    "response": None,
-                    "reasoning": None,
-                }
+                if verbose:
+                    data = response.json()
+                    choices = data.get("choices", [])
+                    if choices:
+                        message = choices[0].get("message", {})
+                        content = message.get("content")
+                        reasoning_content = message.get("reasoning_content")
+                        if content or reasoning_content:
+                            return {
+                                "success": True,
+                                "message": f"连接成功 ({latency:.3f}s)",
+                                "latency": latency,
+                                "response": content,
+                                "reasoning": reasoning_content,
+                            }
+                    return {
+                        "success": True,
+                        "message": f"连接成功 ({latency:.3f}s) - 无内容返回",
+                        "latency": latency,
+                        "response": None,
+                        "reasoning": None,
+                    }
+                else:
+                    return {
+                        "success": True,
+                        "message": f"测试成功 ({latency:.3f}s)",
+                        "latency": latency,
+                        "response": None,
+                        "reasoning": None,
+                    }
             else:
                 return {
                     "success": False,
-                    "message": f"HTTP {response.status_code}",
+                    "message": f"测试失败: HTTP {response.status_code}",
                     "response": None,
                     "reasoning": None,
                 }
     except httpx.TimeoutException:
-        return {"success": False, "message": "连接超时", "response": None, "reasoning": None}
+        return {"success": False, "message": "测试失败: 连接超时", "response": None, "reasoning": None}
     except httpx.ConnectError:
-        return {"success": False, "message": "无法连接服务器", "response": None, "reasoning": None}
+        return {"success": False, "message": "测试失败: 无法连接服务器", "response": None, "reasoning": None}
     except Exception as e:
-        return {"success": False, "message": str(e), "response": None, "reasoning": None}
+        return {"success": False, "message": f"测试失败: {str(e)}", "response": None, "reasoning": None}
 
 
 @router.get("/active", response_model=Optional[ModelConfig])

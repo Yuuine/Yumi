@@ -21,11 +21,7 @@ const globalState: ToastState = {
 let toastTimer: ReturnType<typeof setTimeout> | null = null
 
 export function useToast() {
-  function show(
-    msg: string,
-    toastType: ToastType = 'success',
-    options: ToastOptions = {}
-  ): void {
+  function show(msg: string, toastType: ToastType = 'success', options: ToastOptions = {}): void {
     const { duration = 2500 } = options
 
     if (toastTimer) {

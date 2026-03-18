@@ -52,9 +52,25 @@
 
                 <div v-else-if="activeTab === 'chat'" class="settings-panel">
                   <div class="panel-title">聊天设置</div>
-                  <div class="settings-placeholder">
-                    <IconInfo class="placeholder-icon" />
-                    <span>聊天设置功能开发中...</span>
+
+                  <div class="settings-section">
+                    <div class="setting-item">
+                      <div class="setting-info">
+                        <div class="setting-label">详细测试信息</div>
+                        <div class="setting-description">
+                          开启后，测试模型连通性时将显示完整的模型响应信息
+                        </div>
+                      </div>
+                      <div class="setting-control">
+                        <button
+                          class="toggle-switch"
+                          :class="{ active: settingsStore.verboseTest }"
+                          @click="handleToggleVerboseTest"
+                        >
+                          <span class="toggle-knob"></span>
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -111,6 +127,10 @@ const tabs = [
 
 function handleToggleReasoning() {
   settingsStore.setShowReasoning(!settingsStore.showReasoning)
+}
+
+function handleToggleVerboseTest() {
+  settingsStore.setVerboseTest(!settingsStore.verboseTest)
 }
 
 function handleClose() {

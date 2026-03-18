@@ -212,12 +212,15 @@ export const useModelsStore = defineStore('models', () => {
 
   /**
    * 通过模型ID测试连接
+   * @param modelId 模型ID
+   * @param verbose 是否返回详细测试信息，默认true
    */
-  async function testModelById(modelId: string): Promise<ModelTestResponse> {
+  async function testModelById(modelId: string, verbose = true): Promise<ModelTestResponse> {
     isTesting.value = true
     testResult.value = null
     try {
-      const result = await modelsApi.testModelById(modelId)
+      logger.info('ModelsStore', 'Testing model', { modelId, verbose })
+      const result = await modelsApi.testModelById(modelId, verbose)
       testResult.value = {
         success: result.success,
         message: result.message,

@@ -15,25 +15,26 @@
               <div class="test-status" :class="result.success ? 'success' : 'error'">
                 <IconSuccess v-if="result.success" />
                 <IconError v-else />
-                <span>{{ result.message }}</span>
+                <span>{{ statusMessage }}</span>
+              </div>
+
+              <div v-if="result.latency" class="test-latency">
+                <IconInfo class="latency-icon" />
+                <span>响应时间: {{ formatLatency(result.latency) }}</span>
               </div>
 
               <div v-if="result.reasoning" class="test-reasoning">
-                <div class="reasoning-label">思考过程:</div>
+                <div class="section-label">推理过程</div>
                 <div class="reasoning-content">
                   {{ result.reasoning }}
                 </div>
               </div>
 
               <div v-if="result.response" class="test-response">
-                <div class="response-label">模型响应:</div>
+                <div class="section-label">模型响应</div>
                 <div class="response-content">
                   <MarkdownRenderer :content="formatTestResponse(result.response)" />
                 </div>
-              </div>
-
-              <div v-if="result.latency" class="test-latency">
-                响应时间: {{ result.latency.toFixed(3) }}秒
               </div>
             </div>
           </div>
@@ -48,20 +49,36 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { ModelTestResponse } from '@/types'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
-import { IconClose, IconSuccess, IconError } from '@/components/icons'
+import { IconClose, IconSuccess, IconError, IconInfo } from '@/components/icons'
 
 interface Props {
   visible: boolean
   result: ModelTestResponse | null
 }
 
-defineProps<Props>()
+const props = defineProps<Props>()
 
 const emit = defineEmits<{
   close: []
 }>()
+
+const statusMessage = computed(() => {
+  if (!props.result) return ''
+  if (props.result.success) {
+    return '连接成功'
+  }
+  return props.result.message || '连接失败'
+})
+
+function formatLatency(latency: number): string {
+  if (latency < 1) {
+    return `${(latency * 1000).toFixed(0)} 毫秒`
+  }
+  return `${latency.toFixed(3)} 秒`
+}
 
 function formatTestResponse(response: string): string {
   if (!response) return ''
@@ -69,7 +86,7 @@ function formatTestResponse(response: string): string {
     .replace(
       /\*\*推理过程:\*\*\n([\s\S]*?)(?=\n\n\*\*回答:\*\*|\n\n---|\n\n$|$)/g,
       (_, reasoning) => {
-        return `<div class="reasoning-block"><div class="reasoning-label">推理过程</div><div class="reasoning-content">${reasoning.trim()}</div></div>\n\n`
+        return `<div class="reasoning-block"><div class="reasoning-label">推理过程</div><div class="reasoning-text">${reasoning.trim()}</div></div>\n\n`
       }
     )
     .replace(/\*\*回答:\*\*\n?/g, '<div class="answer-label">回答</div>\n\n')
@@ -152,44 +169,63 @@ function formatTestResponse(response: string): string {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 12px;
+    padding: 12px 16px;
     border-radius: 8px;
-    font-size: var(--font-size-xs);
+    font-size: 14px;
+    font-weight: 500;
 
     svg {
       width: 20px;
       height: 20px;
+      flex-shrink: 0;
     }
 
     &.success {
       background: #d1fae5;
-      color: #10b981;
+      color: #059669;
     }
 
     &.error {
       background: #fee2e2;
-      color: #ef4444;
+      color: #dc2626;
     }
   }
 
-  .test-reasoning {
-    margin-top: 16px;
+  .test-latency {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 12px;
+    padding: 8px 12px;
+    background: #f0f9ff;
+    border-radius: 6px;
+    font-size: 13px;
+    color: #0369a1;
 
-    .reasoning-label {
-      font-size: var(--font-size-xs);
-      font-weight: 500;
-      color: #999999;
-      margin-bottom: 8px;
+    .latency-icon {
+      width: 16px;
+      height: 16px;
     }
+  }
+
+  .section-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 8px;
+  }
+
+  .test-reasoning {
+    margin-top: 20px;
 
     .reasoning-content {
-      background: #fafafa;
-      border: 1px solid #e8e8e8;
+      background: #fefce8;
+      border: 1px solid #fef08a;
       border-radius: 8px;
-      padding: 12px 16px;
-      font-size: 12px;
-      color: #333333;
-      line-height: 1.6;
+      padding: 14px 16px;
+      font-size: 13px;
+      color: #713f12;
+      line-height: 1.7;
       max-height: 300px;
       overflow-y: auto;
       white-space: pre-wrap;
@@ -198,34 +234,53 @@ function formatTestResponse(response: string): string {
   }
 
   .test-response {
-    margin-top: 16px;
-
-    .response-label {
-      font-size: var(--font-size-xs);
-      font-weight: 500;
-      color: #666666;
-      margin-bottom: 8px;
-    }
+    margin-top: 20px;
 
     .response-content {
       background: #f9fafb;
       border: 1px solid #e5e7eb;
       border-radius: 8px;
-      padding: 12px 16px;
+      padding: 14px 16px;
       max-height: 400px;
       overflow-y: auto;
 
-      .markdown-content {
-        font-size: var(--font-size-sm);
-        line-height: 1.6;
+      :deep(.markdown-content) {
+        font-size: 14px;
+        line-height: 1.7;
+        color: #1f2937;
+
+        .reasoning-block {
+          margin-bottom: 16px;
+          padding: 12px;
+          background: #fffbeb;
+          border: 1px solid #fde68a;
+          border-radius: 6px;
+
+          .reasoning-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #92400e;
+            margin-bottom: 8px;
+          }
+
+          .reasoning-text {
+            font-size: 13px;
+            color: #78350f;
+            line-height: 1.6;
+            white-space: pre-wrap;
+          }
+        }
+
+        .answer-label {
+          font-size: 13px;
+          font-weight: 600;
+          color: #374151;
+          margin-bottom: 8px;
+          padding-bottom: 8px;
+          border-bottom: 1px solid #e5e7eb;
+        }
       }
     }
-  }
-
-  .test-latency {
-    margin-top: 12px;
-    font-size: 13px;
-    color: #666666;
   }
 }
 

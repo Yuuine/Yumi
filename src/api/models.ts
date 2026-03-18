@@ -1,4 +1,10 @@
-import type { ModelConfig, ModelTestRequest, ModelTestResponse, ModelType, TestStatus } from '@/types'
+import type {
+  ModelConfig,
+  ModelTestRequest,
+  ModelTestResponse,
+  ModelType,
+  TestStatus,
+} from '@/types'
 import { httpClient } from './http-client'
 
 interface ApiModelData {
@@ -155,7 +161,8 @@ export const modelsApi = {
   },
 
   async testModelById(
-    modelId: string
+    modelId: string,
+    verbose = true
   ): Promise<{
     success: boolean
     message: string
@@ -163,7 +170,7 @@ export const modelsApi = {
     reasoning?: string
     latency?: number
   }> {
-    return httpClient.post(`/models/${modelId}/test`)
+    return httpClient.post(`/models/${modelId}/test`, { verbose })
   },
 
   async getActiveModel(): Promise<ModelConfig | null> {

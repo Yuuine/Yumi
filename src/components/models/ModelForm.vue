@@ -37,12 +37,7 @@
           <IconLink v-if="showApiKey" :stroke-width="1.5" />
           <IconCopy v-else :stroke-width="1.5" />
         </button>
-        <button
-          class="icon-btn"
-          title="前往获取 API 密钥"
-          @click="openApiKeyPage"
-          type="button"
-        >
+        <button class="icon-btn" title="前往获取 API 密钥" @click="openApiKeyPage" type="button">
           <IconLink :stroke-width="1.5" />
         </button>
       </div>
@@ -105,7 +100,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   'update:modelValue': [value: ModelFormData]
-  'apiKeyChanged': [changed: boolean]
+  apiKeyChanged: [changed: boolean]
 }>()
 
 const providerConfig = API_PROVIDERS
@@ -135,13 +130,13 @@ const apiKeyChanged = computed(() => {
 
 watch(
   formData,
-  (newVal) => {
+  newVal => {
     emit('update:modelValue', newVal)
   },
   { deep: true }
 )
 
-watch(apiKeyChanged, (changed) => {
+watch(apiKeyChanged, changed => {
   emit('apiKeyChanged', changed)
 })
 

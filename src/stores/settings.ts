@@ -6,11 +6,13 @@ const STORAGE_KEY = 'yumi_settings'
 
 interface SettingsState {
   showReasoning: boolean
+  verboseTest: boolean
   theme: 'light' | 'dark'
 }
 
 const DEFAULT_SETTINGS: SettingsState = {
   showReasoning: true,
+  verboseTest: true,
   theme: 'light',
 }
 
@@ -18,6 +20,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const settings = ref<SettingsState>({ ...DEFAULT_SETTINGS })
 
   const showReasoning = computed(() => settings.value.showReasoning)
+  const verboseTest = computed(() => settings.value.verboseTest)
   const theme = computed(() => settings.value.theme)
 
   function loadSettings() {
@@ -45,6 +48,13 @@ export const useSettingsStore = defineStore('settings', () => {
   function setShowReasoning(value: boolean) {
     settings.value.showReasoning = value
     saveSettings()
+    logger.info('SettingsStore', 'Show reasoning toggled', { value })
+  }
+
+  function setVerboseTest(value: boolean) {
+    settings.value.verboseTest = value
+    saveSettings()
+    logger.info('SettingsStore', 'Verbose test mode toggled', { value })
   }
 
   function setTheme(value: 'light' | 'dark') {
@@ -62,10 +72,12 @@ export const useSettingsStore = defineStore('settings', () => {
   return {
     settings,
     showReasoning,
+    verboseTest,
     theme,
     loadSettings,
     saveSettings,
     setShowReasoning,
+    setVerboseTest,
     setTheme,
     resetSettings,
   }
