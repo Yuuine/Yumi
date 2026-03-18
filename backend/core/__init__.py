@@ -14,6 +14,7 @@ from .exceptions import (
     ValidationException,
     YumiException,
 )
+from .lifecycle import LogLifecycleManager, get_lifecycle_manager
 from .logging import YumiLogger, get_logger, log_with_context, request_id_var
 from .middleware import RequestTracingMiddleware, SlowRequestMiddleware
 
@@ -37,4 +38,6 @@ __all__ = [
     "request_id_var",
     "RequestTracingMiddleware",
     "SlowRequestMiddleware",
+    "LogLifecycleManager",
+    "get_lifecycle_manager",
 ]

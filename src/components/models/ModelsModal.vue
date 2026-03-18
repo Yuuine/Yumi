@@ -340,9 +340,21 @@ const formData = reactive({
   modelName: 'deepseek-chat',
 })
 
+const originalApiKey = ref('')
+const apiKeyChanged = ref(false)
+
 const availableModels = computed(() => {
   return providerConfig[formData.providerId]?.models || []
 })
+
+watch(
+  () => formData.apiKey,
+  newVal => {
+    if (isEditing.value && originalApiKey.value) {
+      apiKeyChanged.value = newVal !== originalApiKey.value
+    }
+  }
+)
 
 function showToast(message: string, type: 'success' | 'error' | 'warning' = 'success') {
   if (toastTimer) {
@@ -416,7 +428,8 @@ function handleEdit(model: ModelConfig) {
   formData.name = model.name
   formData.baseUrl = model.baseUrl
   formData.apiKey = model.apiKey
-  formData.modelName = model.modelName
+  originalApiKey.value = model.apiKey
+  apiKeyChanged.value = false
   formDialogVisible.value = true
 }
 
@@ -480,11 +493,7 @@ async function handleTest(model: ModelConfig) {
   testingModelName.value = model.name
 
   try {
-    await modelsStore.testModel({
-      baseUrl: model.baseUrl,
-      apiKey: model.apiKey,
-      modelName: model.modelName,
-    })
+    await modelsStore.testModelById(model.id)
     testDialogVisible.value = true
   } catch {
     showDialog('测试失败', '请检查网络连接和 API 配置', 'error')
@@ -501,7 +510,7 @@ function handleTestTimeout() {
 }
 
 async function handleSubmit() {
-  if (!formData.apiKey.trim()) {
+  if (!isEditing.value && !formData.apiKey.trim()) {
     showDialog('提示', '请输入 API 密钥', 'warning')
     return
   }
@@ -509,7 +518,7 @@ async function handleSubmit() {
   const selectedModel = availableModels.value.find(m => m.value === formData.modelName)
   const modelType = selectedModel?.modelType || 'text'
 
-  const config: Omit<ModelConfig, 'id'> = {
+  const config: Omit<ModelConfig, 'id'> & { apiKeyUnchanged?: boolean } = {
     providerId: formData.providerId,
     name: formData.name.trim() || '',
     baseUrl: formData.baseUrl,
@@ -522,6 +531,10 @@ async function handleSubmit() {
     isTested: false,
     testStatus: 'untested',
     editCount: 0,
+  }
+
+  if (isEditing.value && !apiKeyChanged.value) {
+    config.apiKeyUnchanged = true
   }
 
   isSubmitting.value = true

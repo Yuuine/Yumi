@@ -7,7 +7,7 @@ import base64
 import os
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -17,6 +17,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from ..core import get_logger
+from ..services.log_service import AuditAction, log_service
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -87,6 +88,7 @@ class ModelConfig(BaseModel):
     editCount: int = 0
     createdAt: Optional[str] = None
     updatedAt: Optional[str] = None
+    apiKeyUnchanged: bool = False
 
 
 class ModelTestRequest(BaseModel):
@@ -129,6 +131,13 @@ def decrypt_api_key(encrypted_key: str) -> str:
         return ""
 
 
+def mask_api_key(api_key: str) -> str:
+    """掩码显示 API Key，仅显示前4位和后4位"""
+    if not api_key or len(api_key) < 8:
+        return "****"
+    return f"{api_key[:4]}****{api_key[-4:]}"
+
+
 @router.get("/models", response_model=list[ModelConfig])
 async def get_models():
     from ..database import get_db
@@ -151,7 +160,7 @@ async def get_models():
                     providerId=row[1],
                     name=row[2],
                     baseUrl=row[3],
-                    apiKey=decrypt_api_key(row[4]) if row[4] else "",
+                    apiKey=mask_api_key(decrypt_api_key(row[4])) if row[4] else "",
                     modelName=row[5],
                     customModelName=row[6],
                     modelType=row[7] or "text",
@@ -218,9 +227,25 @@ async def create_model(config: ModelConfig):
             config.name = display_name
             config.createdAt = now
             config.updatedAt = now
+
+            await log_service.log_audit(
+                action=AuditAction.MODEL_KEY_ADD,
+                resource_type="model",
+                resource_id=model_id,
+                result="SUCCESS",
+                details={"provider": config.providerId, "name": display_name},
+            )
+
             return config
     except Exception as e:
         logger.error("Failed to create model: %s", e)
+        await log_service.log_audit(
+            action=AuditAction.MODEL_KEY_ADD,
+            resource_type="model",
+            resource_id=None,
+            result="FAIL",
+            details={"error": str(e)},
+        )
         raise
 
 
@@ -267,10 +292,16 @@ async def update_model(model_id: str, config: ModelConfig):
     try:
         async with await get_db() as db:
             cursor = await db.execute(
-                "SELECT edit_count FROM model_configs WHERE id = ?", (model_id,)
+                "SELECT edit_count, api_key FROM model_configs WHERE id = ?", (model_id,)
             )
             row = await cursor.fetchone()
             current_edit_count = row[0] if row else 0
+            existing_api_key = row[1] if row else ""
+
+            if config.apiKeyUnchanged:
+                api_key_to_save = existing_api_key
+            else:
+                api_key_to_save = encrypt_api_key(config.apiKey)
 
             await db.execute(
                 """UPDATE model_configs 
@@ -283,13 +314,13 @@ async def update_model(model_id: str, config: ModelConfig):
                     config.providerId,
                     display_name,
                     _clean_base_url(config.baseUrl),
-                    encrypt_api_key(config.apiKey),
+                    api_key_to_save,
                     config.modelName,
                     config.customModelName,
                     config.modelType,
                     config.maxTokens,
                     config.temperature,
-                    1 if config.isEnabled and config.apiKey else 0,
+                    1 if config.isEnabled and api_key_to_save else 0,
                     current_edit_count + 1,
                     now,
                     model_id,
@@ -301,9 +332,25 @@ async def update_model(model_id: str, config: ModelConfig):
             config.name = display_name
             config.editCount = current_edit_count + 1
             config.updatedAt = now
+
+            await log_service.log_audit(
+                action=AuditAction.MODEL_KEY_UPDATE,
+                resource_type="model",
+                resource_id=model_id,
+                result="SUCCESS",
+                details={"name": display_name, "api_key_changed": not config.apiKeyUnchanged},
+            )
+
             return config
     except Exception as e:
         logger.error("Failed to update model: %s", e)
+        await log_service.log_audit(
+            action=AuditAction.MODEL_KEY_UPDATE,
+            resource_type="model",
+            resource_id=model_id,
+            result="FAIL",
+            details={"error": str(e)},
+        )
         raise
 
 
@@ -342,12 +389,33 @@ async def delete_model(model_id: str):
 
     try:
         async with await get_db() as db:
+            cursor = await db.execute(
+                "SELECT name FROM model_configs WHERE id = ?", (model_id,)
+            )
+            row = await cursor.fetchone()
+            model_name = row[0] if row else None
+
             await db.execute("DELETE FROM model_configs WHERE id = ?", (model_id,))
             await db.commit()
+
+            await log_service.log_audit(
+                action=AuditAction.MODEL_KEY_DELETE,
+                resource_type="model",
+                resource_id=model_id,
+                result="SUCCESS",
+                details={"name": model_name},
+            )
 
             return {"success": True, "message": "模型已删除"}
     except Exception as e:
         logger.error("Failed to delete model: %s", e)
+        await log_service.log_audit(
+            action=AuditAction.MODEL_KEY_DELETE,
+            resource_type="model",
+            resource_id=model_id,
+            result="FAIL",
+            details={"error": str(e)},
+        )
         raise
 
 
@@ -358,17 +426,31 @@ async def enable_model(model_id: str):
     try:
         async with await get_db() as db:
             cursor = await db.execute(
-                "SELECT api_key FROM model_configs WHERE id = ?", (model_id,)
+                "SELECT api_key, name FROM model_configs WHERE id = ?", (model_id,)
             )
             row = await cursor.fetchone()
 
             if not row:
+                await log_service.log_audit(
+                    action=AuditAction.MODEL_ENABLE,
+                    resource_type="model",
+                    resource_id=model_id,
+                    result="FAIL",
+                    details={"reason": "model_not_found"},
+                )
                 return {"success": False, "message": "模型不存在"}
 
             if not row[0]:
+                await log_service.log_audit(
+                    action=AuditAction.MODEL_ENABLE,
+                    resource_type="model",
+                    resource_id=model_id,
+                    result="FAIL",
+                    details={"reason": "no_api_key", "name": row[1]},
+                )
                 return {"success": False, "message": "请先配置 API 密钥"}
 
-            now = datetime.now(datetime.timezone.utc).isoformat()
+            now = datetime.now(timezone.utc).isoformat()
             await db.execute(
                 "UPDATE model_configs SET is_enabled = 0, updated_at = ? WHERE is_enabled = 1",
                 (now,),
@@ -379,9 +461,24 @@ async def enable_model(model_id: str):
             )
             await db.commit()
 
+            await log_service.log_audit(
+                action=AuditAction.MODEL_ENABLE,
+                resource_type="model",
+                resource_id=model_id,
+                result="SUCCESS",
+                details={"name": row[1]},
+            )
+
             return {"success": True, "message": "模型已启用"}
     except Exception as e:
         logger.error("Failed to enable model: %s", e)
+        await log_service.log_audit(
+            action=AuditAction.MODEL_ENABLE,
+            resource_type="model",
+            resource_id=model_id,
+            result="FAIL",
+            details={"error": str(e)},
+        )
         raise
 
 
@@ -391,15 +488,36 @@ async def disable_model(model_id: str):
 
     try:
         async with await get_db() as db:
+            cursor = await db.execute(
+                "SELECT name FROM model_configs WHERE id = ?", (model_id,)
+            )
+            row = await cursor.fetchone()
+            model_name = row[0] if row else None
+
             await db.execute(
                 "UPDATE model_configs SET is_enabled = 0, updated_at = ? WHERE id = ?",
                 (datetime.utcnow().isoformat(), model_id),
             )
             await db.commit()
 
+            await log_service.log_audit(
+                action=AuditAction.MODEL_DISABLE,
+                resource_type="model",
+                resource_id=model_id,
+                result="SUCCESS",
+                details={"name": model_name},
+            )
+
             return {"success": True, "message": "模型已禁用"}
     except Exception as e:
         logger.error("Failed to disable model: %s", e)
+        await log_service.log_audit(
+            action=AuditAction.MODEL_DISABLE,
+            resource_type="model",
+            resource_id=model_id,
+            result="FAIL",
+            details={"error": str(e)},
+        )
         raise
 
 
@@ -548,7 +666,7 @@ async def get_active_model():
                     providerId=row[1],
                     name=row[2],
                     baseUrl=row[3],
-                    apiKey=decrypt_api_key(row[4]) if row[4] else "",
+                    apiKey=mask_api_key(decrypt_api_key(row[4])) if row[4] else "",
                     modelName=row[5],
                     customModelName=row[6],
                     modelType=row[7] or "text",

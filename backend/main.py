@@ -8,9 +8,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .core import settings, setup_exception_handlers
 from .core.logging import YumiLogger, get_logger
+from .core.lifecycle import get_lifecycle_manager
 from .core.middleware import RequestTracingMiddleware, SlowRequestMiddleware
 from .database import init_db
-from .routers import chat, memory, user
+from .routers import chat, logs, memory, user
 from .routers import settings as settings_router
 from .routers import models
 from .services.emotion import EmotionEngine
@@ -46,6 +47,10 @@ async def lifespan(app: FastAPI):
 
     await init_db()
 
+    lifecycle_manager = get_lifecycle_manager()
+    await lifecycle_manager.start()
+    app.state.lifecycle_manager = lifecycle_manager
+
     memory_engine = MemoryEngine()
     await memory_engine.initialize()
 
@@ -66,6 +71,7 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("Shutting down Yumi backend services...")
+    await lifecycle_manager.stop()
     if memory_engine:
         await memory_engine.close()
     if emotion_engine:
@@ -100,6 +106,7 @@ app.include_router(memory.router, prefix="/api", tags=["memory"])
 app.include_router(user.router, prefix="/api", tags=["user"])
 app.include_router(settings_router.router, prefix="/api", tags=["settings"])
 app.include_router(models.router, prefix="/api", tags=["models"])
+app.include_router(logs.router, prefix="/api", tags=["logs"])
 
 
 @app.get("/")

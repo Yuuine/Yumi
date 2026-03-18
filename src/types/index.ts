@@ -117,6 +117,7 @@ export interface ModelConfigInput {
   maxTokens?: number
   temperature?: number
   isEnabled?: boolean
+  apiKeyUnchanged?: boolean
 }
 
 export interface ModelTestRequest {

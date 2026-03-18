@@ -4,6 +4,8 @@ Chat API Router - 支持流式响应
 from __future__ import annotations
 
 import json
+import time
+import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Request
@@ -13,6 +15,7 @@ from pydantic import BaseModel, Field
 from ..core import LLMException, MemoryException, NoActiveModelException, get_logger, settings
 from ..database import get_db
 from ..services.emotion import EmotionData
+from ..services.log_service import log_service
 from ..routers.models import decrypt_api_key
 
 router = APIRouter()
@@ -72,6 +75,11 @@ async def _get_active_model_config() -> dict | None:
 
 @router.post("/chat", response_model=ChatResponse)
 async def send_message(request: ChatRequest, req: Request):
+    start_time = time.time()
+    conversation_id = str(uuid.uuid4())
+    user_message_id = str(uuid.uuid4())
+    assistant_message_id = str(uuid.uuid4())
+
     memory_engine = req.app.state.memory_engine
     emotion_engine = req.app.state.emotion_engine
     llm_service = req.app.state.llm_service
@@ -82,6 +90,14 @@ async def send_message(request: ChatRequest, req: Request):
         raise NoActiveModelException()
 
     try:
+        await log_service.log_user_action(
+            action="SEND_MESSAGE",
+            resource_type="conversation",
+            resource_id=conversation_id,
+            user_id=request.userId,
+            extra={"message_length": len(request.message)},
+        )
+
         user_emotion = await emotion_engine.analyze(request.message)
 
         relevant_memories = await memory_engine.search(
@@ -96,6 +112,7 @@ async def send_message(request: ChatRequest, req: Request):
             user_emotion=user_emotion,
         )
 
+        llm_start_time = time.time()
         reply = await llm_service.chat(
             messages=messages,
             temperature=request.temperature,
@@ -104,8 +121,32 @@ async def send_message(request: ChatRequest, req: Request):
             api_key=active_model["api_key"],
             model_name=active_model["model_name"],
         )
+        llm_latency_ms = (time.time() - llm_start_time) * 1000
 
         assistant_emotion = await emotion_engine.analyze(reply)
+
+        await log_service.log_ai_interaction(
+            conversation_id=conversation_id,
+            message_id=user_message_id,
+            role="user",
+            content=request.message,
+            emotion={"valence": user_emotion.valence, "arousal": user_emotion.arousal, "label": user_emotion.label},
+            user_id=request.userId,
+        )
+
+        await log_service.log_ai_interaction(
+            conversation_id=conversation_id,
+            message_id=assistant_message_id,
+            role="assistant",
+            content=reply,
+            emotion={"valence": assistant_emotion.valence, "arousal": assistant_emotion.arousal, "label": assistant_emotion.label},
+            model_info={
+                "provider": active_model["provider_id"],
+                "model": active_model["model_name"],
+            },
+            latency_ms=llm_latency_ms,
+            user_id=request.userId,
+        )
 
         async with await get_db() as db:
             await db.execute(
@@ -153,6 +194,20 @@ async def send_message(request: ChatRequest, req: Request):
         ):
             new_summary = await memory_engine.summarize(request.userId)
 
+        total_latency_ms = (time.time() - start_time) * 1000
+        await log_service.log_user_action(
+            action="RECEIVE_RESPONSE",
+            resource_type="conversation",
+            resource_id=conversation_id,
+            result="SUCCESS",
+            user_id=request.userId,
+            duration_ms=total_latency_ms,
+            extra={
+                "reply_length": len(reply),
+                "llm_latency_ms": llm_latency_ms,
+            },
+        )
+
         return ChatResponse(
             reply=reply,
             emotion=assistant_emotion,
@@ -161,11 +216,35 @@ async def send_message(request: ChatRequest, req: Request):
         )
 
     except LLMException:
+        await log_service.log_user_action(
+            action="RECEIVE_RESPONSE",
+            resource_type="conversation",
+            resource_id=conversation_id,
+            result="FAIL",
+            user_id=request.userId,
+            extra={"error": "LLM error"},
+        )
         raise
     except MemoryException:
+        await log_service.log_user_action(
+            action="RECEIVE_RESPONSE",
+            resource_type="conversation",
+            resource_id=conversation_id,
+            result="FAIL",
+            user_id=request.userId,
+            extra={"error": "Memory error"},
+        )
         raise
     except Exception as e:
         logger.exception("Unexpected error in chat endpoint: %s", e)
+        await log_service.log_user_action(
+            action="RECEIVE_RESPONSE",
+            resource_type="conversation",
+            resource_id=conversation_id,
+            result="FAIL",
+            user_id=request.userId,
+            extra={"error": str(e)},
+        )
         raise
 
 

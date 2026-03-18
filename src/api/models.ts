@@ -97,6 +97,9 @@ function transformToApiFormat(config: Partial<ModelConfig>): Record<string, unkn
   if (config.lastTestAt !== undefined) result.lastTestAt = config.lastTestAt
   if (config.lastTestMessage !== undefined) result.lastTestMessage = config.lastTestMessage
   if (config.editCount !== undefined) result.editCount = config.editCount
+  if ((config as { apiKeyUnchanged?: boolean }).apiKeyUnchanged !== undefined) {
+    result.apiKeyUnchanged = (config as { apiKeyUnchanged?: boolean }).apiKeyUnchanged
+  }
 
   return result
 }

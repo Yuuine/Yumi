@@ -211,10 +211,16 @@ export const useModelsStore = defineStore('models', () => {
    */
   async function testModelById(modelId: string): Promise<ModelTestResponse> {
     isTesting.value = true
+    testResult.value = null
     try {
       const result = await modelsApi.testModelById(modelId)
+      testResult.value = {
+        success: result.success,
+        message: result.message,
+        latency: result.latency,
+      }
       await loadModels()
-      return result
+      return testResult.value
     } catch (error) {
       logger.error('ModelsStore', 'Failed to test model', error)
       throw error
@@ -231,11 +237,6 @@ export const useModelsStore = defineStore('models', () => {
     const model = models.value.find(m => m.id === modelId)
     if (!model) {
       logger.error('ModelsStore', 'Model not found', { modelId })
-      return false
-    }
-
-    if (!model.apiKey) {
-      logger.error('ModelsStore', 'Model has no API key', { modelId })
       return false
     }
 
