@@ -2,6 +2,17 @@
   <div class="chat-input-wrapper">
     <div class="chat-input-container">
       <div class="input-field">
+        <button
+          class="plus-btn"
+          :class="{ active: showMenu }"
+          @click="toggleMenu"
+          :disabled="disabled"
+          title="更多功能"
+          aria-label="更多功能"
+        >
+          <IconPlus class="plus-icon" />
+        </button>
+
         <textarea
           v-model="inputText"
           class="input-textarea"
@@ -11,38 +22,54 @@
           @input="adjustHeight"
           ref="textareaRef"
         ></textarea>
+
         <Transition name="fade">
           <button v-if="hasContent" class="send-btn" @click="handleSend" title="发送消息">
-            <svg
-              class="send-icon"
-              viewBox="0 0 24 24"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                d="M22 2L11 13"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-              <path
-                d="M22 2L15 22L11 13L2 9L22 2Z"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            </svg>
+            <IconSend class="send-icon" />
           </button>
         </Transition>
       </div>
+
+      <Transition name="menu-fade">
+        <div v-if="showMenu" class="dropdown-menu" ref="menuRef">
+          <div class="menu-header">
+            <span class="menu-title">切换模型</span>
+          </div>
+
+          <div class="menu-list">
+            <div v-if="enabledModels.length === 0" class="menu-empty">
+              暂无可用模型，请先添加并启用模型
+            </div>
+
+            <button
+              v-for="model in enabledModels"
+              :key="model.id"
+              class="menu-item"
+              :class="{ active: model.id === modelsStore.activeModel?.id }"
+              @click="handleSwitchModel(model)"
+              :disabled="switchingModelId === model.id"
+            >
+              <div class="model-info">
+                <span class="model-name">{{ model.name }}</span>
+                <span class="model-provider">{{ getProviderName(model.providerId) }}</span>
+              </div>
+              <IconCheck v-if="model.id === modelsStore.activeModel?.id" class="check-icon" />
+              <div v-else-if="switchingModelId === model.id" class="loading-spinner"></div>
+            </button>
+          </div>
+        </div>
+      </Transition>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useModelsStore } from '@/stores'
+import { PROVIDER_NAMES } from '@/constants'
+import { IconPlus, IconSend, IconCheck } from '@/components/icons'
+import { logger } from '@/utils/logger'
+import type { ModelConfig } from '@/types'
 
 interface Props {
   disabled?: boolean
@@ -56,10 +83,23 @@ const emit = defineEmits<{
   send: [content: string]
 }>()
 
+const modelsStore = useModelsStore()
+
 const inputText = ref('')
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
+const menuRef = ref<HTMLElement | null>(null)
+const showMenu = ref(false)
+const switchingModelId = ref<string | null>(null)
 
 const hasContent = computed(() => inputText.value.trim().length > 0)
+
+const enabledModels = computed(() => {
+  return modelsStore.models.filter(m => m.apiKey)
+})
+
+function getProviderName(providerId: string): string {
+  return PROVIDER_NAMES[providerId] || providerId
+}
 
 function adjustHeight() {
   const textarea = textareaRef.value
@@ -77,12 +117,48 @@ function handleSend() {
   emit('send', content)
 
   inputText.value = ''
-  nextTick(() => {
-    if (textareaRef.value) {
-      textareaRef.value.style.height = 'auto'
-    }
-  })
+  showMenu.value = false
 }
+
+function toggleMenu() {
+  showMenu.value = !showMenu.value
+}
+
+async function handleSwitchModel(model: ModelConfig) {
+  if (model.id === modelsStore.activeModel?.id) {
+    showMenu.value = false
+    return
+  }
+
+  switchingModelId.value = model.id
+  try {
+    await modelsStore.switchModel(model.id)
+    showMenu.value = false
+  } catch (error) {
+    logger.error('ChatInput', 'Failed to switch model', error)
+  } finally {
+    switchingModelId.value = null
+  }
+}
+
+function handleClickOutside(event: MouseEvent) {
+  if (menuRef.value && !menuRef.value.contains(event.target as Node)) {
+    const plusBtn = document.querySelector('.plus-btn')
+    if (plusBtn && !plusBtn.contains(event.target as Node)) {
+      showMenu.value = false
+    }
+  }
+}
+
+onMounted(async () => {
+  await modelsStore.loadModels()
+  await modelsStore.loadActiveModel()
+  document.addEventListener('click', handleClickOutside)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
+})
 </script>
 
 <style lang="scss" scoped>
@@ -99,6 +175,7 @@ function handleSend() {
 }
 
 .chat-input-container {
+  position: relative;
   width: 100%;
   max-width: 816px;
   background: rgba(255, 255, 255, 0.95);
@@ -111,7 +188,57 @@ function handleSend() {
 .input-field {
   position: relative;
   padding: 16px 20px;
+  padding-left: 64px;
   min-height: 60px;
+  display: flex;
+  align-items: center;
+}
+
+.plus-btn {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: #666666;
+
+  &:hover:not(:disabled) {
+    background: #f3f4f6;
+    color: #333333;
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(-50%) scale(0.95);
+  }
+
+  &.active {
+    background: #f3f4f6;
+    color: #3b82f6;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.plus-icon {
+  width: 20px;
+  height: 20px;
+  transition: transform 0.2s ease;
+}
+
+.plus-btn.active .plus-icon {
+  transform: rotate(45deg);
 }
 
 .input-textarea {
@@ -166,6 +293,114 @@ function handleSend() {
   color: #ffffff;
 }
 
+.dropdown-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 12px;
+  width: 280px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+  z-index: 100;
+}
+
+.menu-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid #f3f4f6;
+  background: #fafafa;
+}
+
+.menu-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #333333;
+}
+
+.menu-list {
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.menu-empty {
+  padding: 24px 16px;
+  text-align: center;
+  font-size: 13px;
+  color: #9ca3af;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 12px 16px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  text-align: left;
+
+  &:hover:not(:disabled) {
+    background: #f9fafb;
+  }
+
+  &:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+
+  &.active {
+    background: #eff6ff;
+  }
+}
+
+.model-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.model-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #333333;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-provider {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.check-icon {
+  width: 20px;
+  height: 20px;
+  color: #3b82f6;
+  flex-shrink: 0;
+}
+
+.loading-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #e5e7eb;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .fade-enter-active,
 .fade-leave-active {
   transition:
@@ -173,9 +408,16 @@ function handleSend() {
     transform 0.15s ease;
 }
 
-.fade-enter-from,
-.fade-leave-to {
+.menu-fade-enter-active,
+.menu-fade-leave-active {
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+}
+
+.menu-fade-enter-from,
+.menu-fade-leave-to {
   opacity: 0;
-  transform: translateY(-50%) scale(0.8);
+  transform: translateY(8px);
 }
 </style>

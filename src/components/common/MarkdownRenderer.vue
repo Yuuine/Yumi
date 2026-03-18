@@ -3,38 +3,21 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * Markdown 渲染组件
+ * 将 Markdown 内容渲染为安全的 HTML，支持 XSS 过滤
+ */
 import { computed } from 'vue'
-import { marked } from 'marked'
-import DOMPurify from 'dompurify'
+import { renderMarkdown } from '@/utils/markdown'
 
 interface Props {
+  /** Markdown 格式的文本内容 */
   content: string
 }
 
 const props = defineProps<Props>()
 
-marked.setOptions({
-  breaks: true,
-  gfm: true,
-})
-
-const renderedContent = computed(() => {
-  if (!props.content) return ''
-  const rawHtml = marked.parse(props.content) as string
-  return DOMPurify.sanitize(rawHtml, {
-    ALLOWED_TAGS: [
-      'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-      'p', 'br', 'hr',
-      'strong', 'em', 'u', 's', 'del',
-      'ul', 'ol', 'li',
-      'blockquote', 'pre', 'code',
-      'a', 'img',
-      'table', 'thead', 'tbody', 'tr', 'th', 'td',
-      'div', 'span',
-    ],
-    ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'class', 'id', 'target', 'rel'],
-  })
-})
+const renderedContent = computed(() => renderMarkdown(props.content))
 </script>
 
 <style lang="scss" scoped>

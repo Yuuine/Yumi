@@ -18,16 +18,6 @@ export interface ProviderConfig {
 
 /** API 提供商配置（按提供商ID索引） */
 export const API_PROVIDERS: Record<string, ProviderConfig> = {
-  openai: {
-    baseUrl: 'https://api.openai.com/v1',
-    models: [
-      { label: 'GPT-4o', value: 'gpt-4o' },
-      { label: 'GPT-4o Mini', value: 'gpt-4o-mini' },
-      { label: 'GPT-4 Turbo', value: 'gpt-4-turbo' },
-      { label: 'GPT-3.5 Turbo', value: 'gpt-3.5-turbo' },
-    ],
-    apiKeyUrl: 'https://platform.openai.com/api-keys',
-  },
   deepseek: {
     baseUrl: 'https://api.deepseek.com',
     models: [
@@ -36,21 +26,11 @@ export const API_PROVIDERS: Record<string, ProviderConfig> = {
     ],
     apiKeyUrl: 'https://platform.deepseek.com/api_keys',
   },
-  anthropic: {
-    baseUrl: 'https://api.anthropic.com/v1',
-    models: [
-      { label: 'Claude 3.5 Sonnet', value: 'claude-3-5-sonnet-20241022' },
-      { label: 'Claude 3 Opus', value: 'claude-3-opus-20240229' },
-      { label: 'Claude 3 Haiku', value: 'claude-3-haiku-20240307' },
-    ],
-    apiKeyUrl: 'https://console.anthropic.com/settings/keys',
-  },
   kimi: {
     baseUrl: 'https://api.moonshot.cn/v1',
     models: [
       { label: 'Kimi K2.5', value: 'kimi-k2.5' },
       { label: 'Kimi K2 Turbo Preview', value: 'kimi-k2-turbo-preview' },
-      { label: 'Moonshot V1 128K Vision Preview', value: 'moonshot-v1-128k-vision-preview', modelType: 'image' },
     ],
     apiKeyUrl: 'https://platform.moonshot.cn/console/api-keys',
   },
@@ -63,9 +43,7 @@ export const API_PROVIDERS: Record<string, ProviderConfig> = {
 
 /** 提供商显示名称映射 */
 export const PROVIDER_NAMES: Record<string, string> = {
-  openai: 'OpenAI',
   deepseek: 'DeepSeek',
-  anthropic: 'Anthropic',
   kimi: 'Kimi',
   custom: '自定义',
 }

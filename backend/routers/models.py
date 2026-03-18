@@ -25,6 +25,16 @@ _ENCRYPTION_KEY: bytes | None = None
 _KEY_FILE = Path(__file__).parent.parent.parent / "data" / ".encryption_key"
 
 
+def _clean_base_url(url: str) -> str:
+    """清理并规范化 base URL"""
+    if not url:
+        return ""
+    url = url.strip()
+    url = url.rstrip(",;:")
+    url = url.rstrip("/")
+    return url
+
+
 def _get_encryption_key() -> bytes:
     global _ENCRYPTION_KEY
     if _ENCRYPTION_KEY is not None:
@@ -170,6 +180,11 @@ async def create_model(config: ModelConfig):
     model_id = str(uuid.uuid4())
     now = datetime.utcnow().isoformat()
 
+    display_name = config.name.strip() if config.name and config.name.strip() else None
+
+    if not display_name:
+        display_name = await _generate_unique_name(config.modelName)
+
     try:
         async with await get_db() as db:
             await db.execute(
@@ -181,8 +196,8 @@ async def create_model(config: ModelConfig):
                 (
                     model_id,
                     config.providerId,
-                    config.name,
-                    config.baseUrl.rstrip("/"),
+                    display_name,
+                    _clean_base_url(config.baseUrl),
                     encrypt_api_key(config.apiKey),
                     config.modelName,
                     config.customModelName,
@@ -200,6 +215,7 @@ async def create_model(config: ModelConfig):
             await db.commit()
 
             config.id = model_id
+            config.name = display_name
             config.createdAt = now
             config.updatedAt = now
             return config
@@ -208,11 +224,45 @@ async def create_model(config: ModelConfig):
         raise
 
 
+async def _generate_unique_name(base_name: str) -> str:
+    """生成唯一的显示名称，如果重复则添加数字编号"""
+    from ..database import get_db
+
+    try:
+        async with await get_db() as db:
+            cursor = await db.execute(
+                "SELECT name FROM model_configs WHERE name LIKE ?",
+                (f"{base_name}%",),
+            )
+            rows = await cursor.fetchall()
+
+            if not rows:
+                return base_name
+
+            existing_names = {row[0] for row in rows}
+            if base_name not in existing_names:
+                return base_name
+
+            counter = 2
+            while f"{base_name} {counter}" in existing_names:
+                counter += 1
+
+            return f"{base_name} {counter}"
+    except Exception as e:
+        logger.error("Failed to generate unique name: %s", e)
+        return base_name
+
+
 @router.put("/models/{model_id}", response_model=ModelConfig)
 async def update_model(model_id: str, config: ModelConfig):
     from ..database import get_db
 
     now = datetime.utcnow().isoformat()
+
+    display_name = config.name.strip() if config.name and config.name.strip() else None
+
+    if not display_name:
+        display_name = await _generate_unique_name_for_update(model_id, config.modelName)
 
     try:
         async with await get_db() as db:
@@ -231,8 +281,8 @@ async def update_model(model_id: str, config: ModelConfig):
                    WHERE id = ?""",
                 (
                     config.providerId,
-                    config.name,
-                    config.baseUrl.rstrip("/"),
+                    display_name,
+                    _clean_base_url(config.baseUrl),
                     encrypt_api_key(config.apiKey),
                     config.modelName,
                     config.customModelName,
@@ -248,12 +298,42 @@ async def update_model(model_id: str, config: ModelConfig):
             await db.commit()
 
             config.id = model_id
+            config.name = display_name
             config.editCount = current_edit_count + 1
             config.updatedAt = now
             return config
     except Exception as e:
         logger.error("Failed to update model: %s", e)
         raise
+
+
+async def _generate_unique_name_for_update(exclude_id: str, base_name: str) -> str:
+    """生成唯一的显示名称（更新时排除当前记录）"""
+    from ..database import get_db
+
+    try:
+        async with await get_db() as db:
+            cursor = await db.execute(
+                "SELECT name FROM model_configs WHERE name LIKE ? AND id != ?",
+                (f"{base_name}%", exclude_id),
+            )
+            rows = await cursor.fetchall()
+
+            if not rows:
+                return base_name
+
+            existing_names = {row[0] for row in rows}
+            if base_name not in existing_names:
+                return base_name
+
+            counter = 2
+            while f"{base_name} {counter}" in existing_names:
+                counter += 1
+
+            return f"{base_name} {counter}"
+    except Exception as e:
+        logger.error("Failed to generate unique name for update: %s", e)
+        return base_name
 
 
 @router.delete("/models/{model_id}")
@@ -288,9 +368,14 @@ async def enable_model(model_id: str):
             if not row[0]:
                 return {"success": False, "message": "请先配置 API 密钥"}
 
+            now = datetime.now(datetime.timezone.utc).isoformat()
+            await db.execute(
+                "UPDATE model_configs SET is_enabled = 0, updated_at = ? WHERE is_enabled = 1",
+                (now,),
+            )
             await db.execute(
                 "UPDATE model_configs SET is_enabled = 1, updated_at = ? WHERE id = ?",
-                (datetime.utcnow().isoformat(), model_id),
+                (now, model_id),
             )
             await db.commit()
 
@@ -323,11 +408,12 @@ async def test_model(request: ModelTestRequest):
     from ..services.llm import LLMService
 
     llm_service = LLMService()
+    cleaned_url = _clean_base_url(request.baseUrl)
 
     try:
         success, message, content, latency = await llm_service.test_connection(
             provider_id="custom",
-            base_url=request.baseUrl,
+            base_url=cleaned_url,
             api_key=request.apiKey,
             model_name=request.modelName,
             test_message=request.testMessage or "你好，请简单介绍一下你自己。",
@@ -394,7 +480,8 @@ async def test_model_by_id(model_id: str):
 
 
 async def _perform_test(base_url: str, api_key: str, model_name: str) -> dict:
-    url = f"{base_url.rstrip('/')}/chat/completions"
+    cleaned_url = _clean_base_url(base_url)
+    url = f"{cleaned_url}/chat/completions"
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
     payload = {
         "model": model_name,

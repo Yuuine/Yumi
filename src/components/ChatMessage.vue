@@ -24,13 +24,8 @@
 import { computed } from 'vue'
 import type { ChatMessage } from '@/types'
 import { useUserStore } from '@/stores'
-import { marked } from 'marked'
-import dayjs from 'dayjs'
-import relativeTime from 'dayjs/plugin/relativeTime'
-import 'dayjs/locale/zh-cn'
-
-dayjs.extend(relativeTime)
-dayjs.locale('zh-cn')
+import { formatRelativeTime } from '@/utils/datetime'
+import { renderMarkdown } from '@/utils/markdown'
 
 const props = defineProps<{
   message: ChatMessage
@@ -47,16 +42,11 @@ const roleName = computed(() => {
 })
 
 const formattedTime = computed(() => {
-  return dayjs(props.message.timestamp).fromNow()
+  return formatRelativeTime(props.message.timestamp)
 })
 
 const formattedContent = computed(() => {
-  const content = props.message.content
-  try {
-    return marked(content) as string
-  } catch {
-    return content.replace(/\n/g, '<br>')
-  }
+  return renderMarkdown(props.message.content)
 })
 
 const emotionType = computed(() => {

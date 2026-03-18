@@ -1,21 +1,13 @@
 <template>
   <div class="message-actions-footer">
     <button class="action-btn copy-btn" @click.stop="handleCopy" title="点击复制">
-      <svg class="copy-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <rect x="9" y="9" width="11" height="11" rx="2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-        <path
-          d="M5 15V5C5 4.44772 5.44772 4 6 4H16"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        />
-      </svg>
+      <IconCopy class="copy-icon" :stroke-width="1.5" />
     </button>
   </div>
 </template>
 
 <script setup lang="ts">
+import { IconCopy } from '@/components/icons'
 import type { ChatMessage } from '@/types'
 
 interface Props {

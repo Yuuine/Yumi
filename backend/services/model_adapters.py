@@ -97,10 +97,6 @@ PROVIDER_CONFIGS: dict[str, ProviderDiffConfig] = {
         request_diff=RequestDiff(),
         response_diff=ResponseDiff(),
     ),
-    "moonshot-v1-128k-vision-preview": ProviderDiffConfig(
-        request_diff=RequestDiff(),
-        response_diff=ResponseDiff(),
-    ),
 }
 
 

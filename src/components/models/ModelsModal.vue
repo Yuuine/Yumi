@@ -191,15 +191,7 @@
                       {{ model.label }}
                     </option>
                   </select>
-                  <svg
-                    class="select-arrow"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                  >
-                    <polyline points="6 9 12 15 18 9" />
-                  </svg>
+                  <IconChevronDown class="select-arrow" />
                 </div>
               </div>
             </div>
@@ -509,10 +501,6 @@ function handleTestTimeout() {
 }
 
 async function handleSubmit() {
-  if (!formData.name.trim()) {
-    showDialog('提示', '请输入显示名称', 'warning')
-    return
-  }
   if (!formData.apiKey.trim()) {
     showDialog('提示', '请输入 API 密钥', 'warning')
     return
@@ -523,7 +511,7 @@ async function handleSubmit() {
 
   const config: Omit<ModelConfig, 'id'> = {
     providerId: formData.providerId,
-    name: formData.name,
+    name: formData.name.trim() || '',
     baseUrl: formData.baseUrl,
     apiKey: formData.apiKey,
     modelName: formData.modelName,
@@ -542,10 +530,12 @@ async function handleSubmit() {
       await modelsStore.updateModelSilent(editingId.value, config)
       formDialogVisible.value = false
       showToast('模型已更新', 'success')
+      await modelsStore.loadModels()
     } else {
       await modelsStore.createModelSilent(config)
       formDialogVisible.value = false
       showToast('模型已添加', 'success')
+      await modelsStore.loadModels()
     }
   } catch {
     showDialog('操作失败', '请稍后重试', 'error')

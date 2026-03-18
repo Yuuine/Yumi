@@ -122,25 +122,9 @@ async def init_db() -> None:
         await db.execute("""
             INSERT OR IGNORE INTO model_providers (id, name, display_name, description)
             VALUES 
-                ('openai', 'openai', 'OpenAI', 'OpenAI GPT 系列模型'),
                 ('deepseek', 'deepseek', 'DeepSeek', 'DeepSeek AI - 高性能大语言模型，支持深度思考模式'),
-                ('anthropic', 'anthropic', 'Anthropic', 'Claude 系列模型'),
                 ('kimi', 'kimi', 'Kimi', 'Moonshot AI - Kimi 系列模型，支持长文本和视觉理解'),
                 ('custom', 'custom', '自定义', '自定义 API 提供商')
-        """)
-
-        await db.execute("""
-            INSERT OR IGNORE INTO model_configs (
-                id, provider_id, name, base_url, api_key, model_name, 
-                custom_model_name, model_type, max_tokens, temperature, 
-                is_enabled, is_tested, test_status, edit_count
-            )
-            VALUES (
-                'deepseek-chat-default', 'deepseek', 'DeepSeek Chat', 
-                'https://api.deepseek.com', '', 'deepseek-chat', 
-                NULL, 'text', 4096, 0.85, 
-                0, 0, 'untested', 0
-            )
         """)
 
         await db.commit()
