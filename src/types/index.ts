@@ -131,5 +131,6 @@ export interface ModelTestResponse {
   success: boolean
   message: string
   response?: string
+  reasoning?: string
   latency?: number
 }

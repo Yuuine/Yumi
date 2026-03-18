@@ -11,20 +11,11 @@
       <div class="loading-content">
         <div class="loading-spinner">
           <svg class="spinner-svg" viewBox="0 0 50 50">
-            <circle
-              class="spinner-path"
-              cx="25"
-              cy="25"
-              r="20"
-              fill="none"
-              stroke-width="4"
-            />
+            <circle class="spinner-path" cx="25" cy="25" r="20" fill="none" stroke-width="4" />
           </svg>
         </div>
         <div class="loading-text">{{ text }}</div>
-        <div v-if="showTimeout" class="loading-timeout">
-          已等待 {{ elapsedSeconds }}秒
-        </div>
+        <div v-if="showTimeout" class="loading-timeout">已等待 {{ elapsedSeconds }}秒</div>
       </div>
     </div>
   </Transition>
@@ -82,7 +73,7 @@ function stopTimer() {
 
 watch(
   () => props.visible,
-  (newVal) => {
+  newVal => {
     if (newVal) {
       startTimer()
     } else {
@@ -185,7 +176,9 @@ onUnmounted(() => {
   transition: opacity 0.2s ease;
 
   .loading-content {
-    transition: transform 0.2s ease, opacity 0.2s ease;
+    transition:
+      transform 0.2s ease,
+      opacity 0.2s ease;
   }
 }
 

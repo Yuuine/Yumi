@@ -179,6 +179,8 @@ pnpm-debug.log*
 # ========================================
 COMMANDS.md
 DEVELOPMENT.md
+docs_local/
+local_doc/
 
 # ========================================
 # 演示数据

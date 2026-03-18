@@ -1,6 +1,14 @@
 """
 Core module - 核心功能模块
 """
+from .cache import (
+    ConversationCache,
+    LRUCache,
+    TTLCache,
+    get_conversation_cache,
+    get_lru_cache,
+    get_ttl_cache,
+)
 from .config import Settings, get_settings, settings
 from .error_handlers import setup_exception_handlers
 from .exceptions import (
@@ -17,6 +25,12 @@ from .exceptions import (
 from .lifecycle import LogLifecycleManager, get_lifecycle_manager
 from .logging import YumiLogger, get_logger, log_with_context, request_id_var
 from .middleware import RequestTracingMiddleware, SlowRequestMiddleware
+from .model_state import (
+    clear_active_model,
+    get_active_model,
+    has_active_model,
+    set_active_model,
+)
 
 __all__ = [
     "Settings",
@@ -40,4 +54,14 @@ __all__ = [
     "SlowRequestMiddleware",
     "LogLifecycleManager",
     "get_lifecycle_manager",
+    "get_active_model",
+    "set_active_model",
+    "clear_active_model",
+    "has_active_model",
+    "LRUCache",
+    "TTLCache",
+    "ConversationCache",
+    "get_lru_cache",
+    "get_ttl_cache",
+    "get_conversation_cache",
 ]

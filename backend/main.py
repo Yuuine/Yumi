@@ -136,5 +136,5 @@ if __name__ == "__main__":
         "backend.main:app",
         host=settings.server.host,
         port=settings.server.port,
-        reload=settings.app.debug,
+        reload=False,
     )

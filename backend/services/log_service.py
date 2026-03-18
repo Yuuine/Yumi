@@ -92,7 +92,7 @@ class LogService:
         )
 
         try:
-            async with await get_db() as db:
+            async with get_db() as db:
                 await db.execute(
                     """INSERT INTO system_logs 
                        (timestamp, level, event_type, trace_id, user_id, session_id, content)
@@ -153,7 +153,7 @@ class LogService:
         )
 
         try:
-            async with await get_db() as db:
+            async with get_db() as db:
                 await db.execute(
                     """INSERT INTO system_logs 
                        (timestamp, level, event_type, trace_id, user_id, session_id, content)
@@ -222,7 +222,7 @@ class LogService:
             )
 
         try:
-            async with await get_db() as db:
+            async with get_db() as db:
                 await db.execute(
                     """INSERT INTO system_logs 
                        (timestamp, level, event_type, trace_id, content)
@@ -276,7 +276,7 @@ class LogService:
         )
 
         try:
-            async with await get_db() as db:
+            async with get_db() as db:
                 await db.execute(
                     """INSERT INTO audit_logs 
                        (timestamp, user_id, action, resource_type, resource_id, result, client_ip, details)

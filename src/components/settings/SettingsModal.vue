@@ -30,7 +30,6 @@
                   <div class="panel-title">通用设置</div>
 
                   <div class="settings-section">
-
                     <div class="setting-item">
                       <div class="setting-info">
                         <div class="setting-label">推理过程显示</div>
@@ -78,12 +77,7 @@
 <script setup lang="ts">
 import { ref, markRaw } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
-import {
-  IconClose,
-  IconInfo,
-  IconChat,
-  IconModels,
-} from '@/components/icons'
+import { IconClose, IconInfo, IconChat, IconModels } from '@/components/icons'
 
 defineProps<{
   visible: boolean

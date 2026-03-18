@@ -114,7 +114,7 @@ class PromptBuilder:
         communication_style = "warm"
 
         try:
-            async with await get_db() as db:
+            async with get_db() as db:
                 cursor = await db.execute(
                     "SELECT role_name, big_five_json, preferences_json FROM users WHERE id = ?",
                     (user_id,),

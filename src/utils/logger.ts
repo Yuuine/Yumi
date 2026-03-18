@@ -36,7 +36,10 @@ const LOG_LEVELS: Record<LogLevel, number> = {
 }
 
 const SENSITIVE_PATTERNS: Array<[RegExp, string]> = [
-  [/(api[_-]?key|apikey|token|secret|password|pwd)['"]?\s*[:=]\s*['"]?([^'"\s,}]+)/gi, '$1=***REDACTED***'],
+  [
+    /(api[_-]?key|apikey|token|secret|password|pwd)['"]?\s*[:=]\s*['"]?([^'"\s,}]+)/gi,
+    '$1=***REDACTED***',
+  ],
   [/(Bearer\s+)[A-Za-z0-9\-._~+/]+=*/gi, '$1***REDACTED***'],
   [/(sk-[a-zA-Z0-9]{20,})/g, 'sk-***REDACTED***'],
 ]
@@ -60,7 +63,12 @@ function filterObjectSensitive(obj: unknown): unknown {
     const filtered: Record<string, unknown> = {}
     for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
       const lowerKey = key.toLowerCase()
-      if (lowerKey.includes('key') || lowerKey.includes('token') || lowerKey.includes('secret') || lowerKey.includes('password')) {
+      if (
+        lowerKey.includes('key') ||
+        lowerKey.includes('token') ||
+        lowerKey.includes('secret') ||
+        lowerKey.includes('password')
+      ) {
         filtered[key] = '***REDACTED***'
       } else {
         filtered[key] = filterObjectSensitive(value)
@@ -81,7 +89,7 @@ const config = ref<LoggerConfig>({
 
 export function useLogger() {
   const entries = computed(() => logBuffer.value)
-  const errorEntries = computed(() => logBuffer.value.filter((e) => e.level === 'ERROR'))
+  const errorEntries = computed(() => logBuffer.value.filter(e => e.level === 'ERROR'))
 
   function setConfig(newConfig: Partial<LoggerConfig>) {
     config.value = { ...config.value, ...newConfig }
@@ -98,7 +106,13 @@ export function useLogger() {
     }
   }
 
-  function log(level: LogLevel, module: string, message: string, data?: Record<string, unknown>, error?: Error) {
+  function log(
+    level: LogLevel,
+    module: string,
+    message: string,
+    data?: Record<string, unknown>,
+    error?: Error
+  ) {
     if (LOG_LEVELS[level] < LOG_LEVELS[config.value.level]) {
       return
     }
@@ -119,7 +133,14 @@ export function useLogger() {
 
     if (config.value.enableConsole) {
       const prefix = `[${entry.timestamp}] [${level}] [${module}]`
-      const consoleMethod = level === 'DEBUG' ? 'debug' : level === 'INFO' ? 'info' : level === 'WARN' ? 'warn' : 'error'
+      const consoleMethod =
+        level === 'DEBUG'
+          ? 'debug'
+          : level === 'INFO'
+            ? 'info'
+            : level === 'WARN'
+              ? 'warn'
+              : 'error'
 
       if (error) {
         console[consoleMethod](prefix, filteredMessage, filteredData || '', error)
@@ -143,9 +164,29 @@ export function useLogger() {
     log('WARN', module, message, data)
   }
 
-  function error(module: string, message: string, err?: Error | unknown, data?: Record<string, unknown>) {
-    const errorObj = err instanceof Error ? err : err ? new Error(String(err)) : undefined
-    log('ERROR', module, message, data, errorObj)
+  function error(
+    module: string,
+    message: string,
+    err?: Error | unknown,
+    data?: Record<string, unknown>
+  ) {
+    let errorObj: Error | undefined
+    let additionalData = data
+
+    if (err instanceof Error) {
+      errorObj = err
+    } else if (err) {
+      if (typeof err === 'object' && err !== null) {
+        const errRecord = err as Record<string, unknown>
+        const errMessage = String(errRecord.message || errRecord.code || JSON.stringify(err))
+        errorObj = new Error(errMessage)
+        additionalData = { ...data, errorDetails: err }
+      } else {
+        errorObj = new Error(String(err))
+      }
+    }
+
+    log('ERROR', module, message, additionalData, errorObj)
   }
 
   function clearBuffer() {
@@ -157,11 +198,11 @@ export function useLogger() {
   }
 
   function getLogsByLevel(level: LogLevel): LogEntry[] {
-    return logBuffer.value.filter((e) => e.level === level)
+    return logBuffer.value.filter(e => e.level === level)
   }
 
   function getLogsByModule(module: string): LogEntry[] {
-    return logBuffer.value.filter((e) => e.module === module)
+    return logBuffer.value.filter(e => e.module === module)
   }
 
   return {

@@ -4,6 +4,8 @@ Database initialization and configuration
 from __future__ import annotations
 
 import aiosqlite
+from contextlib import asynccontextmanager
+from typing import AsyncIterator
 
 from .core import get_logger, settings
 
@@ -14,7 +16,14 @@ async def init_db() -> None:
     db_path = settings.database.full_path
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
-    async with aiosqlite.connect(db_path) as db:
+    db = await aiosqlite.connect(db_path)
+    try:
+        await db.execute("PRAGMA journal_mode=WAL")
+        await db.execute("PRAGMA synchronous=NORMAL")
+        await db.execute("PRAGMA cache_size=-64000")
+        await db.execute("PRAGMA temp_store=MEMORY")
+        await db.execute("PRAGMA mmap_size=268435456")
+
         await db.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id TEXT PRIMARY KEY,
@@ -142,7 +151,7 @@ async def init_db() -> None:
 
         await db.execute("""
             INSERT OR IGNORE INTO users (id, role_name, big_five_json, preferences_json)
-            VALUES ('default', 'Yumi', 
+            VALUES ('default', 'Yumi',
                 '{"openness": 0.75, "conscientiousness": 0.70, "extraversion": 0.65, "agreeableness": 0.80, "neuroticism": 0.35}',
                 '{"communication_style": "warm", "topics_of_interest": ["生活", "工作", "情感"], "emotional_support_level": "high", "response_length": "medium"}'
             )
@@ -150,7 +159,7 @@ async def init_db() -> None:
 
         await db.execute("""
             INSERT OR IGNORE INTO model_providers (id, name, display_name, description)
-            VALUES 
+            VALUES
                 ('deepseek', 'deepseek', 'DeepSeek', 'DeepSeek AI - 高性能大语言模型，支持深度思考模式'),
                 ('kimi', 'kimi', 'Kimi', 'Moonshot AI - Kimi 系列模型，支持长文本和视觉理解'),
                 ('custom', 'custom', '自定义', '自定义 API 提供商')
@@ -158,6 +167,8 @@ async def init_db() -> None:
 
         await db.commit()
         logger.info("Database initialized at %s", db_path)
+    finally:
+        await db.close()
 
 
 async def _create_indexes(db: aiosqlite.Connection) -> None:
@@ -184,5 +195,19 @@ async def _create_indexes(db: aiosqlite.Connection) -> None:
         await db.execute(index_sql)
 
 
-async def get_db() -> aiosqlite.Connection:
-    return aiosqlite.connect(settings.database.full_path)
+@asynccontextmanager
+async def get_db() -> AsyncIterator[aiosqlite.Connection]:
+    """获取数据库连接的上下文管理器
+
+    Usage:
+        async with get_db() as db:
+            await db.execute(...)
+            await db.commit()
+    """
+    db = await aiosqlite.connect(settings.database.full_path)
+    try:
+        await db.execute("PRAGMA journal_mode=WAL")
+        await db.execute("PRAGMA synchronous=NORMAL")
+        yield db
+    finally:
+        await db.close()

@@ -1,7 +1,7 @@
 [project]
 name = "yumi-backend"
 version = "1.0.0"
-description = "Yumi AI虚拟人物伴侣后端服务"
+description = "Yumi"
 requires-python = ">=3.10"
 
 [tool.ruff]

@@ -120,7 +120,7 @@ async def query_logs(
     where_clause = " AND ".join(conditions) if conditions else "1=1"
 
     try:
-        async with await get_db() as db:
+        async with get_db() as db:
             count_cursor = await db.execute(
                 f"SELECT COUNT(*) FROM system_logs WHERE {where_clause}",
                 params,
@@ -229,7 +229,7 @@ async def query_audit_logs(
     where_clause = " AND ".join(conditions) if conditions else "1=1"
 
     try:
-        async with await get_db() as db:
+        async with get_db() as db:
             count_cursor = await db.execute(
                 f"SELECT COUNT(*) FROM audit_logs WHERE {where_clause}",
                 params,
@@ -273,7 +273,7 @@ async def query_audit_logs(
 async def get_log_stats():
     """获取日志统计信息"""
     try:
-        async with await get_db() as db:
+        async with get_db() as db:
             total_cursor = await db.execute("SELECT COUNT(*) FROM system_logs")
             total_row = await total_cursor.fetchone()
             total_logs = total_row[0] if total_row else 0
@@ -353,7 +353,7 @@ async def export_logs(
     where_clause = " AND ".join(conditions) if conditions else "1=1"
 
     try:
-        async with await get_db() as db:
+        async with get_db() as db:
             cursor = await db.execute(
                 f"""SELECT id, timestamp, level, event_type, trace_id, user_id, session_id, content
                     FROM system_logs
@@ -427,7 +427,7 @@ async def export_audit_logs(
     where_clause = " AND ".join(conditions) if conditions else "1=1"
 
     try:
-        async with await get_db() as db:
+        async with get_db() as db:
             cursor = await db.execute(
                 f"""SELECT id, timestamp, user_id, action, resource_type, resource_id, result, client_ip, details
                     FROM audit_logs

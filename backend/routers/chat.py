@@ -12,11 +12,19 @@ from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from ..core import LLMException, MemoryException, NoActiveModelException, get_logger, settings
+from ..core import (
+    LLMException,
+    MemoryException,
+    NoActiveModelException,
+    get_active_model,
+    get_logger,
+    set_active_model,
+    settings,
+)
 from ..database import get_db
+from ..routers.models import decrypt_api_key
 from ..services.emotion import EmotionData
 from ..services.log_service import log_service
-from ..routers.models import decrypt_api_key
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -49,24 +57,47 @@ class ChatHistory(BaseModel):
 
 
 async def _get_active_model_config() -> dict | None:
-    """从数据库获取活动模型配置"""
+    """获取活动模型配置（优先从全局状态获取，若为空则从数据库加载）"""
+    active_model = get_active_model()
+    if active_model:
+        if settings.app.debug:
+            logger.info(
+                "Active model from cache: %s (provider=%s, model=%s)",
+                active_model["display_name"],
+                active_model["provider_id"],
+                active_model["model_name"],
+            )
+        return active_model
+
     try:
-        async with await get_db() as db:
+        async with get_db() as db:
             cursor = await db.execute(
-                """SELECT provider_id, base_url, api_key, model_name
+                """SELECT id, provider_id, base_url, api_key, model_name, name
                    FROM model_configs
                    WHERE is_enabled = 1
+                   ORDER BY updated_at DESC
                    LIMIT 1"""
             )
             row = await cursor.fetchone()
 
             if row:
-                return {
-                    "provider_id": row[0],
-                    "base_url": row[1],
-                    "api_key": decrypt_api_key(row[2]) if row[2] else "",
-                    "model_name": row[3],
+                config = {
+                    "model_id": row[0],
+                    "provider_id": row[1],
+                    "base_url": row[2],
+                    "api_key": decrypt_api_key(row[3]) if row[3] else "",
+                    "model_name": row[4],
+                    "display_name": row[5],
                 }
+                set_active_model(config)
+                if settings.app.debug:
+                    logger.info(
+                        "Active model loaded from DB: %s (provider=%s, model=%s)",
+                        config["display_name"],
+                        config["provider_id"],
+                        config["model_name"],
+                    )
+                return config
             return None
     except Exception as e:
         logger.error("Failed to get active model config: %s", e)
@@ -98,21 +129,39 @@ async def send_message(request: ChatRequest, req: Request):
             extra={"message_length": len(request.message)},
         )
 
-        user_emotion = await emotion_engine.analyze(request.message)
+        if settings.app.debug:
+            messages = [{"role": "user", "content": request.message}]
+            user_emotion = EmotionData(valence=0.5, arousal=0.5, label="neutral")
+            relevant_memories = []
+        else:
+            # TODO: 后续需要优化情感分析的准确性和性能
+            user_emotion = await emotion_engine.analyze(request.message)
 
-        relevant_memories = await memory_engine.search(
-            query=request.message,
-            user_id=request.userId,
-        )
+            # TODO: 后续需要支持记忆搜索结果的排序和过滤优化
+            relevant_memories = await memory_engine.search(
+                query=request.message,
+                user_id=request.userId,
+            )
 
-        messages = await prompt_builder.build_context(
-            user_id=request.userId,
-            current_message=request.message,
-            memories=relevant_memories,
-            user_emotion=user_emotion,
-        )
+            # TODO: 后续需要支持自定义提示词模板和上下文长度配置
+            messages = await prompt_builder.build_context(
+                user_id=request.userId,
+                current_message=request.message,
+                memories=relevant_memories,
+                user_emotion=user_emotion,
+            )
 
         llm_start_time = time.time()
+
+        if settings.app.debug:
+            logger.info(
+                "LLM Request: model=%s, provider=%s, temperature=%.2f, messages_count=%d",
+                active_model["model_name"],
+                active_model["provider_id"],
+                request.temperature,
+                len(messages),
+            )
+
         reply = await llm_service.chat(
             messages=messages,
             temperature=request.temperature,
@@ -123,7 +172,18 @@ async def send_message(request: ChatRequest, req: Request):
         )
         llm_latency_ms = (time.time() - llm_start_time) * 1000
 
-        assistant_emotion = await emotion_engine.analyze(reply)
+        if settings.app.debug:
+            logger.info(
+                "LLM Response: latency=%.2fms, reply_length=%d",
+                llm_latency_ms,
+                len(reply),
+            )
+
+        if settings.app.debug:
+            assistant_emotion = EmotionData(valence=0.5, arousal=0.5, label="neutral")
+            user_emotion = EmotionData(valence=0.5, arousal=0.5, label="neutral")
+        else:
+            assistant_emotion = await emotion_engine.analyze(reply)
 
         await log_service.log_ai_interaction(
             conversation_id=conversation_id,
@@ -148,51 +208,69 @@ async def send_message(request: ChatRequest, req: Request):
             user_id=request.userId,
         )
 
-        async with await get_db() as db:
-            await db.execute(
-                """INSERT INTO conversation_logs
-                   (user_id, role, content, emotion_valence, emotion_arousal)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (
-                    request.userId,
-                    "user",
-                    request.message,
-                    user_emotion.valence,
-                    user_emotion.arousal,
-                ),
-            )
-            await db.execute(
-                """INSERT INTO conversation_logs
-                   (user_id, role, content, emotion_valence, emotion_arousal)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (
-                    request.userId,
-                    "assistant",
-                    reply,
-                    assistant_emotion.valence,
-                    assistant_emotion.arousal,
-                ),
-            )
-            await db.commit()
+        if settings.app.debug:
+            async with get_db() as db:
+                await db.execute(
+                    """INSERT INTO conversation_logs
+                       (user_id, role, content)
+                       VALUES (?, ?, ?)""",
+                    (request.userId, "user", request.message),
+                )
+                await db.execute(
+                    """INSERT INTO conversation_logs
+                       (user_id, role, content)
+                       VALUES (?, ?, ?)""",
+                    (request.userId, "assistant", reply),
+                )
+                await db.commit()
+        else:
+            async with get_db() as db:
+                await db.execute(
+                    """INSERT INTO conversation_logs
+                       (user_id, role, content, emotion_valence, emotion_arousal)
+                       VALUES (?, ?, ?, ?, ?)""",
+                    (
+                        request.userId,
+                        "user",
+                        request.message,
+                        user_emotion.valence,
+                        user_emotion.arousal,
+                    ),
+                )
+                await db.execute(
+                    """INSERT INTO conversation_logs
+                       (user_id, role, content, emotion_valence, emotion_arousal)
+                       VALUES (?, ?, ?, ?, ?)""",
+                    (
+                        request.userId,
+                        "assistant",
+                        reply,
+                        assistant_emotion.valence,
+                        assistant_emotion.arousal,
+                    ),
+                )
+                await db.commit()
 
-        await memory_engine.store(
-            user_id=request.userId,
-            content=f"用户: {request.message}\n助手: {reply}",
-            metadata={
-                "emotion_valence": user_emotion.valence,
-                "emotion_arousal": user_emotion.arousal,
-                "emotion_label": user_emotion.label,
-                "timestamp": datetime.now().isoformat(),
-            },
-        )
+        if not settings.app.debug:
+            await memory_engine.store(
+                user_id=request.userId,
+                content=f"用户: {request.message}\n助手: {reply}",
+                metadata={
+                    "emotion_valence": user_emotion.valence,
+                    "emotion_arousal": user_emotion.arousal,
+                    "emotion_label": user_emotion.label,
+                    "timestamp": datetime.now().isoformat(),
+                },
+            )
 
         new_summary = None
-        turn_count = await memory_engine.get_turn_count(request.userId)
-        if (
-            turn_count > 0
-            and turn_count % settings.memory.summary_trigger_turns == 0
-        ):
-            new_summary = await memory_engine.summarize(request.userId)
+        if not settings.app.debug:
+            turn_count = await memory_engine.get_turn_count(request.userId)
+            if (
+                turn_count > 0
+                and turn_count % settings.memory.summary_trigger_turns == 0
+            ):
+                new_summary = await memory_engine.summarize(request.userId)
 
         total_latency_ms = (time.time() - start_time) * 1000
         await log_service.log_user_action(
@@ -249,15 +327,15 @@ async def send_message(request: ChatRequest, req: Request):
 
 
 @router.get("/chat/history", response_model=ChatHistory)
-async def get_chat_history(userId: str, limit: int = 50, req: Request = None):
-    async with await get_db() as db:
+async def get_chat_history(userId: str, limit: int = 50, offset: int = 0, req: Request = None):
+    async with get_db() as db:
         cursor = await db.execute(
             """SELECT id, role, content, timestamp, emotion_valence, emotion_arousal
                FROM conversation_logs
                WHERE user_id = ?
                ORDER BY timestamp DESC
-               LIMIT ?""",
-            (userId, limit),
+               LIMIT ? OFFSET ?""",
+            (userId, limit, offset),
         )
         rows = await cursor.fetchall()
 
@@ -300,21 +378,34 @@ async def stream_chat(
             return
 
         try:
-            user_emotion = await emotion_engine.analyze(message)
+            if settings.app.debug:
+                logger.info(
+                    "Stream LLM Request: model=%s, provider=%s, temperature=%.2f",
+                    active_model["model_name"],
+                    active_model["provider_id"],
+                    temperature,
+                )
 
-            relevant_memories = await memory_engine.search(
-                query=message,
-                user_id=userId,
-            )
+            if settings.app.debug:
+                messages = [{"role": "user", "content": message}]
+                user_emotion = EmotionData(valence=0.5, arousal=0.5, label="neutral")
+            else:
+                user_emotion = await emotion_engine.analyze(message)
 
-            messages = await prompt_builder.build_context(
-                user_id=userId,
-                current_message=message,
-                memories=relevant_memories,
-                user_emotion=user_emotion,
-            )
+                relevant_memories = await memory_engine.search(
+                    query=message,
+                    user_id=userId,
+                )
+
+                messages = await prompt_builder.build_context(
+                    user_id=userId,
+                    current_message=message,
+                    memories=relevant_memories,
+                    user_emotion=user_emotion,
+                )
 
             full_reply = ""
+            stream_start_time = time.time()
             async for chunk in llm_service.stream_chat(
                 messages=messages,
                 temperature=temperature,
@@ -326,45 +417,74 @@ async def stream_chat(
                 full_reply += chunk
                 yield f"data: {json.dumps({'content': chunk})}\n\n"
 
-            assistant_emotion = await emotion_engine.analyze(full_reply)
-
-            async with await get_db() as db:
-                await db.execute(
-                    """INSERT INTO conversation_logs
-                       (user_id, role, content, emotion_valence, emotion_arousal)
-                       VALUES (?, ?, ?, ?, ?)""",
-                    (
-                        userId,
-                        "user",
-                        message,
-                        user_emotion.valence,
-                        user_emotion.arousal,
-                    ),
+            if settings.app.debug:
+                stream_latency_ms = (time.time() - stream_start_time) * 1000
+                logger.info(
+                    "Stream LLM Response: latency=%.2fms, reply_length=%d",
+                    stream_latency_ms,
+                    len(full_reply),
                 )
-                await db.execute(
-                    """INSERT INTO conversation_logs
-                       (user_id, role, content, emotion_valence, emotion_arousal)
-                       VALUES (?, ?, ?, ?, ?)""",
-                    (
-                        userId,
-                        "assistant",
-                        full_reply,
-                        assistant_emotion.valence,
-                        assistant_emotion.arousal,
-                    ),
-                )
-                await db.commit()
 
-            await memory_engine.store(
-                user_id=userId,
-                content=f"用户: {message}\n助手: {full_reply}",
-                metadata={
-                    "emotion_valence": user_emotion.valence,
-                    "emotion_arousal": user_emotion.arousal,
-                    "emotion_label": user_emotion.label,
-                    "timestamp": datetime.now().isoformat(),
-                },
-            )
+            if settings.app.debug:
+                assistant_emotion = EmotionData(valence=0.5, arousal=0.5, label="neutral")
+                user_emotion = EmotionData(valence=0.5, arousal=0.5, label="neutral")
+            else:
+                assistant_emotion = await emotion_engine.analyze(full_reply)
+
+            if settings.app.debug:
+                async with get_db() as db:
+                    await db.execute(
+                        """INSERT INTO conversation_logs
+                           (user_id, role, content)
+                           VALUES (?, ?, ?)""",
+                        (userId, "user", message),
+                    )
+                    await db.execute(
+                        """INSERT INTO conversation_logs
+                           (user_id, role, content)
+                           VALUES (?, ?, ?)""",
+                        (userId, "assistant", full_reply),
+                    )
+                    await db.commit()
+            else:
+                async with get_db() as db:
+                    await db.execute(
+                        """INSERT INTO conversation_logs
+                           (user_id, role, content, emotion_valence, emotion_arousal)
+                           VALUES (?, ?, ?, ?, ?)""",
+                        (
+                            userId,
+                            "user",
+                            message,
+                            user_emotion.valence,
+                            user_emotion.arousal,
+                        ),
+                    )
+                    await db.execute(
+                        """INSERT INTO conversation_logs
+                           (user_id, role, content, emotion_valence, emotion_arousal)
+                           VALUES (?, ?, ?, ?, ?)""",
+                        (
+                            userId,
+                            "assistant",
+                            full_reply,
+                            assistant_emotion.valence,
+                            assistant_emotion.arousal,
+                        ),
+                    )
+                    await db.commit()
+
+            if not settings.app.debug:
+                await memory_engine.store(
+                    user_id=userId,
+                    content=f"用户: {message}\n助手: {full_reply}",
+                    metadata={
+                        "emotion_valence": user_emotion.valence,
+                        "emotion_arousal": user_emotion.arousal,
+                        "emotion_label": user_emotion.label,
+                        "timestamp": datetime.now().isoformat(),
+                    },
+                )
 
             yield f"data: {json.dumps({'done': True, 'emotion': {'valence': assistant_emotion.valence, 'arousal': assistant_emotion.arousal}})}\n\n"
 

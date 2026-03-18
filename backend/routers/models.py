@@ -16,7 +16,7 @@ from cryptography.fernet import Fernet
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from ..core import get_logger
+from ..core import get_logger, set_active_model, clear_active_model
 from ..services.log_service import AuditAction, log_service
 
 router = APIRouter()
@@ -143,7 +143,7 @@ async def get_models():
     from ..database import get_db
 
     try:
-        async with await get_db() as db:
+        async with get_db() as db:
             cursor = await db.execute(
                 """SELECT id, provider_id, name, base_url, api_key, model_name,
                           custom_model_name, model_type, max_tokens, temperature,
@@ -195,7 +195,7 @@ async def create_model(config: ModelConfig):
         display_name = await _generate_unique_name(config.modelName)
 
     try:
-        async with await get_db() as db:
+        async with get_db() as db:
             await db.execute(
                 """INSERT INTO model_configs 
                    (id, provider_id, name, base_url, api_key, model_name, 
@@ -254,7 +254,7 @@ async def _generate_unique_name(base_name: str) -> str:
     from ..database import get_db
 
     try:
-        async with await get_db() as db:
+        async with get_db() as db:
             cursor = await db.execute(
                 "SELECT name FROM model_configs WHERE name LIKE ?",
                 (f"{base_name}%",),
@@ -290,7 +290,7 @@ async def update_model(model_id: str, config: ModelConfig):
         display_name = await _generate_unique_name_for_update(model_id, config.modelName)
 
     try:
-        async with await get_db() as db:
+        async with get_db() as db:
             cursor = await db.execute(
                 "SELECT edit_count, api_key FROM model_configs WHERE id = ?", (model_id,)
             )
@@ -359,7 +359,7 @@ async def _generate_unique_name_for_update(exclude_id: str, base_name: str) -> s
     from ..database import get_db
 
     try:
-        async with await get_db() as db:
+        async with get_db() as db:
             cursor = await db.execute(
                 "SELECT name FROM model_configs WHERE name LIKE ? AND id != ?",
                 (f"{base_name}%", exclude_id),
@@ -388,7 +388,7 @@ async def delete_model(model_id: str):
     from ..database import get_db
 
     try:
-        async with await get_db() as db:
+        async with get_db() as db:
             cursor = await db.execute(
                 "SELECT name FROM model_configs WHERE id = ?", (model_id,)
             )
@@ -424,9 +424,9 @@ async def enable_model(model_id: str):
     from ..database import get_db
 
     try:
-        async with await get_db() as db:
+        async with get_db() as db:
             cursor = await db.execute(
-                "SELECT api_key, name FROM model_configs WHERE id = ?", (model_id,)
+                "SELECT api_key, name, provider_id, base_url, model_name FROM model_configs WHERE id = ?", (model_id,)
             )
             row = await cursor.fetchone()
 
@@ -440,13 +440,15 @@ async def enable_model(model_id: str):
                 )
                 return {"success": False, "message": "模型不存在"}
 
-            if not row[0]:
+            api_key, name, provider_id, base_url, model_name = row
+
+            if not api_key:
                 await log_service.log_audit(
                     action=AuditAction.MODEL_ENABLE,
                     resource_type="model",
                     resource_id=model_id,
                     result="FAIL",
-                    details={"reason": "no_api_key", "name": row[1]},
+                    details={"reason": "no_api_key", "name": name},
                 )
                 return {"success": False, "message": "请先配置 API 密钥"}
 
@@ -462,7 +464,7 @@ async def enable_model(model_id: str):
                 resource_type="model",
                 resource_id=model_id,
                 result="SUCCESS",
-                details={"name": row[1]},
+                details={"name": name},
             )
 
             return {"success": True, "message": "模型已启用"}
@@ -483,7 +485,7 @@ async def disable_model(model_id: str):
     from ..database import get_db
 
     try:
-        async with await get_db() as db:
+        async with get_db() as db:
             cursor = await db.execute(
                 "SELECT name FROM model_configs WHERE id = ?", (model_id,)
             )
@@ -495,6 +497,10 @@ async def disable_model(model_id: str):
                 (datetime.utcnow().isoformat(), model_id),
             )
             await db.commit()
+
+            active_model = get_active_model()
+            if active_model and active_model.get("model_id") == model_id:
+                clear_active_model()
 
             await log_service.log_audit(
                 action=AuditAction.MODEL_DISABLE,
@@ -514,6 +520,52 @@ async def disable_model(model_id: str):
             result="FAIL",
             details={"error": str(e)},
         )
+        raise
+
+
+@router.post("/models/{model_id}/set_active")
+async def set_active_model_endpoint(model_id: str):
+    from ..database import get_db
+
+    try:
+        async with get_db() as db:
+            cursor = await db.execute(
+                "SELECT api_key, name, provider_id, base_url, model_name, is_enabled FROM model_configs WHERE id = ?", (model_id,)
+            )
+            row = await cursor.fetchone()
+
+            if not row:
+                return {"success": False, "message": "模型不存在"}
+
+            api_key, name, provider_id, base_url, model_name, is_enabled = row
+
+            if not api_key:
+                return {"success": False, "message": "请先配置 API 密钥"}
+
+            if not is_enabled:
+                return {"success": False, "message": "请先启用该模型"}
+
+            model_config = {
+                "model_id": model_id,
+                "provider_id": provider_id,
+                "base_url": base_url,
+                "api_key": decrypt_api_key(api_key),
+                "model_name": model_name,
+                "display_name": name,
+            }
+            set_active_model(model_config)
+
+            await log_service.log_audit(
+                action=AuditAction.MODEL_ENABLE,
+                resource_type="model",
+                resource_id=model_id,
+                result="SUCCESS",
+                details={"action": "set_active", "name": name},
+            )
+
+            return {"success": True, "message": f"已切换到模型: {name}"}
+    except Exception as e:
+        logger.error("Failed to set active model: %s", e)
         raise
 
 
@@ -552,7 +604,7 @@ async def test_model_by_id(model_id: str):
     from ..database import get_db
 
     try:
-        async with await get_db() as db:
+        async with get_db() as db:
             cursor = await db.execute(
                 "SELECT base_url, api_key, model_name FROM model_configs WHERE id = ?",
                 (model_id,),
@@ -599,8 +651,8 @@ async def _perform_test(base_url: str, api_key: str, model_name: str) -> dict:
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
     payload = {
         "model": model_name,
-        "messages": [{"role": "user", "content": "你好"}],
-        "max_tokens": 50,
+        "messages": [{"role": "user", "content": "你好，请简单介绍一下你自己。"}],
+        "max_tokens": 1024,
     }
 
     try:
@@ -614,32 +666,36 @@ async def _perform_test(base_url: str, api_key: str, model_name: str) -> dict:
                 choices = data.get("choices", [])
                 if choices:
                     message = choices[0].get("message", {})
-                    content = message.get("content") or message.get("reasoning_content")
-                    if content:
+                    content = message.get("content")
+                    reasoning_content = message.get("reasoning_content")
+                    if content or reasoning_content:
                         return {
                             "success": True,
-                            "message": f"连接成功 ({latency:.2f}s)",
+                            "message": f"连接成功 ({latency:.3f}s)",
                             "latency": latency,
                             "response": content,
+                            "reasoning": reasoning_content,
                         }
                 return {
                     "success": True,
-                    "message": f"连接成功 ({latency:.2f}s) - 无内容返回",
+                    "message": f"连接成功 ({latency:.3f}s) - 无内容返回",
                     "latency": latency,
                     "response": None,
+                    "reasoning": None,
                 }
             else:
                 return {
                     "success": False,
                     "message": f"HTTP {response.status_code}",
                     "response": None,
+                    "reasoning": None,
                 }
     except httpx.TimeoutException:
-        return {"success": False, "message": "连接超时", "response": None}
+        return {"success": False, "message": "连接超时", "response": None, "reasoning": None}
     except httpx.ConnectError:
-        return {"success": False, "message": "无法连接服务器", "response": None}
+        return {"success": False, "message": "无法连接服务器", "response": None, "reasoning": None}
     except Exception as e:
-        return {"success": False, "message": str(e), "response": None}
+        return {"success": False, "message": str(e), "response": None, "reasoning": None}
 
 
 @router.get("/active", response_model=Optional[ModelConfig])
@@ -647,7 +703,7 @@ async def get_active_model():
     from ..database import get_db
 
     try:
-        async with await get_db() as db:
+        async with get_db() as db:
             cursor = await db.execute(
                 """SELECT id, provider_id, name, base_url, api_key, model_name,
                           custom_model_name, model_type, max_tokens, temperature,

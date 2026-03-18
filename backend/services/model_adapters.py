@@ -71,19 +71,18 @@ class StreamChunk:
 
 PROVIDER_CONFIGS: dict[str, ProviderDiffConfig] = {
     "deepseek": ProviderDiffConfig(
-        request_diff=RequestDiff(),
-        response_diff=ResponseDiff(),
-    ),
-    "deepseek-reasoner": ProviderDiffConfig(
         request_diff=RequestDiff(
-            remove_fields=["temperature", "top_p", "presence_penalty", "frequency_penalty", "logprobs"],
+            remove_fields=["temperature", "top_p", "presence_penalty", "frequency_penalty", "logprobs", "top_logprobs"],
         ),
         response_diff=ResponseDiff(
             reasoning_field="reasoning_content",
         ),
     ),
     "kimi": ProviderDiffConfig(
-        request_diff=RequestDiff(),
+        request_diff=RequestDiff(
+            remove_fields=["temperature", "top_p", "n", "presence_penalty", "frequency_penalty"],
+            rename_fields={"max_tokens": "max_completion_tokens"},
+        ),
         response_diff=ResponseDiff(),
     ),
     "kimi-k2.5": ProviderDiffConfig(

@@ -95,13 +95,15 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
 }
 
 export function getModelCapabilities(modelName: string): ModelCapabilities {
-  return MODEL_CAPABILITIES[modelName.toLowerCase()] || {
-    toolCall: false,
-    reasoning: false,
-    webSearch: false,
-    multimodal: false,
-    imageRecognition: false,
-  }
+  return (
+    MODEL_CAPABILITIES[modelName.toLowerCase()] || {
+      toolCall: false,
+      reasoning: false,
+      webSearch: false,
+      multimodal: false,
+      imageRecognition: false,
+    }
+  )
 }
 
 /** 颜色常量 */

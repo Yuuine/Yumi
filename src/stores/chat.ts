@@ -15,6 +15,9 @@ export const useChatStore = defineStore('chat', () => {
   const isStreaming = ref(false)
   const streamingContent = ref('')
   const abortController = ref<AbortController | null>(null)
+  const historyPage = ref(0)
+  const hasMoreHistory = ref(true)
+  const pageSize = 20
 
   const recentMessages = computed(() => {
     return messages.value.slice(-20)
@@ -207,11 +210,41 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  async function loadMoreMessages(): Promise<boolean> {
+    if (!hasMoreHistory.value) return false
+
+    try {
+      historyPage.value++
+      const offset = historyPage.value * pageSize
+      const history = await chatApi.getHistory(currentUserId.value, pageSize, offset)
+
+      if (history.messages.length === 0) {
+        hasMoreHistory.value = false
+        return false
+      }
+
+      const olderMessages = history.messages.reverse()
+      messages.value = [...olderMessages, ...messages.value]
+
+      if (history.messages.length < pageSize) {
+        hasMoreHistory.value = false
+      }
+
+      return hasMoreHistory.value
+    } catch (error) {
+      logger.error('ChatStore', 'Failed to load more messages', error)
+      historyPage.value--
+      return false
+    }
+  }
+
   function clearMessages(): void {
     messages.value = []
     conversationCount.value = 0
     lastError.value = null
     streamingContent.value = ''
+    historyPage.value = 0
+    hasMoreHistory.value = true
   }
 
   function clearError(): void {
@@ -228,10 +261,12 @@ export const useChatStore = defineStore('chat', () => {
     streamingContent,
     recentMessages,
     userMessages,
+    hasMoreHistory,
     sendMessage,
     sendMessageStream,
     stopStreaming,
     loadHistory,
+    loadMoreMessages,
     clearMessages,
     clearError,
   }

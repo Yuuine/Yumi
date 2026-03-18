@@ -16,12 +16,14 @@ import re
 import sys
 import uuid
 from contextvars import ContextVar
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
 from pathlib import Path
 from typing import Any
 
 request_id_var: ContextVar[str | None] = ContextVar("request_id", default=None)
+
+BEIJING_TZ = timezone(timedelta(hours=8))
 
 
 SENSITIVE_PATTERNS = [
@@ -50,7 +52,7 @@ class StructuredFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         log_data: dict[str, Any] = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(BEIJING_TZ).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": filter_sensitive_info(record.getMessage()),
@@ -82,7 +84,7 @@ class HumanReadableFormatter(logging.Formatter):
         request_id = request_id_var.get()
         request_part = f"[{request_id[:8]}] " if request_id else ""
         message = filter_sensitive_info(record.getMessage())
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = datetime.now(BEIJING_TZ).strftime("%Y-%m-%d %H:%M:%S")
         return f"{timestamp} | {record.levelname:8} | {record.name:30} | {request_part}{message}"
 
 

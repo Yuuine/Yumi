@@ -6,9 +6,9 @@ export const chatApi = {
     return httpClient.post<ChatResponse>('/chat', request)
   },
 
-  async getHistory(userId: string, limit = 50): Promise<ChatHistory> {
+  async getHistory(userId: string, limit = 50, offset = 0): Promise<ChatHistory> {
     return httpClient.get<ChatHistory>('/chat/history', {
-      params: { userId, limit },
+      params: { userId, limit, offset },
     })
   },
 }

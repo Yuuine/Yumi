@@ -1,4 +1,10 @@
-import type { ModelConfig, ModelTestRequest, ModelTestResponse, ModelType, TestStatus } from '@/types'
+import type {
+  ModelConfig,
+  ModelTestRequest,
+  ModelTestResponse,
+  ModelType,
+  TestStatus,
+} from '@/types'
 import { httpClient } from './http-client'
 
 export const modelsApi = {
@@ -33,6 +39,10 @@ export const modelsApi = {
 
   async disableModel(modelId: string): Promise<{ success: boolean; message: string }> {
     return httpClient.post(`/models/${modelId}/disable`)
+  },
+
+  async setActiveModel(modelId: string): Promise<{ success: boolean; message: string }> {
+    return httpClient.post(`/models/${modelId}/set_active`)
   },
 
   async testModel(request: ModelTestRequest): Promise<ModelTestResponse> {

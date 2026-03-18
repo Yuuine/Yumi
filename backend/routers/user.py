@@ -35,7 +35,7 @@ class UserProfile(BaseModel):
 async def get_user_profile(userId: str, req: Request):
     from ..database import get_db
 
-    async with await get_db() as db:
+    async with get_db() as db:
         cursor = await db.execute(
             """SELECT id, role_name, big_five_json, preferences_json 
                FROM users WHERE id = ?""",
@@ -61,7 +61,7 @@ async def get_user_profile(userId: str, req: Request):
 async def update_user_profile(profile: UserProfile, req: Request):
     from ..database import get_db
 
-    async with await get_db() as db:
+    async with get_db() as db:
         await db.execute(
             """INSERT OR REPLACE INTO users (id, role_name, big_five_json, preferences_json, updated_at)
                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)""",

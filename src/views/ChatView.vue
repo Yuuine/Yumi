@@ -3,7 +3,12 @@
     <SidebarNav @open-models="openModelsModal" @open-settings="openSettingsModal" />
 
     <div class="chat-main">
-      <MessageList ref="messageListRef" :messages="chatStore.messages" @copy="handleCopy" />
+      <MessageList
+        ref="messageListRef"
+        :messages="chatStore.messages"
+        @copy="handleCopy"
+        @load-more="handleLoadMore"
+      />
     </div>
 
     <ChatInput @send="handleSend" :disabled="chatStore.isLoading" />
@@ -34,6 +39,14 @@ function handleCopy(content: string) {
   window.navigator.clipboard.writeText(content)
 }
 
+async function handleLoadMore() {
+  const hasMore = await chatStore.loadMoreMessages()
+  if (messageListRef.value) {
+    messageListRef.value.setHasMoreHistory(hasMore)
+    messageListRef.value.setLoadingMore(false)
+  }
+}
+
 function openModelsModal() {
   showModelsModal.value = true
 }
@@ -57,5 +70,13 @@ function closeSettingsModal() {
   flex-direction: column;
   height: 100vh;
   background: #ffffff;
+
+  .chat-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+  }
 }
 </style>

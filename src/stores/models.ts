@@ -112,7 +112,10 @@ export const useModelsStore = defineStore('models', () => {
   /**
    * 静默更新模型（不触发全局加载状态）
    */
-  async function updateModelSilent(modelId: string, config: Partial<ModelConfig>): Promise<ModelConfig> {
+  async function updateModelSilent(
+    modelId: string,
+    config: Partial<ModelConfig>
+  ): Promise<ModelConfig> {
     try {
       const updatedModel = await modelsApi.updateModel(modelId, config)
       updateModelInList(modelId, updatedModel)
@@ -163,7 +166,6 @@ export const useModelsStore = defineStore('models', () => {
       const result = await modelsApi.enableModel(modelId)
       if (result.success) {
         updateModelInList(modelId, { isEnabled: true })
-        await loadActiveModel()
       }
       return result
     } catch (error) {
@@ -180,7 +182,9 @@ export const useModelsStore = defineStore('models', () => {
       const result = await modelsApi.disableModel(modelId)
       if (result.success) {
         updateModelInList(modelId, { isEnabled: false })
-        await loadActiveModel()
+        if (activeModel.value?.id === modelId) {
+          activeModel.value = null
+        }
       }
       return result
     } catch (error) {
@@ -241,13 +245,14 @@ export const useModelsStore = defineStore('models', () => {
       return false
     }
 
+    if (!model.isEnabled) {
+      logger.error('ModelsStore', 'Model is not enabled', { modelId })
+      return false
+    }
+
     try {
-      const result = await modelsApi.enableModel(modelId)
+      const result = await modelsApi.setActiveModel(modelId)
       if (result.success) {
-        const targetModel = models.value.find(m => m.id === modelId)
-        if (targetModel) {
-          targetModel.isEnabled = true
-        }
         activeModel.value = model
         logger.info('ModelsStore', 'Model switched', { modelName: model.name })
         return true

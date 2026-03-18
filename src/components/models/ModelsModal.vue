@@ -10,7 +10,12 @@
                 <IconAdd class="btn-icon" />
                 <span>添加</span>
               </button>
-              <button class="close-btn" @click="handleClose" aria-label="关闭" :disabled="isTestingModel">
+              <button
+                class="close-btn"
+                @click="handleClose"
+                aria-label="关闭"
+                :disabled="isTestingModel"
+              >
                 <IconClose />
               </button>
             </div>
@@ -35,18 +40,29 @@
                 <div class="card-left">
                   <div class="model-name">{{ model.name }}</div>
                   <div class="model-tags">
-                    <span class="tag tag-provider">{{ providerNames[model.providerId] || model.providerId }}</span>
+                    <span class="tag tag-provider">
+                      {{ providerNames[model.providerId] || model.providerId }}
+                    </span>
                     <span class="tag tag-model">{{ model.modelName }}</span>
                     <span v-if="getCapabilities(model.modelName).toolCall" class="tag tag-tool">
                       工具调用
                     </span>
-                    <span v-if="getCapabilities(model.modelName).reasoning" class="tag tag-reasoning">
+                    <span
+                      v-if="getCapabilities(model.modelName).reasoning"
+                      class="tag tag-reasoning"
+                    >
                       推理模式
                     </span>
-                    <span v-if="getCapabilities(model.modelName).webSearch" class="tag tag-websearch">
+                    <span
+                      v-if="getCapabilities(model.modelName).webSearch"
+                      class="tag tag-websearch"
+                    >
                       联网搜索
                     </span>
-                    <span v-if="getCapabilities(model.modelName).multimodal" class="tag tag-multimodal">
+                    <span
+                      v-if="getCapabilities(model.modelName).multimodal"
+                      class="tag tag-multimodal"
+                    >
                       多模态
                     </span>
                     <span v-if="model.isEnabled" class="tag tag-enabled">已启用</span>
@@ -81,7 +97,11 @@
                     <IconSuccess v-else :stroke-width="1.5" />
                     <span>{{ model.isEnabled ? '禁用' : '启用' }}</span>
                   </button>
-                  <button class="action-btn delete-btn" @click="handleDelete(model.id)" :disabled="isTestingModel">
+                  <button
+                    class="action-btn delete-btn"
+                    @click="handleDelete(model.id)"
+                    :disabled="isTestingModel"
+                  >
                     <IconDelete :stroke-width="1.5" />
                     <span>删除</span>
                   </button>
@@ -241,15 +261,24 @@
                 <span>{{ modelsStore.testResult.message }}</span>
               </div>
 
+              <div v-if="modelsStore.testResult.reasoning" class="test-reasoning">
+                <div class="reasoning-label">思考过程:</div>
+                <div class="reasoning-content">
+                  {{ modelsStore.testResult.reasoning }}
+                </div>
+              </div>
+
               <div v-if="modelsStore.testResult.response" class="test-response">
                 <div class="response-label">模型响应:</div>
                 <div class="response-content">
-                  <MarkdownRenderer :content="formatTestResponse(modelsStore.testResult.response)" />
+                  <MarkdownRenderer
+                    :content="formatTestResponse(modelsStore.testResult.response)"
+                  />
                 </div>
               </div>
 
               <div v-if="modelsStore.testResult.latency" class="test-latency">
-                响应时间: {{ modelsStore.testResult.latency }}秒
+                响应时间: {{ modelsStore.testResult.latency.toFixed(3) }}秒
               </div>
             </div>
           </div>
@@ -428,6 +457,7 @@ function handleEdit(model: ModelConfig) {
   formData.name = model.name
   formData.baseUrl = model.baseUrl
   formData.apiKey = model.apiKey
+  formData.modelName = model.modelName
   originalApiKey.value = model.apiKey
   apiKeyChanged.value = false
   formDialogVisible.value = true
@@ -1155,6 +1185,31 @@ onUnmounted(() => {
     &.error {
       background: #fee2e2;
       color: #ef4444;
+    }
+  }
+
+  .test-reasoning {
+    margin-top: 16px;
+
+    .reasoning-label {
+      font-size: var(--font-size-xs);
+      font-weight: 500;
+      color: #999999;
+      margin-bottom: 8px;
+    }
+
+    .reasoning-content {
+      background: #fafafa;
+      border: 1px solid #e8e8e8;
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 12px;
+      color: #333333;
+      line-height: 1.6;
+      max-height: 300px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
     }
   }
 

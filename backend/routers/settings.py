@@ -26,7 +26,7 @@ class AppSettings(BaseModel):
 async def get_settings(req: Request):
     from ..database import get_db
 
-    async with await get_db() as db:
+    async with get_db() as db:
         cursor = await db.execute("SELECT key, value FROM settings")
         rows = await cursor.fetchall()
 
@@ -49,7 +49,7 @@ async def get_settings(req: Request):
 async def update_settings(settings: AppSettings, req: Request):
     from ..database import get_db
 
-    async with await get_db() as db:
+    async with get_db() as db:
         settings_dict = settings.dict()
         for key, value in settings_dict.items():
             await db.execute(
