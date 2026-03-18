@@ -1,3 +1,3 @@
 fn main() {
-    yumi_lib::run()
+    yumi_lib::run();
 }

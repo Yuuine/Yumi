@@ -3,7 +3,7 @@ pub struct TrayIcon;
 
 #[allow(dead_code)]
 impl TrayIcon {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self
     }
 }

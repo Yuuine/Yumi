@@ -3,8 +3,9 @@ Tests for chat router
 """
 from __future__ import annotations
 
-import pytest
 from unittest.mock import AsyncMock, patch
+
+import pytest
 
 
 class TestChatRouter:
@@ -21,7 +22,7 @@ class TestChatRouter:
         from fastapi import FastAPI
         from httpx import ASGITransport, AsyncClient
 
-        from backend.routers.chat import ChatRequest, ChatResponse, router
+        from backend.routers.chat import router
 
         app = FastAPI()
         app.state.memory_engine = mock_memory_engine

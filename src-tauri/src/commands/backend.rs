@@ -12,27 +12,23 @@ pub struct BackendStatus {
 }
 
 #[tauri::command]
-pub async fn start_backend(
-    backend: State<'_, Mutex<BackendProcess>>,
-) -> Result<BackendStatus> {
+pub async fn start_backend(backend: State<'_, Mutex<BackendProcess>>) -> Result<BackendStatus> {
     let mut process = backend.lock().map_err(|e| e.to_string())?;
     process.start()?;
-    
+
     Ok(BackendStatus {
-        running: process.is_running(),
+        running: BackendProcess::is_running(),
         port: process.port(),
     })
 }
 
 #[tauri::command]
-pub async fn stop_backend(
-    backend: State<'_, Mutex<BackendProcess>>,
-) -> Result<BackendStatus> {
+pub async fn stop_backend(backend: State<'_, Mutex<BackendProcess>>) -> Result<BackendStatus> {
     let mut process = backend.lock().map_err(|e| e.to_string())?;
     process.stop()?;
-    
+
     Ok(BackendStatus {
-        running: process.is_running(),
+        running: BackendProcess::is_running(),
         port: process.port(),
     })
 }
@@ -42,9 +38,9 @@ pub async fn get_backend_status(
     backend: State<'_, Mutex<BackendProcess>>,
 ) -> Result<BackendStatus> {
     let process = backend.lock().map_err(|e| e.to_string())?;
-    
+
     Ok(BackendStatus {
-        running: process.is_running(),
+        running: BackendProcess::is_running(),
         port: process.port(),
     })
 }

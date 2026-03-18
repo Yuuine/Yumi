@@ -11,7 +11,7 @@ use crate::error::Result;
 static CLIENT: std::sync::OnceLock<Client> = std::sync::OnceLock::new();
 
 fn get_client() -> &'static Client {
-    CLIENT.get_or_init(|| Client::new())
+    CLIENT.get_or_init(Client::new)
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -39,7 +39,11 @@ pub async fn proxy_request(
     };
 
     let client = get_client();
-    let url = format!("http://127.0.0.1:{}{}", port, request.path);
+    let url = format!(
+        "http://127.0.0.1:{port}{path}",
+        port = port,
+        path = request.path
+    );
 
     let response = match request.method.to_uppercase().as_str() {
         "GET" => {
@@ -49,34 +53,17 @@ pub async fn proxy_request(
             }
             req.send().await
         }
-        "POST" => {
-            client
-                .post(&url)
-                .json(&request.body)
-                .send()
-                .await
-        }
-        "PUT" => {
-            client
-                .put(&url)
-                .json(&request.body)
-                .send()
-                .await
-        }
-        "DELETE" => {
-            client.delete(&url).send().await
-        }
+        "POST" => client.post(&url).json(&request.body).send().await,
+        "PUT" => client.put(&url).json(&request.body).send().await,
+        "DELETE" => client.delete(&url).send().await,
         _ => {
             return Err(format!("Unsupported HTTP method: {}", request.method).into());
         }
     }
-    .map_err(|e| format!("Request failed: {}", e))?;
+    .map_err(|e| format!("Request failed: {e}"))?;
 
     let status = response.status().as_u16();
-    let body = response
-        .json()
-        .await
-        .unwrap_or_else(|_| Value::Null);
+    let body = response.json().await.unwrap_or(Value::Null);
 
     Ok(ProxyResponse { status, body })
 }

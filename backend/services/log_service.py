@@ -8,7 +8,7 @@ import hashlib
 import json
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 from ..core.logging import get_logger, request_id_var
 from ..database import get_db
@@ -41,7 +41,7 @@ class LogService:
     """统一日志服务"""
 
     @staticmethod
-    def _get_trace_id() -> Optional[str]:
+    def _get_trace_id() -> str | None:
         """获取当前请求的 trace_id"""
         try:
             return request_id_var.get()
@@ -57,12 +57,12 @@ class LogService:
     async def log_user_action(
         action: str,
         resource_type: str,
-        resource_id: Optional[str] = None,
+        resource_id: str | None = None,
         result: str = "SUCCESS",
-        user_id: Optional[str] = None,
-        session_id: Optional[str] = None,
-        duration_ms: Optional[float] = None,
-        extra: Optional[dict[str, Any]] = None,
+        user_id: str | None = None,
+        session_id: str | None = None,
+        duration_ms: float | None = None,
+        extra: dict[str, Any] | None = None,
     ) -> None:
         """记录用户操作日志"""
         trace_id = LogService._get_trace_id()
@@ -94,7 +94,7 @@ class LogService:
         try:
             async with get_db() as db:
                 await db.execute(
-                    """INSERT INTO system_logs 
+                    """INSERT INTO system_logs
                        (timestamp, level, event_type, trace_id, user_id, session_id, content)
                        VALUES (?, ?, ?, ?, ?, ?, ?)""",
                     (
@@ -113,15 +113,15 @@ class LogService:
 
     @staticmethod
     async def log_ai_interaction(
-        conversation_id: Optional[str],
-        message_id: Optional[str],
+        conversation_id: str | None,
+        message_id: str | None,
         role: str,
         content: str,
-        emotion: Optional[dict[str, Any]] = None,
-        model_info: Optional[dict[str, Any]] = None,
-        latency_ms: Optional[float] = None,
-        user_id: Optional[str] = None,
-        session_id: Optional[str] = None,
+        emotion: dict[str, Any] | None = None,
+        model_info: dict[str, Any] | None = None,
+        latency_ms: float | None = None,
+        user_id: str | None = None,
+        session_id: str | None = None,
     ) -> None:
         """记录 AI 交互日志"""
         trace_id = LogService._get_trace_id()
@@ -155,7 +155,7 @@ class LogService:
         try:
             async with get_db() as db:
                 await db.execute(
-                    """INSERT INTO system_logs 
+                    """INSERT INTO system_logs
                        (timestamp, level, event_type, trace_id, user_id, session_id, content)
                        VALUES (?, ?, ?, ?, ?, ?, ?)""",
                     (
@@ -179,9 +179,9 @@ class LogService:
         endpoint: str,
         status_code: int,
         latency_ms: float,
-        request_tokens: Optional[int] = None,
-        response_tokens: Optional[int] = None,
-        error: Optional[str] = None,
+        request_tokens: int | None = None,
+        response_tokens: int | None = None,
+        error: str | None = None,
         retry_count: int = 0,
     ) -> None:
         """记录 API 调用日志"""
@@ -224,7 +224,7 @@ class LogService:
         try:
             async with get_db() as db:
                 await db.execute(
-                    """INSERT INTO system_logs 
+                    """INSERT INTO system_logs
                        (timestamp, level, event_type, trace_id, content)
                        VALUES (?, ?, ?, ?, ?)""",
                     (
@@ -243,11 +243,11 @@ class LogService:
     async def log_audit(
         action: AuditAction,
         resource_type: str,
-        resource_id: Optional[str],
+        resource_id: str | None,
         result: str,
-        user_id: Optional[str] = None,
-        client_ip: Optional[str] = None,
-        details: Optional[dict[str, Any]] = None,
+        user_id: str | None = None,
+        client_ip: str | None = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         """记录审计日志"""
         trace_id = LogService._get_trace_id()
@@ -278,7 +278,7 @@ class LogService:
         try:
             async with get_db() as db:
                 await db.execute(
-                    """INSERT INTO audit_logs 
+                    """INSERT INTO audit_logs
                        (timestamp, user_id, action, resource_type, resource_id, result, client_ip, details)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                     (

@@ -9,14 +9,13 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 import httpx
 from cryptography.fernet import Fernet
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from ..core import get_logger, set_active_model, clear_active_model
+from ..core import clear_active_model, get_logger, set_active_model
 from ..services.log_service import AuditAction, log_service
 
 router = APIRouter()
@@ -70,24 +69,24 @@ def _get_fernet() -> Fernet:
 
 
 class ModelConfig(BaseModel):
-    id: Optional[str] = None
+    id: str | None = None
     providerId: str = "custom"
     name: str
     baseUrl: str
     apiKey: str = ""
     modelName: str
-    customModelName: Optional[str] = None
+    customModelName: str | None = None
     modelType: str = "text"
     maxTokens: int = 4096
     temperature: float = 0.85
     isEnabled: bool = False
     isTested: bool = False
     testStatus: str = "untested"
-    lastTestAt: Optional[str] = None
-    lastTestMessage: Optional[str] = None
+    lastTestAt: str | None = None
+    lastTestMessage: str | None = None
     editCount: int = 0
-    createdAt: Optional[str] = None
-    updatedAt: Optional[str] = None
+    createdAt: str | None = None
+    updatedAt: str | None = None
     apiKeyUnchanged: bool = False
 
 
@@ -95,15 +94,15 @@ class ModelTestRequest(BaseModel):
     baseUrl: str
     apiKey: str
     modelName: str
-    testMessage: Optional[str] = "你好，请简单介绍一下你自己。"
+    testMessage: str | None = "你好，请简单介绍一下你自己。"
     verbose: bool = True
 
 
 class ModelTestResponse(BaseModel):
     success: bool
     message: str
-    response: Optional[str] = None
-    latency: Optional[float] = None
+    response: str | None = None
+    latency: float | None = None
 
 
 def encrypt_api_key(api_key: str) -> str:
@@ -198,9 +197,9 @@ async def create_model(config: ModelConfig):
     try:
         async with get_db() as db:
             await db.execute(
-                """INSERT INTO model_configs 
-                   (id, provider_id, name, base_url, api_key, model_name, 
-                    custom_model_name, model_type, max_tokens, temperature, 
+                """INSERT INTO model_configs
+                   (id, provider_id, name, base_url, api_key, model_name,
+                    custom_model_name, model_type, max_tokens, temperature,
                     is_enabled, is_tested, test_status, edit_count, created_at, updated_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
@@ -305,8 +304,8 @@ async def update_model(model_id: str, config: ModelConfig):
                 api_key_to_save = encrypt_api_key(config.apiKey)
 
             await db.execute(
-                """UPDATE model_configs 
-                   SET provider_id = ?, name = ?, base_url = ?, api_key = ?, 
+                """UPDATE model_configs
+                   SET provider_id = ?, name = ?, base_url = ?, api_key = ?,
                        model_name = ?, custom_model_name = ?, model_type = ?,
                        max_tokens = ?, temperature = ?, is_enabled = ?,
                        edit_count = ?, updated_at = ?
@@ -639,8 +638,8 @@ async def test_model_by_id(model_id: str, request: ModelTestByIdRequest = None):
             now = datetime.utcnow().isoformat()
 
             await db.execute(
-                """UPDATE model_configs 
-                   SET is_tested = ?, test_status = ?, last_test_at = ?, 
+                """UPDATE model_configs
+                   SET is_tested = ?, test_status = ?, last_test_at = ?,
                        last_test_message = ?, updated_at = ?
                    WHERE id = ?""",
                 (
@@ -732,7 +731,7 @@ async def _perform_test(
         return {"success": False, "message": f"测试失败: {str(e)}", "response": None, "reasoning": None}
 
 
-@router.get("/active", response_model=Optional[ModelConfig])
+@router.get("/active", response_model=ModelConfig | None)
 async def get_active_model():
     from ..database import get_db
 

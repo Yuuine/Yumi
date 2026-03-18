@@ -32,6 +32,9 @@ ignore = [
     "B008",   # do not perform function calls in argument defaults
     "B905",   # zip without explicit strict
     "ARG001", # unused function argument
+    "ARG002", # unused method argument
+    "B904",   # raise from err
+    "SIM105", # contextlib.suppress
 ]
 
 [tool.ruff.lint.isort]

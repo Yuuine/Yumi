@@ -7,13 +7,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .core import settings, setup_exception_handlers
-from .core.logging import YumiLogger, get_logger
 from .core.lifecycle import get_lifecycle_manager
+from .core.logging import YumiLogger, get_logger
 from .core.middleware import RequestTracingMiddleware, SlowRequestMiddleware
 from .database import init_db
-from .routers import chat, logs, memory, user
+from .routers import chat, logs, memory, models, user
 from .routers import settings as settings_router
-from .routers import models
 from .services.emotion import EmotionEngine
 from .services.llm import LLMService
 from .services.memory import MemoryEngine

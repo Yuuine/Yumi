@@ -9,7 +9,6 @@ import gzip
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional
 
 from .config import settings
 from .logging import get_logger
@@ -24,11 +23,11 @@ class LogLifecycleManager:
     WARM_STORAGE_DAYS = 30
     COLD_STORAGE_DAYS = 365
 
-    def __init__(self, db_path: Optional[Path] = None, archive_dir: Optional[Path] = None):
+    def __init__(self, db_path: Path | None = None, archive_dir: Path | None = None):
         self.db_path = db_path or settings.database.full_path
         self.archive_dir = archive_dir or (settings.database.full_path.parent / "log_archives")
         self._running = False
-        self._task: Optional[asyncio.Task] = None
+        self._task: asyncio.Task | None = None
 
     async def start(self) -> None:
         """启动生命周期管理任务"""
@@ -181,7 +180,7 @@ class LogLifecycleManager:
         return result
 
 
-_lifecycle_manager: Optional[LogLifecycleManager] = None
+_lifecycle_manager: LogLifecycleManager | None = None
 
 
 def get_lifecycle_manager() -> LogLifecycleManager:

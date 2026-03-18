@@ -11,13 +11,12 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 import sys
 import uuid
 from contextvars import ContextVar
-from datetime import datetime, timezone, timedelta
-from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
+from datetime import datetime, timedelta, timezone
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any
 

@@ -5,15 +5,10 @@ Cached Memory Engine - 优化的记忆引擎
 from __future__ import annotations
 
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 
-import chromadb
-import numpy as np
-
-from ..core import MemoryException, get_logger, get_lru_cache, settings
+from ..core import get_logger, get_lru_cache
 from .memory import MemoryEngine
-
 
 logger = get_logger(__name__)
 

@@ -3,9 +3,10 @@ Database initialization and configuration
 """
 from __future__ import annotations
 
-import aiosqlite
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
+
+import aiosqlite
 
 from .core import get_logger, settings
 

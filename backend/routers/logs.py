@@ -7,11 +7,10 @@ import json
 import re
 from datetime import datetime, timedelta
 from io import BytesIO
-from typing import Optional
 
 from fastapi import APIRouter, Query
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from ..core import get_logger
 from ..database import get_db
@@ -40,28 +39,28 @@ class LogEntry(BaseModel):
     timestamp: str
     level: str
     event_type: str
-    trace_id: Optional[str] = None
-    user_id: Optional[str] = None
-    session_id: Optional[str] = None
+    trace_id: str | None = None
+    user_id: str | None = None
+    session_id: str | None = None
     content: str
 
 
 class AuditLogEntry(BaseModel):
     id: int
     timestamp: str
-    user_id: Optional[str] = None
+    user_id: str | None = None
     action: str
     resource_type: str
-    resource_id: Optional[str] = None
+    resource_id: str | None = None
     result: str
-    client_ip: Optional[str] = None
-    details: Optional[dict] = None
+    client_ip: str | None = None
+    details: dict | None = None
 
 
 class LogQueryResponse(BaseModel):
     total: int
     items: list[LogEntry]
-    aggregations: Optional[dict] = None
+    aggregations: dict | None = None
 
 
 class AuditLogQueryResponse(BaseModel):
@@ -79,13 +78,13 @@ class LogStatsResponse(BaseModel):
 
 @router.get("/logs", response_model=LogQueryResponse)
 async def query_logs(
-    start_time: Optional[str] = Query(None, description="开始时间 (ISO8601)"),
-    end_time: Optional[str] = Query(None, description="结束时间 (ISO8601)"),
-    level: Optional[str] = Query(None, description="日志级别"),
-    event_type: Optional[str] = Query(None, description="事件类型"),
-    trace_id: Optional[str] = Query(None, description="追踪ID"),
-    user_id: Optional[str] = Query(None, description="用户ID"),
-    keyword: Optional[str] = Query(None, description="关键词搜索"),
+    start_time: str | None = Query(None, description="开始时间 (ISO8601)"),
+    end_time: str | None = Query(None, description="结束时间 (ISO8601)"),
+    level: str | None = Query(None, description="日志级别"),
+    event_type: str | None = Query(None, description="事件类型"),
+    trace_id: str | None = Query(None, description="追踪ID"),
+    user_id: str | None = Query(None, description="用户ID"),
+    keyword: str | None = Query(None, description="关键词搜索"),
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(50, ge=1, le=200, description="每页数量"),
 ):
@@ -192,12 +191,12 @@ async def query_logs(
 
 @router.get("/logs/audit", response_model=AuditLogQueryResponse)
 async def query_audit_logs(
-    start_time: Optional[str] = Query(None, description="开始时间 (ISO8601)"),
-    end_time: Optional[str] = Query(None, description="结束时间 (ISO8601)"),
-    user_id: Optional[str] = Query(None, description="用户ID"),
-    action: Optional[str] = Query(None, description="操作类型"),
-    resource_type: Optional[str] = Query(None, description="资源类型"),
-    result: Optional[str] = Query(None, description="结果"),
+    start_time: str | None = Query(None, description="开始时间 (ISO8601)"),
+    end_time: str | None = Query(None, description="结束时间 (ISO8601)"),
+    user_id: str | None = Query(None, description="用户ID"),
+    action: str | None = Query(None, description="操作类型"),
+    resource_type: str | None = Query(None, description="资源类型"),
+    result: str | None = Query(None, description="结果"),
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(50, ge=1, le=200, description="每页数量"),
 ):
@@ -327,10 +326,10 @@ async def get_log_stats():
 
 @router.get("/logs/export")
 async def export_logs(
-    start_time: Optional[str] = Query(None, description="开始时间 (ISO8601)"),
-    end_time: Optional[str] = Query(None, description="结束时间 (ISO8601)"),
-    level: Optional[str] = Query(None, description="日志级别"),
-    event_type: Optional[str] = Query(None, description="事件类型"),
+    start_time: str | None = Query(None, description="开始时间 (ISO8601)"),
+    end_time: str | None = Query(None, description="结束时间 (ISO8601)"),
+    level: str | None = Query(None, description="日志级别"),
+    event_type: str | None = Query(None, description="事件类型"),
     sanitize: bool = Query(True, description="是否脱敏处理"),
 ):
     """导出日志文件"""
@@ -405,9 +404,9 @@ async def export_logs(
 
 @router.get("/logs/audit/export")
 async def export_audit_logs(
-    start_time: Optional[str] = Query(None, description="开始时间 (ISO8601)"),
-    end_time: Optional[str] = Query(None, description="结束时间 (ISO8601)"),
-    action: Optional[str] = Query(None, description="操作类型"),
+    start_time: str | None = Query(None, description="开始时间 (ISO8601)"),
+    end_time: str | None = Query(None, description="结束时间 (ISO8601)"),
+    action: str | None = Query(None, description="操作类型"),
     sanitize: bool = Query(True, description="是否脱敏处理"),
 ):
     """导出审计日志文件"""

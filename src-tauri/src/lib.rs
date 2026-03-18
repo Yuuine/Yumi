@@ -4,12 +4,16 @@ mod error;
 mod tray;
 
 use std::sync::Mutex;
+
 use tauri::Manager;
 
 use crate::backend::BackendProcess;
-use crate::commands::backend::*;
-use crate::commands::proxy::*;
+use crate::commands::backend::{get_backend_status, start_backend, stop_backend};
+use crate::commands::proxy::proxy_request;
 
+/// # Panics
+/// This function will panic if the Tauri application fails to run.
+#[allow(clippy::expect_used)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())

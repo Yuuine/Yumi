@@ -6,12 +6,11 @@ from __future__ import annotations
 
 import json
 import threading
-import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from ..core import get_logger, settings
+from ..core import get_logger
 
 logger = get_logger(__name__)
 

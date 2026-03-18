@@ -4,14 +4,12 @@ LLM Service - 使用配置驱动适配器支持多种模型提供商
 from __future__ import annotations
 
 import json
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 from ..core import LLMException, get_logger, settings
 from .model_adapters import (
-    ChatResponse,
     ModelConfig,
     OpenAICompatibleAdapter,
-    StreamChunk,
     create_adapter,
 )
 

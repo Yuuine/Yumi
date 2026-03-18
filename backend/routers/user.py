@@ -37,7 +37,7 @@ async def get_user_profile(userId: str, req: Request):
 
     async with get_db() as db:
         cursor = await db.execute(
-            """SELECT id, role_name, big_five_json, preferences_json 
+            """SELECT id, role_name, big_five_json, preferences_json
                FROM users WHERE id = ?""",
             (userId,)
         )
