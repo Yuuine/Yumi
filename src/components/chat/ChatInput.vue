@@ -94,7 +94,7 @@ const switchingModelId = ref<string | null>(null)
 const hasContent = computed(() => inputText.value.trim().length > 0)
 
 const enabledModels = computed(() => {
-  return modelsStore.models.filter(m => m.apiKey)
+  return modelsStore.models.filter(m => m.isEnabled && m.apiKey)
 })
 
 function getProviderName(providerId: string): string {

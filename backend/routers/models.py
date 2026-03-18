@@ -452,10 +452,6 @@ async def enable_model(model_id: str):
 
             now = datetime.now(timezone.utc).isoformat()
             await db.execute(
-                "UPDATE model_configs SET is_enabled = 0, updated_at = ? WHERE is_enabled = 1",
-                (now,),
-            )
-            await db.execute(
                 "UPDATE model_configs SET is_enabled = 1, updated_at = ? WHERE id = ?",
                 (now, model_id),
             )
@@ -618,29 +614,32 @@ async def _perform_test(base_url: str, api_key: str, model_name: str) -> dict:
                 choices = data.get("choices", [])
                 if choices:
                     message = choices[0].get("message", {})
-                    has_content = message.get("content") or message.get("reasoning_content")
-                    if has_content:
+                    content = message.get("content") or message.get("reasoning_content")
+                    if content:
                         return {
                             "success": True,
                             "message": f"连接成功 ({latency:.2f}s)",
                             "latency": latency,
+                            "response": content,
                         }
                 return {
                     "success": True,
                     "message": f"连接成功 ({latency:.2f}s) - 无内容返回",
                     "latency": latency,
+                    "response": None,
                 }
             else:
                 return {
                     "success": False,
                     "message": f"HTTP {response.status_code}",
+                    "response": None,
                 }
     except httpx.TimeoutException:
-        return {"success": False, "message": "连接超时"}
+        return {"success": False, "message": "连接超时", "response": None}
     except httpx.ConnectError:
-        return {"success": False, "message": "无法连接服务器"}
+        return {"success": False, "message": "无法连接服务器", "response": None}
     except Exception as e:
-        return {"success": False, "message": str(e)}
+        return {"success": False, "message": str(e), "response": None}
 
 
 @router.get("/active", response_model=Optional[ModelConfig])

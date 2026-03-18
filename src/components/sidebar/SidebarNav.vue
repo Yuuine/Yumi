@@ -24,6 +24,7 @@
 import { ref, markRaw } from 'vue'
 import { useRouter } from 'vue-router'
 import { IconChat, IconModels } from '@/components/icons'
+import IconSettings from '@/components/icons/IconSettings.vue'
 
 interface MenuItem {
   id: string
@@ -33,6 +34,7 @@ interface MenuItem {
 
 const emit = defineEmits<{
   openModels: []
+  openSettings: []
 }>()
 
 const router = useRouter()
@@ -48,6 +50,11 @@ const menuItems: MenuItem[] = [
     id: 'models',
     label: '模型',
     icon: markRaw(IconModels),
+  },
+  {
+    id: 'settings',
+    label: '设置',
+    icon: markRaw(IconSettings),
   },
 ]
 
@@ -65,9 +72,13 @@ function handleMenuClick(menuId: string) {
     return
   }
 
+  if (menuId === 'settings') {
+    emit('openSettings')
+    return
+  }
+
   const routeMap: Record<string, string> = {
     chat: '/',
-    settings: '/settings',
   }
 
   const path = routeMap[menuId]

@@ -218,6 +218,7 @@ export const useModelsStore = defineStore('models', () => {
         success: result.success,
         message: result.message,
         latency: result.latency,
+        response: (result as { response?: string }).response,
       }
       await loadModels()
       return testResult.value
@@ -231,7 +232,7 @@ export const useModelsStore = defineStore('models', () => {
 
   /**
    * 切换活动模型
-   * 启用指定模型并自动禁用其他模型
+   * 仅设置当前活动模型，不影响其他模型的启用状态
    */
   async function switchModel(modelId: string): Promise<boolean> {
     const model = models.value.find(m => m.id === modelId)
@@ -243,9 +244,10 @@ export const useModelsStore = defineStore('models', () => {
     try {
       const result = await modelsApi.enableModel(modelId)
       if (result.success) {
-        models.value.forEach(m => {
-          m.isEnabled = m.id === modelId
-        })
+        const targetModel = models.value.find(m => m.id === modelId)
+        if (targetModel) {
+          targetModel.isEnabled = true
+        }
         activeModel.value = model
         logger.info('ModelsStore', 'Model switched', { modelName: model.name })
         return true

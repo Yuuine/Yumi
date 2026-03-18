@@ -1,72 +1,72 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
-import type { AppSettings } from '@/types'
-import { settingsApi } from '@/api/settings'
+import { ref, computed } from 'vue'
 import { logger } from '@/utils/logger'
 
+const STORAGE_KEY = 'yumi_settings'
+
+interface SettingsState {
+  showReasoning: boolean
+  theme: 'light' | 'dark'
+}
+
+const DEFAULT_SETTINGS: SettingsState = {
+  showReasoning: true,
+  theme: 'light',
+}
+
 export const useSettingsStore = defineStore('settings', () => {
-  const settings = ref<AppSettings>({
-    apiEndpoint: 'http://127.0.0.1:11434/v1',
-    apiKey: '',
-    modelName: 'llama3.1:8b',
-    maxTokens: 4096,
-    temperature: 0.85,
-    memoryEnabled: true,
-    emotionDetection: true,
-    theme: 'light',
-    language: 'zh-CN',
-  })
+  const settings = ref<SettingsState>({ ...DEFAULT_SETTINGS })
 
-  const theme = ref<'light' | 'dark'>('light')
-  const isLoading = ref(false)
-  const isLoaded = ref(false)
+  const showReasoning = computed(() => settings.value.showReasoning)
+  const theme = computed(() => settings.value.theme)
 
-  async function loadSettings() {
-    if (isLoaded.value) return
-    isLoading.value = true
+  function loadSettings() {
     try {
-      const loaded = await settingsApi.getSettings()
-      settings.value = loaded
-      theme.value = loaded.theme
-      isLoaded.value = true
+      const stored = localStorage.getItem(STORAGE_KEY)
+      if (stored) {
+        const parsed = JSON.parse(stored) as Partial<SettingsState>
+        settings.value = { ...DEFAULT_SETTINGS, ...parsed }
+        logger.info('SettingsStore', 'Settings loaded', settings.value)
+      }
     } catch (error) {
       logger.error('SettingsStore', 'Failed to load settings', error)
-    } finally {
-      isLoading.value = false
     }
   }
 
-  async function updateSettings(newSettings: Partial<AppSettings>) {
-    isLoading.value = true
+  function saveSettings() {
     try {
-      const updated = await settingsApi.updateSettings({
-        ...settings.value,
-        ...newSettings,
-      })
-      settings.value = updated
-      if (newSettings.theme) {
-        theme.value = newSettings.theme
-      }
-      return updated
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(settings.value))
+      logger.info('SettingsStore', 'Settings saved', settings.value)
     } catch (error) {
-      logger.error('SettingsStore', 'Failed to update settings', error)
-      throw error
-    } finally {
-      isLoading.value = false
+      logger.error('SettingsStore', 'Failed to save settings', error)
     }
   }
 
-  function setTheme(newTheme: 'light' | 'dark') {
-    theme.value = newTheme
-    updateSettings({ theme: newTheme })
+  function setShowReasoning(value: boolean) {
+    settings.value.showReasoning = value
+    saveSettings()
   }
+
+  function setTheme(value: 'light' | 'dark') {
+    settings.value.theme = value
+    saveSettings()
+  }
+
+  function resetSettings() {
+    settings.value = { ...DEFAULT_SETTINGS }
+    saveSettings()
+  }
+
+  loadSettings()
 
   return {
     settings,
+    showReasoning,
     theme,
-    isLoading,
     loadSettings,
-    updateSettings,
+    saveSettings,
+    setShowReasoning,
     setTheme,
+    resetSettings,
   }
 })
