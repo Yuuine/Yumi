@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
@@ -66,7 +66,7 @@ class LogService:
     ) -> None:
         """记录用户操作日志"""
         trace_id = LogService._get_trace_id()
-        timestamp = datetime.utcnow().isoformat()
+        timestamp = datetime.now(UTC).isoformat()
 
         log_entry = {
             "timestamp": timestamp,
@@ -125,7 +125,7 @@ class LogService:
     ) -> None:
         """记录 AI 交互日志"""
         trace_id = LogService._get_trace_id()
-        timestamp = datetime.utcnow().isoformat()
+        timestamp = datetime.now(UTC).isoformat()
         content_hash = LogService._generate_content_hash(content)
 
         log_entry = {
@@ -186,7 +186,7 @@ class LogService:
     ) -> None:
         """记录 API 调用日志"""
         trace_id = LogService._get_trace_id()
-        timestamp = datetime.utcnow().isoformat()
+        timestamp = datetime.now(UTC).isoformat()
 
         log_entry = {
             "timestamp": timestamp,
@@ -251,7 +251,7 @@ class LogService:
     ) -> None:
         """记录审计日志"""
         trace_id = LogService._get_trace_id()
-        timestamp = datetime.utcnow().isoformat()
+        timestamp = datetime.now(UTC).isoformat()
 
         log_entry = {
             "timestamp": timestamp,

@@ -15,6 +15,7 @@ export interface ChatRequest {
   userId: string
   message: string
   temperature?: number
+  deepThinking?: boolean
 }
 
 export interface ChatResponse {
@@ -133,4 +134,20 @@ export interface ModelTestResponse {
   response?: string
   reasoning?: string
   latency?: number
+}
+
+/** 代理模式类型 */
+export type ProxyMode = 'smart' | 'normal'
+
+/** 智能代理子模式 */
+export type SmartProxySubMode = 'auto' | 'manual'
+
+export interface ProxySettings {
+  enabled: boolean
+  mode: ProxyMode
+  smartSubMode: SmartProxySubMode
+  manualProxyHost: string
+  manualProxyPort: number
+  scannedProxies: string[]
+  normalProxyUrl: string
 }

@@ -106,6 +106,26 @@ export function getModelCapabilities(modelName: string): ModelCapabilities {
   )
 }
 
+/** 支持深度思考开关的模型（通过 thinking 参数控制） */
+const DEEP_THINKING_MODELS = new Set([
+  'deepseek-chat', // 启用时传 thinking: { type: "enabled" }
+  'kimi-k2.5', // 支持 enabled/disabled
+])
+
+/** reasoner 类模型自带推理能力，不显示深度思考按钮 */
+const REASONER_MODELS = new Set(['deepseek-reasoner'])
+
+/**
+ * 判断当前模型是否支持深度思考开关
+ * - deepseek-reasoner: 不支持（自带推理，按钮禁用）
+ * - deepseek-chat, kimi-k2.5: 支持
+ */
+export function supportsDeepThinking(_providerId: string, modelName?: string): boolean {
+  const name = (modelName || '').toLowerCase()
+  if (REASONER_MODELS.has(name)) return false
+  return DEEP_THINKING_MODELS.has(name)
+}
+
 /** 颜色常量 */
 export const COLORS = {
   PRIMARY: '#3b82f6',

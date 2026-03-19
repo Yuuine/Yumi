@@ -35,6 +35,7 @@ class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=10000, description="消息内容")
     temperature: float | None = Field(0.85, ge=0.0, le=2.0, description="温度参数")
     stream: bool = False
+    deepThinking: bool = Field(False, description="是否使用深度思考模式")
 
 
 class ChatResponse(BaseModel):
@@ -153,14 +154,14 @@ async def send_message(request: ChatRequest, req: Request):
 
         llm_start_time = time.time()
 
-        if settings.app.debug:
-            logger.info(
-                "LLM Request: model=%s, provider=%s, temperature=%.2f, messages_count=%d",
-                active_model["model_name"],
-                active_model["provider_id"],
-                request.temperature,
-                len(messages),
-            )
+        logger.info(
+            "LLM Request: model=%s, provider=%s, deepThinking=%s, temperature=%.2f, messages_count=%d",
+            active_model["model_name"],
+            active_model["provider_id"],
+            request.deepThinking,
+            request.temperature,
+            len(messages),
+        )
 
         reply = await llm_service.chat(
             messages=messages,
@@ -169,6 +170,7 @@ async def send_message(request: ChatRequest, req: Request):
             base_url=active_model["base_url"],
             api_key=active_model["api_key"],
             model_name=active_model["model_name"],
+            use_thinking=request.deepThinking,
         )
         llm_latency_ms = (time.time() - llm_start_time) * 1000
 
@@ -364,6 +366,7 @@ async def stream_chat(
     message: str,
     req: Request,
     temperature: float = 0.85,
+    deepThinking: bool = False,
 ):
     memory_engine = req.app.state.memory_engine
     emotion_engine = req.app.state.emotion_engine
@@ -380,9 +383,10 @@ async def stream_chat(
         try:
             if settings.app.debug:
                 logger.info(
-                    "Stream LLM Request: model=%s, provider=%s, temperature=%.2f",
+                    "Stream LLM Request: model=%s, provider=%s, deepThinking=%s, temperature=%.2f",
                     active_model["model_name"],
                     active_model["provider_id"],
+                    deepThinking,
                     temperature,
                 )
 
@@ -413,6 +417,7 @@ async def stream_chat(
                 base_url=active_model["base_url"],
                 api_key=active_model["api_key"],
                 model_name=active_model["model_name"],
+                use_thinking=deepThinking,
             ):
                 full_reply += chunk
                 yield f"data: {json.dumps({'content': chunk})}\n\n"

@@ -27,7 +27,7 @@ export const useChatStore = defineStore('chat', () => {
     return messages.value.filter(m => m.role === 'user')
   })
 
-  async function sendMessage(content: string): Promise<ChatResponse | null> {
+  async function sendMessage(content: string, deepThinking = false): Promise<ChatResponse | null> {
     if (!content.trim() || isLoading.value) return null
 
     lastError.value = null
@@ -47,6 +47,11 @@ export const useChatStore = defineStore('chat', () => {
         userId: currentUserId.value,
         message: content.trim(),
         temperature: 0.85,
+        deepThinking,
+      }
+
+      if (deepThinking) {
+        logger.info('ChatStore', 'Sending with deep thinking enabled')
       }
 
       const response: ChatResponse = await chatApi.sendMessage(request)

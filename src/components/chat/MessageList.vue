@@ -146,7 +146,7 @@ defineExpose({
 .message-list {
   flex: 1;
   overflow-y: auto;
-  padding: 24px 24px 140px;
+  padding: 24px 24px 200px;
   padding-left: 88px;
   scroll-behavior: smooth;
 

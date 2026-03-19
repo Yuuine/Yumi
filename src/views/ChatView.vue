@@ -11,15 +11,18 @@
       />
     </div>
 
-    <ChatInput @send="handleSend" :disabled="chatStore.isLoading" />
-
+    <ChatInput
+      v-model:deepThinking="isDeepThinking"
+      @send="handleSend"
+      :disabled="chatStore.isLoading"
+    />
     <ModelsModal :visible="showModelsModal" @close="closeModelsModal" />
     <SettingsModal :visible="showSettingsModal" @close="closeSettingsModal" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, nextTick, watch } from 'vue'
 import { useChatStore } from '@/stores'
 import { SidebarNav } from '@/components/sidebar'
 import { MessageList, ChatInput } from '@/components/chat'
@@ -30,9 +33,22 @@ const chatStore = useChatStore()
 const messageListRef = ref<InstanceType<typeof MessageList> | null>(null)
 const showModelsModal = ref(false)
 const showSettingsModal = ref(false)
+const isDeepThinking = ref(false)
+
+watch(
+  () => chatStore.messages.length,
+  () => {
+    nextTick(() => {
+      messageListRef.value?.scrollToBottom()
+    })
+  }
+)
 
 async function handleSend(content: string) {
-  await chatStore.sendMessage(content)
+  await chatStore.sendMessage(content, isDeepThinking.value)
+  nextTick(() => {
+    messageListRef.value?.scrollToBottom()
+  })
 }
 
 function handleCopy(content: string) {

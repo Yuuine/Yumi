@@ -17,6 +17,7 @@ from pydantic import BaseModel
 
 from ..core import clear_active_model, get_logger, set_active_model
 from ..services.log_service import AuditAction, log_service
+from ..services.proxy_config import get_proxy_config
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -679,9 +680,14 @@ async def _perform_test(
             "max_tokens": 5,
         }
 
+    proxy_config = await get_proxy_config()
+    proxy = None
+    if proxy_config.enabled and proxy_config.mode == "normal":
+        proxy = proxy_config.get_normal_proxy()
+    trust_env = proxy is not None
     try:
         start_time = time.time()
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=60.0, proxy=proxy, trust_env=trust_env) as client:
             response = await client.post(url, json=payload, headers=headers)
             latency = time.time() - start_time
 
@@ -723,11 +729,31 @@ async def _perform_test(
                     "response": None,
                     "reasoning": None,
                 }
-    except httpx.TimeoutException:
+    except httpx.TimeoutException as e:
+        logger.error(
+            "Model test timeout: url=%s, error=%s (type=%s)",
+            url, str(e), type(e).__name__,
+            exc_info=True,
+        )
         return {"success": False, "message": "测试失败: 连接超时", "response": None, "reasoning": None}
-    except httpx.ConnectError:
-        return {"success": False, "message": "测试失败: 无法连接服务器", "response": None, "reasoning": None}
+    except httpx.ConnectError as e:
+        logger.error(
+            "Model test ConnectError: url=%s, error=%s (type=%s)",
+            url, str(e), type(e).__name__,
+            exc_info=True,
+        )
+        return {
+            "success": False,
+            "message": "测试失败: 无法连接服务器，请检查网络或代理配置",
+            "response": None,
+            "reasoning": None,
+        }
     except Exception as e:
+        logger.error(
+            "Model test error: url=%s, error=%s (type=%s)",
+            url, str(e), type(e).__name__,
+            exc_info=True,
+        )
         return {"success": False, "message": f"测试失败: {str(e)}", "response": None, "reasoning": None}
 
 

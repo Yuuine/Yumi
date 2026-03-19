@@ -1,99 +1,129 @@
 <template>
   <Teleport to="body">
-    <Transition name="modal">
-      <div v-if="visible" class="settings-modal-overlay" @click.self="handleClose">
-        <div class="settings-modal">
-          <div class="modal-header">
-            <h2 class="modal-title">设置</h2>
-            <button class="close-btn" @click="handleClose" aria-label="关闭">
-              <IconClose />
-            </button>
-          </div>
+    <template v-if="visible">
+      <Transition name="modal">
+        <div class="settings-modal-overlay" @click.self="handleClose">
+          <div class="settings-modal">
+            <div class="modal-header">
+              <h2 class="modal-title">设置</h2>
+              <button class="close-btn" @click="handleClose" aria-label="关闭">
+                <IconClose />
+              </button>
+            </div>
 
-          <div class="modal-body">
-            <div class="settings-layout">
-              <div class="settings-tabs">
-                <button
-                  v-for="tab in tabs"
-                  :key="tab.id"
-                  class="tab-item"
-                  :class="{ active: activeTab === tab.id }"
-                  @click="activeTab = tab.id"
-                >
-                  <component :is="tab.icon" class="tab-icon" />
-                  <span class="tab-label">{{ tab.label }}</span>
-                </button>
-              </div>
+            <div class="modal-body">
+              <div class="settings-layout">
+                <div class="settings-tabs">
+                  <button
+                    v-for="tab in tabs"
+                    :key="tab.id"
+                    class="tab-item"
+                    :class="{ active: activeTab === tab.id }"
+                    @click="activeTab = tab.id"
+                  >
+                    <component :is="tab.icon" class="tab-icon" />
+                    <span class="tab-label">{{ tab.label }}</span>
+                  </button>
+                </div>
 
-              <div class="settings-content">
-                <div v-if="activeTab === 'general'" class="settings-panel">
-                  <div class="panel-title">通用设置</div>
+                <div class="settings-content">
+                  <div v-if="activeTab === 'general'" class="settings-panel">
+                    <div class="panel-title">通用设置</div>
 
-                  <div class="settings-section">
-                    <div class="setting-item">
-                      <div class="setting-info">
-                        <div class="setting-label">推理过程显示</div>
-                        <div class="setting-description">
-                          开启后，若当前模型支持推理，将在对话中显示思考过程
+                    <div class="settings-section">
+                      <div class="setting-item">
+                        <div class="setting-info">
+                          <div class="setting-label">推理过程显示</div>
+                          <div class="setting-description">
+                            开启后，若当前模型支持推理，将在对话中显示思考过程
+                          </div>
                         </div>
-                      </div>
-                      <div class="setting-control">
-                        <button
-                          class="toggle-switch"
-                          :class="{ active: settingsStore.showReasoning }"
-                          @click="handleToggleReasoning"
-                        >
-                          <span class="toggle-knob"></span>
-                        </button>
+                        <div class="setting-control">
+                          <button
+                            class="toggle-switch"
+                            :class="{ active: settingsStore.showReasoning }"
+                            @click="handleToggleReasoning"
+                          >
+                            <span class="toggle-knob"></span>
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
 
-                <div v-else-if="activeTab === 'chat'" class="settings-panel">
-                  <div class="panel-title">聊天设置</div>
+                  <div v-else-if="activeTab === 'chat'" class="settings-panel">
+                    <div class="panel-title">聊天设置</div>
 
-                  <div class="settings-section">
-                    <div class="setting-item">
-                      <div class="setting-info">
-                        <div class="setting-label">详细测试信息</div>
-                        <div class="setting-description">
-                          开启后，测试模型连通性时将显示完整的模型响应信息
+                    <div class="settings-section">
+                      <div class="setting-item">
+                        <div class="setting-info">
+                          <div class="setting-label">详细测试信息</div>
+                          <div class="setting-description">
+                            开启后，测试模型连通性时将显示完整的模型响应信息
+                          </div>
                         </div>
-                      </div>
-                      <div class="setting-control">
-                        <button
-                          class="toggle-switch"
-                          :class="{ active: settingsStore.verboseTest }"
-                          @click="handleToggleVerboseTest"
-                        >
-                          <span class="toggle-knob"></span>
-                        </button>
+                        <div class="setting-control">
+                          <button
+                            class="toggle-switch"
+                            :class="{ active: settingsStore.verboseTest }"
+                            @click="handleToggleVerboseTest"
+                          >
+                            <span class="toggle-knob"></span>
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
 
-                <div v-else-if="activeTab === 'appearance'" class="settings-panel">
-                  <div class="panel-title">外观设置</div>
-                  <div class="settings-placeholder">
-                    <IconInfo class="placeholder-icon" />
-                    <span>外观设置功能开发中...</span>
+                  <div v-else-if="activeTab === 'appearance'" class="settings-panel">
+                    <div class="panel-title">外观设置</div>
+                    <div class="settings-placeholder">
+                      <IconInfo class="placeholder-icon" />
+                      <span>外观设置功能开发中...</span>
+                    </div>
+                  </div>
+
+                  <div v-else-if="activeTab === 'other'" class="settings-panel">
+                    <div class="panel-title">其他设置</div>
+                    <div class="settings-section">
+                      <div
+                        class="setting-item setting-item-clickable"
+                        @click="showProxyModal = true"
+                      >
+                        <div class="setting-info">
+                          <div class="setting-label">代理设置</div>
+                          <div class="setting-description">
+                            配置网络代理，支持智能代理与普通代理模式
+                          </div>
+                        </div>
+                        <IconChevronDown class="setting-arrow" />
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
-    </Transition>
+      </Transition>
+
+      <ProxySettingsModal :visible="showProxyModal" @close="showProxyModal = false" />
+    </template>
   </Teleport>
 </template>
 
 <script setup lang="ts">
 import { ref, markRaw } from 'vue'
-import { useSettingsStore } from '@/stores/settings'
-import { IconClose, IconInfo, IconChat, IconModels } from '@/components/icons'
+import { useSettingsStore } from '@/stores'
+import {
+  IconClose,
+  IconInfo,
+  IconChat,
+  IconModels,
+  IconSettings,
+  IconChevronDown,
+} from '@/components/icons'
+import ProxySettingsModal from './ProxySettingsModal.vue'
 
 defineProps<{
   visible: boolean
@@ -104,6 +134,7 @@ const emit = defineEmits<{
 }>()
 
 const settingsStore = useSettingsStore()
+const showProxyModal = ref(false)
 
 const activeTab = ref('general')
 
@@ -122,6 +153,11 @@ const tabs = [
     id: 'appearance',
     label: '外观设置',
     icon: markRaw(IconInfo),
+  },
+  {
+    id: 'other',
+    label: '其他设置',
+    icon: markRaw(IconSettings),
   },
 ]
 
@@ -298,6 +334,23 @@ function handleClose() {
   background: #f9fafb;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
+}
+
+.setting-item-clickable {
+  cursor: pointer;
+
+  &:hover {
+    background: #f3f4f6;
+    border-color: #d1d5db;
+  }
+}
+
+.setting-arrow {
+  width: 18px;
+  height: 18px;
+  color: #9ca3af;
+  flex-shrink: 0;
+  transform: rotate(-90deg);
 }
 
 .setting-info {

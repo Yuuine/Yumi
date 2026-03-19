@@ -13,6 +13,7 @@ from typing import Any
 import httpx
 
 from ..core import LLMException, get_logger
+from .proxy_config import ProxyConfig
 
 logger = get_logger(__name__)
 
@@ -52,6 +53,7 @@ class ModelConfig:
     max_tokens: int = 4096
     temperature: float = 0.85
     timeout: float = 60.0
+    proxy_config: ProxyConfig | None = None
 
 
 @dataclass
@@ -117,7 +119,14 @@ class OpenAICompatibleAdapter:
     def __init__(self, config: ModelConfig, diff_config: ProviderDiffConfig | None = None):
         self.config = config
         self.diff_config = diff_config or get_diff_config(config.model_name, config.provider_id)
-        self.client = httpx.AsyncClient(timeout=config.timeout)
+        proxy_url = None
+        if config.proxy_config and config.proxy_config.enabled:
+            proxy_url = config.proxy_config.get_normal_proxy()
+        self.client = httpx.AsyncClient(
+            timeout=config.timeout,
+            proxy=proxy_url,
+            trust_env=proxy_url is not None,  # 代理关闭时禁用 env 代理
+        )
 
     def get_endpoint(self) -> str:
         base = self.config.base_url.rstrip("/")
@@ -139,6 +148,7 @@ class OpenAICompatibleAdapter:
         temperature: float | None = None,
         max_tokens: int | None = None,
         stream: bool = False,
+        use_thinking: bool = False,
         **kwargs,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
@@ -158,6 +168,18 @@ class OpenAICompatibleAdapter:
 
         if stream:
             payload["stream"] = True
+
+        model_lower = self.config.model_name.lower()
+        if use_thinking:
+            if model_lower == "deepseek-chat":
+                payload["thinking"] = {"type": "enabled"}
+                logger.info("Deep thinking enabled for deepseek-chat")
+            elif model_lower == "kimi-k2.5":
+                payload["thinking"] = {"type": "enabled"}
+                logger.info("Deep thinking enabled for kimi-k2.5")
+        elif model_lower == "kimi-k2.5":
+            # k2.5 默认开启思考，需显式禁用
+            payload["thinking"] = {"type": "disabled"}
 
         for key, value in self.diff_config.request_diff.default_values.items():
             if key not in payload:
@@ -231,11 +253,77 @@ class OpenAICompatibleAdapter:
             reasoning_content=reasoning_content,
         )
 
+    async def _do_request(
+        self,
+        url: str,
+        headers: dict[str, str],
+        payload: dict[str, Any],
+        stream: bool = False,
+    ):
+        """执行 HTTP 请求，支持智能代理重试"""
+        last_error: Exception | None = None
+        proxy_urls: list[str] = []
+
+        if self.config.proxy_config and self.config.proxy_config.enabled:
+            if self.config.proxy_config.mode == "smart":
+                proxy_urls = self.config.proxy_config.get_proxy_urls_for_fallback()
+
+        # 首次请求（无代理或普通代理已在 client 中）
+        try:
+            if stream:
+                return await self._stream_request(url, headers, payload)
+            response = await self.client.post(url, json=payload, headers=headers)
+            response.raise_for_status()
+            return response
+        except (httpx.ConnectError, httpx.TimeoutException) as e:
+            last_error = e
+            if not proxy_urls:
+                raise
+        except Exception as e:
+            raise
+
+        # 智能代理：依次用备用代理重试（最多 5 个）
+        for proxy_url in proxy_urls[:5]:
+            try:
+                async with httpx.AsyncClient(
+                    timeout=self.config.timeout,
+                    proxy=proxy_url,
+                ) as proxy_client:
+                    if stream:
+                        return await self._stream_request(
+                            url, headers, payload, client=proxy_client
+                        )
+                    response = await proxy_client.post(
+                        url, json=payload, headers=headers
+                    )
+                    response.raise_for_status()
+                    logger.info("Smart proxy retry success: %s", proxy_url)
+                    return response
+            except (httpx.ConnectError, httpx.TimeoutException) as e:
+                last_error = e
+                logger.debug("Proxy %s failed: %s", proxy_url, e)
+                continue
+
+        if last_error:
+            raise last_error
+
+    async def _stream_request(
+        self,
+        url: str,
+        headers: dict[str, str],
+        payload: dict[str, Any],
+        client: httpx.AsyncClient | None = None,
+    ):
+        """流式请求"""
+        c = client or self.client
+        return c.stream("POST", url, json=payload, headers=headers)
+
     async def chat(
         self,
         messages: list[dict[str, str]],
         temperature: float | None = None,
         max_tokens: int | None = None,
+        use_thinking: bool = False,
     ) -> ChatResponse:
         url = self.get_endpoint()
         headers = self.get_headers()
@@ -244,6 +332,7 @@ class OpenAICompatibleAdapter:
             temperature=temperature,
             max_tokens=max_tokens,
             stream=False,
+            use_thinking=use_thinking,
         )
 
         logger.debug(
@@ -252,8 +341,9 @@ class OpenAICompatibleAdapter:
         )
 
         try:
-            response = await self.client.post(url, json=payload, headers=headers)
-            response.raise_for_status()
+            response = await self._do_request(url, headers, payload, stream=False)
+            if not isinstance(response, httpx.Response):
+                raise LLMException(message="Invalid response", code="LLM_INTERNAL_ERROR")
             data = response.json()
             return self.parse_response(data)
         except httpx.HTTPStatusError as e:
@@ -270,18 +360,34 @@ class OpenAICompatibleAdapter:
                 message="LLM 服务响应超时",
                 code="LLM_TIMEOUT",
             )
+        except LLMException:
+            raise
+        except json.JSONDecodeError as e:
+            error_body = response.text[:500] if response else "No response"
+            logger.error("LLM API JSON decode error: %s, body=%s", e, error_body)
+            raise LLMException(
+                message="LLM 返回数据解析失败",
+                code="LLM_INVALID_RESPONSE",
+                details={"error": str(e), "body_preview": error_body},
+            )
         except Exception as e:
-            logger.error("LLM service error: %s", e)
+            logger.error(
+                "LLM service error: %s (type=%s)",
+                str(e) or repr(e),
+                type(e).__name__,
+                exc_info=True,
+            )
             raise LLMException(
                 message="LLM 服务内部错误",
                 code="LLM_INTERNAL_ERROR",
-                details={"error": str(e)},
+                details={"error": str(e) or repr(e), "type": type(e).__name__},
             )
 
     async def stream_chat(
         self,
         messages: list[dict[str, str]],
         temperature: float | None = None,
+        use_thinking: bool = False,
     ) -> AsyncIterator[StreamChunk]:
         url = self.get_endpoint()
         headers = self.get_headers()
@@ -289,32 +395,63 @@ class OpenAICompatibleAdapter:
             messages=messages,
             temperature=temperature,
             stream=True,
+            use_thinking=use_thinking,
         )
 
-        try:
-            async with self.client.stream(
-                "POST", url, json=payload, headers=headers
-            ) as response:
-                async for line in response.aiter_lines():
-                    if line.startswith("data: "):
-                        data = line[6:]
-                        if data == "[DONE]":
-                            yield StreamChunk(is_done=True)
-                            break
-                        try:
-                            chunk_data = json.loads(data)
-                            stream_chunk = self.parse_stream_chunk(chunk_data)
-                            if stream_chunk.content or stream_chunk.reasoning_content:
-                                yield stream_chunk
-                        except (json.JSONDecodeError, KeyError, IndexError):
-                            continue
-        except Exception as e:
-            logger.error("LLM stream error: %s", e)
-            raise LLMException(
-                message="LLM 流式响应失败",
-                code="LLM_STREAM_ERROR",
-                details={"error": str(e)},
-            )
+        clients: list[tuple[httpx.AsyncClient, bool]] = [
+            (self.client, False)
+        ]  # (client, should_close)
+        if self.config.proxy_config and self.config.proxy_config.enabled:
+            if self.config.proxy_config.mode == "smart":
+                for proxy_url in self.config.proxy_config.get_proxy_urls_for_fallback():
+                    clients.append(
+                        (
+                            httpx.AsyncClient(
+                                timeout=self.config.timeout,
+                                proxy=proxy_url,
+                            ),
+                            True,
+                        )
+                    )
+
+        last_error: Exception | None = None
+        for client, should_close in clients:
+            try:
+                async with client.stream(
+                    "POST", url, json=payload, headers=headers
+                ) as response:
+                    async for line in response.aiter_lines():
+                        if line.startswith("data: "):
+                            data = line[6:]
+                            if data == "[DONE]":
+                                yield StreamChunk(is_done=True)
+                                return
+                            try:
+                                chunk_data = json.loads(data)
+                                stream_chunk = self.parse_stream_chunk(chunk_data)
+                                if stream_chunk.content or stream_chunk.reasoning_content:
+                                    yield stream_chunk
+                            except (json.JSONDecodeError, KeyError, IndexError):
+                                continue
+                return
+            except (httpx.ConnectError, httpx.TimeoutException) as e:
+                last_error = e
+                logger.debug("Stream connection failed, trying next: %s", e)
+                if should_close:
+                    await client.aclose()
+                continue
+            except Exception as e:
+                if should_close:
+                    await client.aclose()
+                logger.error("LLM stream error: %s", e)
+                raise LLMException(
+                    message="LLM 流式响应失败",
+                    code="LLM_STREAM_ERROR",
+                    details={"error": str(e)},
+                )
+
+        if last_error:
+            raise last_error
 
     async def close(self) -> None:
         await self.client.aclose()

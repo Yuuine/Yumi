@@ -12,6 +12,7 @@ from .model_adapters import (
     OpenAICompatibleAdapter,
     create_adapter,
 )
+from .proxy_config import get_proxy_config
 
 logger = get_logger(__name__)
 
@@ -29,6 +30,7 @@ class LLMService:
         model_name: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        proxy_config=None,
     ) -> ModelConfig:
         return ModelConfig(
             provider_id=provider_id,
@@ -38,20 +40,23 @@ class LLMService:
             max_tokens=max_tokens or settings.llm.max_tokens,
             temperature=temperature or settings.llm.default_temperature,
             timeout=settings.llm.timeout,
+            proxy_config=proxy_config,
         )
 
-    def get_adapter(
+    async def get_adapter(
         self,
         provider_id: str = "openai",
         base_url: str | None = None,
         api_key: str | None = None,
         model_name: str | None = None,
     ) -> OpenAICompatibleAdapter:
+        proxy_config = await get_proxy_config()
         config = self._create_config(
             provider_id=provider_id,
             base_url=base_url,
             api_key=api_key,
             model_name=model_name,
+            proxy_config=proxy_config,
         )
         return create_adapter(config)
 
@@ -64,8 +69,9 @@ class LLMService:
         base_url: str | None = None,
         api_key: str | None = None,
         model_name: str | None = None,
+        use_thinking: bool = False,
     ) -> str:
-        adapter = self.get_adapter(
+        adapter = await self.get_adapter(
             provider_id=provider_id,
             base_url=base_url,
             api_key=api_key,
@@ -77,6 +83,7 @@ class LLMService:
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
+                use_thinking=use_thinking,
             )
 
             if response.reasoning_content and response.content:
@@ -95,8 +102,9 @@ class LLMService:
         base_url: str | None = None,
         api_key: str | None = None,
         model_name: str | None = None,
+        use_thinking: bool = False,
     ) -> AsyncIterator[str]:
-        adapter = self.get_adapter(
+        adapter = await self.get_adapter(
             provider_id=provider_id,
             base_url=base_url,
             api_key=api_key,
@@ -108,6 +116,7 @@ class LLMService:
             async for chunk in adapter.stream_chat(
                 messages=messages,
                 temperature=temperature,
+                use_thinking=use_thinking,
             ):
                 if chunk.is_done:
                     break
@@ -134,7 +143,7 @@ class LLMService:
         model_name: str,
         test_message: str = "你好，请简单介绍一下你自己。",
     ) -> tuple[bool, str, str | None, float | None]:
-        adapter = self.get_adapter(
+        adapter = await self.get_adapter(
             provider_id=provider_id,
             base_url=base_url,
             api_key=api_key,

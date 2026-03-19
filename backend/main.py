@@ -11,7 +11,7 @@ from .core.lifecycle import get_lifecycle_manager
 from .core.logging import YumiLogger, get_logger
 from .core.middleware import RequestTracingMiddleware, SlowRequestMiddleware
 from .database import init_db
-from .routers import chat, logs, memory, models, user
+from .routers import chat, logs, memory, models, proxy, user
 from .routers import settings as settings_router
 from .services.emotion import EmotionEngine
 from .services.llm import LLMService
@@ -104,6 +104,7 @@ app.include_router(chat.router, prefix="/api", tags=["chat"])
 app.include_router(memory.router, prefix="/api", tags=["memory"])
 app.include_router(user.router, prefix="/api", tags=["user"])
 app.include_router(settings_router.router, prefix="/api", tags=["settings"])
+app.include_router(proxy.router, prefix="/api", tags=["proxy"])
 app.include_router(models.router, prefix="/api", tags=["models"])
 app.include_router(logs.router, prefix="/api", tags=["logs"])
 

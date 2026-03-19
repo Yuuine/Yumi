@@ -2,17 +2,6 @@
   <div class="chat-input-wrapper">
     <div class="chat-input-container">
       <div class="input-field">
-        <button
-          class="plus-btn"
-          :class="{ active: showMenu }"
-          @click="toggleMenu"
-          :disabled="disabled"
-          title="更多功能"
-          aria-label="更多功能"
-        >
-          <IconPlus class="plus-icon" />
-        </button>
-
         <textarea
           v-model="inputText"
           class="input-textarea"
@@ -22,52 +11,84 @@
           @input="adjustHeight"
           ref="textareaRef"
         ></textarea>
+      </div>
+
+      <div class="bottom-toolbar">
+        <div class="model-switch-wrapper" ref="modelSwitchRef">
+          <button
+            class="toolbar-btn model-switch-btn"
+            :class="{ active: showMenu }"
+            @click="toggleMenu"
+            :disabled="disabled"
+            type="button"
+          >
+            <span>切换模型</span>
+          </button>
+
+          <Transition name="menu-fade">
+            <div v-if="showMenu" class="dropdown-menu" ref="menuRef">
+              <div class="menu-header">
+                <span class="menu-title">切换模型</span>
+              </div>
+
+              <div class="menu-list">
+                <div v-if="enabledModels.length === 0" class="menu-empty">
+                  暂无可用模型，请先添加并启用模型
+                </div>
+
+                <button
+                  v-for="model in enabledModels"
+                  :key="model.id"
+                  class="menu-item"
+                  :class="{ active: model.id === modelsStore.activeModel?.id }"
+                  @click="handleSwitchModel(model)"
+                  :disabled="switchingModelId === model.id"
+                >
+                  <div class="model-info">
+                    <span class="model-name">{{ model.name }}</span>
+                    <span class="model-provider">{{ getProviderName(model.providerId) }}</span>
+                  </div>
+                  <IconCheck v-if="model.id === modelsStore.activeModel?.id" class="check-icon" />
+                  <div v-else-if="switchingModelId === model.id" class="loading-spinner"></div>
+                </button>
+              </div>
+            </div>
+          </Transition>
+        </div>
+
+        <button
+          class="toolbar-btn deep-think-btn"
+          :class="{ active: isDeepThinking }"
+          @click="toggleDeepThinking"
+          :disabled="disabled || !deepThinkingAvailable"
+          type="button"
+          :title="deepThinkingAvailable ? '深度思考' : '当前模型不支持深度思考'"
+        >
+          <span>深度思考</span>
+        </button>
 
         <Transition name="fade">
-          <button v-if="hasContent" class="send-btn" @click="handleSend" title="发送消息">
-            <IconSend class="send-icon" />
+          <button
+            v-if="hasContent"
+            class="send-btn"
+            @click="handleSend"
+            :disabled="disabled"
+            title="发送消息"
+            type="button"
+          >
+            <IconArrowUp class="send-icon" />
           </button>
         </Transition>
       </div>
-
-      <Transition name="menu-fade">
-        <div v-if="showMenu" class="dropdown-menu" ref="menuRef">
-          <div class="menu-header">
-            <span class="menu-title">切换模型</span>
-          </div>
-
-          <div class="menu-list">
-            <div v-if="enabledModels.length === 0" class="menu-empty">
-              暂无可用模型，请先添加并启用模型
-            </div>
-
-            <button
-              v-for="model in enabledModels"
-              :key="model.id"
-              class="menu-item"
-              :class="{ active: model.id === modelsStore.activeModel?.id }"
-              @click="handleSwitchModel(model)"
-              :disabled="switchingModelId === model.id"
-            >
-              <div class="model-info">
-                <span class="model-name">{{ model.name }}</span>
-                <span class="model-provider">{{ getProviderName(model.providerId) }}</span>
-              </div>
-              <IconCheck v-if="model.id === modelsStore.activeModel?.id" class="check-icon" />
-              <div v-else-if="switchingModelId === model.id" class="loading-spinner"></div>
-            </button>
-          </div>
-        </div>
-      </Transition>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useModelsStore } from '@/stores'
-import { PROVIDER_NAMES } from '@/constants'
-import { IconPlus, IconSend, IconCheck } from '@/components/icons'
+import { PROVIDER_NAMES, supportsDeepThinking } from '@/constants'
+import { IconArrowUp, IconCheck } from '@/components/icons'
 import { logger } from '@/utils/logger'
 import type { ModelConfig } from '@/types'
 
@@ -83,15 +104,24 @@ const emit = defineEmits<{
   send: [content: string]
 }>()
 
+/** 深度思考开关，由父组件通过 v-model:deepThinking 控制，保证发送时状态一致 */
+const isDeepThinking = defineModel<boolean>('deepThinking', { default: false })
+
 const modelsStore = useModelsStore()
 
 const inputText = ref('')
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const menuRef = ref<HTMLElement | null>(null)
+const modelSwitchRef = ref<HTMLElement | null>(null)
 const showMenu = ref(false)
 const switchingModelId = ref<string | null>(null)
 
 const hasContent = computed(() => inputText.value.trim().length > 0)
+
+const deepThinkingAvailable = computed(() => {
+  const active = modelsStore.activeModel
+  return !!active && supportsDeepThinking(active.providerId, active.modelName)
+})
 
 const enabledModels = computed(() => {
   return modelsStore.models.filter(m => m.isEnabled && m.apiKey)
@@ -124,6 +154,10 @@ function toggleMenu() {
   showMenu.value = !showMenu.value
 }
 
+function toggleDeepThinking() {
+  isDeepThinking.value = !isDeepThinking.value
+}
+
 async function handleSwitchModel(model: ModelConfig) {
   if (model.id === modelsStore.activeModel?.id) {
     showMenu.value = false
@@ -142,13 +176,25 @@ async function handleSwitchModel(model: ModelConfig) {
 }
 
 function handleClickOutside(event: MouseEvent) {
-  if (menuRef.value && !menuRef.value.contains(event.target as Node)) {
-    const plusBtn = document.querySelector('.plus-btn')
-    if (plusBtn && !plusBtn.contains(event.target as Node)) {
-      showMenu.value = false
-    }
+  if (modelSwitchRef.value && !modelSwitchRef.value.contains(event.target as Node)) {
+    showMenu.value = false
   }
 }
+
+// 切换模型后，若新模型不支持深度思考，则重置状态
+watch(
+  () => modelsStore.activeModel,
+  active => {
+    if (
+      active &&
+      !supportsDeepThinking(active.providerId, active.modelName) &&
+      isDeepThinking.value
+    ) {
+      isDeepThinking.value = false
+    }
+  },
+  { deep: true }
+)
 
 onMounted(async () => {
   await modelsStore.loadModels()
@@ -188,63 +234,68 @@ onUnmounted(() => {
 .input-field {
   position: relative;
   padding: 16px 20px;
-  padding-left: 64px;
-  min-height: 60px;
+  min-height: 52px;
   display: flex;
   align-items: center;
 }
 
-.plus-btn {
-  position: absolute;
-  left: 16px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 36px;
-  height: 36px;
+.bottom-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px 12px;
+  border-top: 1px solid #f3f4f6;
+}
+
+.toolbar-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: none;
+  padding: 8px 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 20px;
   background: transparent;
-  border-radius: 50%;
   cursor: pointer;
   transition: all 0.2s ease;
-  color: #666666;
+  font-size: 13px;
+  color: #6b7280;
 
-  &:hover:not(:disabled) {
-    background: #f3f4f6;
-    color: #333333;
+  &:hover:not(:disabled):not(.active) {
+    background: #f9fafb;
+    color: #374151;
+    border-color: #d1d5db;
+  }
+
+  &:hover:not(:disabled).active {
+    background: #dbeafe;
+    color: #1d4ed8;
+    border-color: #2563eb;
   }
 
   &:active:not(:disabled) {
-    transform: translateY(-50%) scale(0.95);
-  }
-
-  &.active {
-    background: #f3f4f6;
-    color: #3b82f6;
+    transform: scale(0.98);
   }
 
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
   }
+
+  &.active {
+    background: #eff6ff;
+    color: #2563eb;
+    border-color: #3b82f6;
+  }
 }
 
-.plus-icon {
-  width: 20px;
-  height: 20px;
-  transition: transform 0.2s ease;
-}
-
-.plus-btn.active .plus-icon {
-  transform: rotate(45deg);
+.model-switch-wrapper {
+  position: relative;
 }
 
 .input-textarea {
   display: block;
   width: 100%;
-  padding-right: 52px;
+  padding-right: 20px;
   border: none;
   outline: none;
   background: transparent;
@@ -262,12 +313,9 @@ onUnmounted(() => {
 }
 
 .send-btn {
-  position: absolute;
-  right: 16px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 40px;
-  height: 40px;
+  margin-left: auto;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -276,14 +324,20 @@ onUnmounted(() => {
   border-radius: 50%;
   cursor: pointer;
   transition: all 0.2s ease;
+  flex-shrink: 0;
 
-  &:hover {
+  &:hover:not(:disabled) {
     background: #333333;
-    transform: translateY(-50%) scale(1.05);
+    transform: scale(1.05);
   }
 
-  &:active {
-    transform: translateY(-50%) scale(0.95);
+  &:active:not(:disabled) {
+    transform: scale(0.95);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 }
 
@@ -296,7 +350,7 @@ onUnmounted(() => {
 .dropdown-menu {
   position: absolute;
   bottom: calc(100% + 8px);
-  left: 12px;
+  left: 0;
   width: 280px;
   background: #ffffff;
   border: 1px solid #e5e7eb;

@@ -8,9 +8,12 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     ChatInput: typeof import('./components/chat/ChatInput.vue')['default']
+    DeepThinkingModal: typeof import('./components/chat/DeepThinkingModal.vue')['default']
     Dialog: typeof import('./components/common/Dialog.vue')['default']
     ElConfigProvider: typeof import('element-plus/es')['ElConfigProvider']
     IconAdd: typeof import('./components/icons/IconAdd.vue')['default']
+    IconArrowUp: typeof import('./components/icons/IconArrowUp.vue')['default']
+    IconBrain: typeof import('./components/icons/IconBrain.vue')['default']
     IconChat: typeof import('./components/icons/IconChat.vue')['default']
     IconCheck: typeof import('./components/icons/IconCheck.vue')['default']
     IconChevronDown: typeof import('./components/icons/IconChevronDown.vue')['default']
@@ -37,6 +40,7 @@ declare module 'vue' {
     ModelCard: typeof import('./components/models/ModelCard.vue')['default']
     ModelForm: typeof import('./components/models/ModelForm.vue')['default']
     ModelsModal: typeof import('./components/models/ModelsModal.vue')['default']
+    ProxySettingsModal: typeof import('./components/settings/ProxySettingsModal.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     SettingsModal: typeof import('./components/settings/SettingsModal.vue')['default']

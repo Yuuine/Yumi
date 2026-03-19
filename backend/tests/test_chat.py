@@ -70,33 +70,37 @@ class TestChatRouter:
             ]
         )
 
-        from fastapi import FastAPI
-        from httpx import ASGITransport, AsyncClient
+        with patch("backend.routers.chat.settings") as mock_settings:
+            mock_settings.app.debug = False
+            mock_settings.memory.summary_trigger_turns = 70
 
-        from backend.routers.chat import router
+            from fastapi import FastAPI
+            from httpx import ASGITransport, AsyncClient
 
-        app = FastAPI()
-        app.state.memory_engine = mock_memory_engine
-        app.state.emotion_engine = mock_emotion_engine
-        app.state.llm_service = mock_llm_service
-        app.state.prompt_builder = mock_prompt_builder
+            from backend.routers.chat import router
 
-        app.include_router(router, prefix="/api")
+            app = FastAPI()
+            app.state.memory_engine = mock_memory_engine
+            app.state.emotion_engine = mock_emotion_engine
+            app.state.llm_service = mock_llm_service
+            app.state.prompt_builder = mock_prompt_builder
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
-            response = await client.post(
-                "/api/chat",
-                json={
-                    "userId": test_user_id,
-                    "message": test_message,
-                },
-            )
+            app.include_router(router, prefix="/api")
 
-            assert response.status_code == 200
-            data = response.json()
-            assert data["memoryUsed"] == 1
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                response = await client.post(
+                    "/api/chat",
+                    json={
+                        "userId": test_user_id,
+                        "message": test_message,
+                    },
+                )
+
+                assert response.status_code == 200
+                data = response.json()
+                assert data["memoryUsed"] == 1
 
     @pytest.mark.asyncio
     async def test_send_message_llm_error(
