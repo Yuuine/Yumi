@@ -22,7 +22,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, watch } from 'vue'
+import { ref, nextTick, onMounted } from 'vue'
 import { useChatStore } from '@/stores'
 import { SidebarNav } from '@/components/sidebar'
 import { MessageList, ChatInput } from '@/components/chat'
@@ -35,20 +35,20 @@ const showModelsModal = ref(false)
 const showSettingsModal = ref(false)
 const isDeepThinking = ref(false)
 
-watch(
-  () => chatStore.messages.length,
-  () => {
-    nextTick(() => {
-      messageListRef.value?.scrollToBottom()
-    })
-  }
-)
-
-async function handleSend(content: string) {
-  await chatStore.sendMessage(content, isDeepThinking.value)
+// 组件挂载时加载历史记录并滚动到底部
+onMounted(async () => {
+  await chatStore.loadHistory()
   nextTick(() => {
     messageListRef.value?.scrollToBottom()
   })
+})
+
+async function handleSend(content: string) {
+  await chatStore.sendMessage(content, isDeepThinking.value)
+  
+  setTimeout(() => {
+    messageListRef.value?.scrollToBottom()
+  }, 100)
 }
 
 function handleCopy(content: string) {

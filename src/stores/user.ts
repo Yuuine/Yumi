@@ -3,10 +3,11 @@ import { ref } from 'vue'
 import type { UserProfile, BigFiveTraits, UserPreferences } from '@/types'
 import { userApi } from '@/api/user'
 import { logger } from '@/utils/logger'
+import { getOrCreateUserId } from '@/utils/user-id'
 
 export const useUserStore = defineStore('user', () => {
   const profile = ref<UserProfile>({
-    id: 'default',
+    id: getOrCreateUserId(),
     roleName: 'Yumi',
     bigFive: {
       openness: 0.75,

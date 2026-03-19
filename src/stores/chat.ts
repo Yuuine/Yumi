@@ -5,6 +5,22 @@ import { chatApi } from '@/api/chat'
 import type { ApiError } from '@/api/http-client'
 import dayjs from 'dayjs'
 import { logger } from '@/utils/logger'
+import { cacheMessages, getCachedMessages, clearAllCache } from '@/utils/local-storage'
+
+// 懒加载参数配置
+const INITIAL_LOAD_LIMIT = 10
+const LOAD_MORE_LIMIT = 20
+
+function stableSortMessages(msgs: ChatMessage[]): ChatMessage[] {
+  return [...msgs].sort((a, b) => {
+    const timeDiff = new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    if (timeDiff !== 0) return timeDiff
+    if (a.role !== b.role) {
+      return a.role === 'user' ? -1 : 1
+    }
+    return a.id.localeCompare(b.id)
+  })
+}
 
 export const useChatStore = defineStore('chat', () => {
   const messages = ref<ChatMessage[]>([])
@@ -17,7 +33,6 @@ export const useChatStore = defineStore('chat', () => {
   const abortController = ref<AbortController | null>(null)
   const historyPage = ref(0)
   const hasMoreHistory = ref(true)
-  const pageSize = 20
 
   const recentMessages = computed(() => {
     return messages.value.slice(-20)
@@ -66,6 +81,7 @@ export const useChatStore = defineStore('chat', () => {
 
       messages.value.push(assistantMessage)
       conversationCount.value++
+      cacheMessages(messages.value)
 
       if (response.newSummary) {
         logger.info('ChatStore', 'Memory summary updated', { summary: response.newSummary })
@@ -206,10 +222,19 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  async function loadHistory(): Promise<void> {
+  async function loadHistory(limit = INITIAL_LOAD_LIMIT): Promise<void> {
+    const cachedMessages = getCachedMessages<ChatMessage>()
+    if (cachedMessages.length > 0) {
+      messages.value = stableSortMessages(cachedMessages)
+      logger.info('ChatStore', 'Loaded cached messages', { count: cachedMessages.length })
+    }
+
     try {
-      const history = await chatApi.getHistory(currentUserId.value, 50)
-      messages.value = history.messages
+      const history = await chatApi.getHistory(currentUserId.value, limit)
+      messages.value = stableSortMessages(history.messages)
+      cacheMessages(messages.value)
+
+      hasMoreHistory.value = history.messages.length >= limit
     } catch (error) {
       logger.error('ChatStore', 'Failed to load history', error)
     }
@@ -220,18 +245,19 @@ export const useChatStore = defineStore('chat', () => {
 
     try {
       historyPage.value++
-      const offset = historyPage.value * pageSize
-      const history = await chatApi.getHistory(currentUserId.value, pageSize, offset)
+      // 计算偏移量：初始加载的消息数 + 已加载的页数 * 每页消息数
+      const offset = INITIAL_LOAD_LIMIT + (historyPage.value - 1) * LOAD_MORE_LIMIT
+      const history = await chatApi.getHistory(currentUserId.value, LOAD_MORE_LIMIT, offset)
 
       if (history.messages.length === 0) {
         hasMoreHistory.value = false
         return false
       }
 
-      const olderMessages = history.messages.reverse()
-      messages.value = [...olderMessages, ...messages.value]
+      messages.value = stableSortMessages([...history.messages, ...messages.value])
 
-      if (history.messages.length < pageSize) {
+      // 如果返回的消息数少于请求的数量，说明没有更多历史消息
+      if (history.messages.length < LOAD_MORE_LIMIT) {
         hasMoreHistory.value = false
       }
 
@@ -250,6 +276,7 @@ export const useChatStore = defineStore('chat', () => {
     streamingContent.value = ''
     historyPage.value = 0
     hasMoreHistory.value = true
+    clearAllCache()
   }
 
   function clearError(): void {
