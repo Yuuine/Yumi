@@ -1,4 +1,5 @@
 from .archive_manager import ArchiveManager, get_archive_manager
+from .async_storage import AsyncStorageService, StorageTask, StorageTaskStatus, get_async_storage_service
 from .emotion import EmotionData, EmotionEngine
 from .llm import LLMService
 from .memory import MemoryEngine
@@ -26,6 +27,10 @@ __all__ = [
     "create_cached_memory_engine",
     "ArchiveManager",
     "get_archive_manager",
+    "AsyncStorageService",
+    "StorageTask",
+    "StorageTaskStatus",
+    "get_async_storage_service",
     "ChatResponse",
     "ModelConfig",
     "OpenAICompatibleAdapter",

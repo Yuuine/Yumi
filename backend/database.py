@@ -148,6 +148,30 @@ async def init_db() -> None:
             )
         """)
 
+        # 迁移：为 conversation_logs 表添加存储状态相关字段
+        # storage_status: 存储状态（pending/processing/stored/failed）
+        # storage_attempts: 存储尝试次数
+        # storage_error: 存储失败时的错误信息
+        # stored_at: 成功存储的时间戳
+        cursor = await db.execute("PRAGMA table_info(conversation_logs)")
+        columns = [row[1] for row in await cursor.fetchall()]
+
+        if 'storage_status' not in columns:
+            await db.execute("ALTER TABLE conversation_logs ADD COLUMN storage_status TEXT DEFAULT 'pending'")
+            logger.info("Added storage_status column to conversation_logs")
+
+        if 'storage_attempts' not in columns:
+            await db.execute("ALTER TABLE conversation_logs ADD COLUMN storage_attempts INTEGER DEFAULT 0")
+            logger.info("Added storage_attempts column to conversation_logs")
+
+        if 'storage_error' not in columns:
+            await db.execute("ALTER TABLE conversation_logs ADD COLUMN storage_error TEXT")
+            logger.info("Added storage_error column to conversation_logs")
+
+        if 'stored_at' not in columns:
+            await db.execute("ALTER TABLE conversation_logs ADD COLUMN stored_at TIMESTAMP")
+            logger.info("Added stored_at column to conversation_logs")
+
         await _create_indexes(db)
 
         await db.execute("""
@@ -176,6 +200,10 @@ async def _create_indexes(db: aiosqlite.Connection) -> None:
     indexes = [
         "CREATE INDEX IF NOT EXISTS idx_conversation_logs_user_time ON conversation_logs(user_id, timestamp DESC)",
         "CREATE INDEX IF NOT EXISTS idx_conversation_logs_conversation ON conversation_logs(conversation_id)",
+        # 存储状态相关索引：用于查询待处理的记录和统计存储状态
+        "CREATE INDEX IF NOT EXISTS idx_conversation_logs_storage_status ON conversation_logs(storage_status)",
+        "CREATE INDEX IF NOT EXISTS idx_conversation_logs_storage_attempts ON conversation_logs(storage_attempts)",
+        "CREATE INDEX IF NOT EXISTS idx_conversation_logs_stored_at ON conversation_logs(stored_at)",
         "CREATE INDEX IF NOT EXISTS idx_conversations_user ON conversations(user_id)",
         "CREATE INDEX IF NOT EXISTS idx_conversations_active ON conversations(user_id, is_active)",
         "CREATE INDEX IF NOT EXISTS idx_memory_summaries_user ON memory_summaries(user_id)",

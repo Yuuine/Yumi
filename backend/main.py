@@ -11,8 +11,9 @@ from .core.lifecycle import get_lifecycle_manager
 from .core.logging import YumiLogger, get_logger
 from .core.middleware import RequestTracingMiddleware, SlowRequestMiddleware
 from .database import init_db
-from .routers import chat, logs, memory, models, proxy, user
+from .routers import chat, logs, memory, models, proxy, storage, user
 from .routers import settings as settings_router
+from .services.async_storage import get_async_storage_service
 from .services.emotion import EmotionEngine
 from .services.llm import LLMService
 from .services.memory import MemoryEngine
@@ -65,11 +66,21 @@ async def lifespan(app: FastAPI):
     app.state.llm_service = llm_service
     app.state.prompt_builder = prompt_builder
 
+    # 初始化异步存储服务
+    async_storage = get_async_storage_service()
+    async_storage.set_memory_engine(memory_engine)
+    await async_storage.start()
+    app.state.async_storage = async_storage
+
     logger.info("Yumi backend services initialized successfully")
 
     yield
 
     logger.info("Shutting down Yumi backend services...")
+    
+    # 关闭异步存储服务
+    await async_storage.stop()
+    
     await lifecycle_manager.stop()
     if memory_engine:
         await memory_engine.close()
@@ -107,6 +118,7 @@ app.include_router(settings_router.router, prefix="/api", tags=["settings"])
 app.include_router(proxy.router, prefix="/api", tags=["proxy"])
 app.include_router(models.router, prefix="/api", tags=["models"])
 app.include_router(logs.router, prefix="/api", tags=["logs"])
+app.include_router(storage.router, prefix="/api", tags=["storage"])
 
 
 @app.get("/")

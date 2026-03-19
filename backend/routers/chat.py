@@ -23,6 +23,7 @@ from ..core import (
 )
 from ..database import get_db
 from ..routers.models import decrypt_api_key
+from ..services.async_storage import StorageTask, get_async_storage_service
 from ..services.emotion import EmotionData
 from ..services.log_service import log_service
 
@@ -210,60 +211,30 @@ async def send_message(request: ChatRequest, req: Request):
             user_id=request.userId,
         )
 
-        if settings.app.debug:
-            async with get_db() as db:
-                await db.execute(
-                    """INSERT INTO conversation_logs
-                       (user_id, role, content)
-                       VALUES (?, ?, ?)""",
-                    (request.userId, "user", request.message),
-                )
-                await db.execute(
-                    """INSERT INTO conversation_logs
-                       (user_id, role, content)
-                       VALUES (?, ?, ?)""",
-                    (request.userId, "assistant", reply),
-                )
-                await db.commit()
-        else:
-            async with get_db() as db:
-                await db.execute(
-                    """INSERT INTO conversation_logs
-                       (user_id, role, content, emotion_valence, emotion_arousal)
-                       VALUES (?, ?, ?, ?, ?)""",
-                    (
-                        request.userId,
-                        "user",
-                        request.message,
-                        user_emotion.valence,
-                        user_emotion.arousal,
-                    ),
-                )
-                await db.execute(
-                    """INSERT INTO conversation_logs
-                       (user_id, role, content, emotion_valence, emotion_arousal)
-                       VALUES (?, ?, ?, ?, ?)""",
-                    (
-                        request.userId,
-                        "assistant",
-                        reply,
-                        assistant_emotion.valence,
-                        assistant_emotion.arousal,
-                    ),
-                )
-                await db.commit()
+        # 使用异步存储服务存储消息
+        async_storage = get_async_storage_service()
 
-        if not settings.app.debug:
-            await memory_engine.store(
-                user_id=request.userId,
-                content=f"用户: {request.message}\n助手: {reply}",
-                metadata={
-                    "emotion_valence": user_emotion.valence,
-                    "emotion_arousal": user_emotion.arousal,
-                    "emotion_label": user_emotion.label,
-                    "timestamp": datetime.now().isoformat(),
-                },
-            )
+        # 用户消息存储任务
+        user_task = StorageTask.create(
+            message_id=user_message_id,
+            conversation_id=conversation_id,
+            user_id=request.userId,
+            role="user",
+            content=request.message,
+            emotion={"valence": user_emotion.valence, "arousal": user_emotion.arousal} if user_emotion else None,
+        )
+        await async_storage.enqueue(user_task)
+
+        # 助手消息存储任务
+        assistant_task = StorageTask.create(
+            message_id=assistant_message_id,
+            conversation_id=conversation_id,
+            user_id=request.userId,
+            role="assistant",
+            content=reply,
+            emotion={"valence": assistant_emotion.valence, "arousal": assistant_emotion.arousal} if assistant_emotion else None,
+        )
+        await async_storage.enqueue(assistant_task)
 
         new_summary = None
         if not settings.app.debug:
@@ -375,6 +346,11 @@ async def stream_chat(
 
     active_model = await _get_active_model_config()
 
+    # 生成消息ID和会话ID用于异步存储
+    conversation_id = str(uuid.uuid4())
+    user_message_id = str(uuid.uuid4())
+    assistant_message_id = str(uuid.uuid4())
+
     async def generate():
         if not active_model:
             yield f"data: {json.dumps({'error': '没有可用的模型，请先在模型管理中添加并启用一个模型'})}\n\n"
@@ -436,60 +412,30 @@ async def stream_chat(
             else:
                 assistant_emotion = await emotion_engine.analyze(full_reply)
 
-            if settings.app.debug:
-                async with get_db() as db:
-                    await db.execute(
-                        """INSERT INTO conversation_logs
-                           (user_id, role, content)
-                           VALUES (?, ?, ?)""",
-                        (userId, "user", message),
-                    )
-                    await db.execute(
-                        """INSERT INTO conversation_logs
-                           (user_id, role, content)
-                           VALUES (?, ?, ?)""",
-                        (userId, "assistant", full_reply),
-                    )
-                    await db.commit()
-            else:
-                async with get_db() as db:
-                    await db.execute(
-                        """INSERT INTO conversation_logs
-                           (user_id, role, content, emotion_valence, emotion_arousal)
-                           VALUES (?, ?, ?, ?, ?)""",
-                        (
-                            userId,
-                            "user",
-                            message,
-                            user_emotion.valence,
-                            user_emotion.arousal,
-                        ),
-                    )
-                    await db.execute(
-                        """INSERT INTO conversation_logs
-                           (user_id, role, content, emotion_valence, emotion_arousal)
-                           VALUES (?, ?, ?, ?, ?)""",
-                        (
-                            userId,
-                            "assistant",
-                            full_reply,
-                            assistant_emotion.valence,
-                            assistant_emotion.arousal,
-                        ),
-                    )
-                    await db.commit()
+            # 使用异步存储服务存储消息
+            async_storage = get_async_storage_service()
 
-            if not settings.app.debug:
-                await memory_engine.store(
-                    user_id=userId,
-                    content=f"用户: {message}\n助手: {full_reply}",
-                    metadata={
-                        "emotion_valence": user_emotion.valence,
-                        "emotion_arousal": user_emotion.arousal,
-                        "emotion_label": user_emotion.label,
-                        "timestamp": datetime.now().isoformat(),
-                    },
-                )
+            # 用户消息存储任务
+            user_task = StorageTask.create(
+                message_id=user_message_id,
+                conversation_id=conversation_id,
+                user_id=userId,
+                role="user",
+                content=message,
+                emotion={"valence": user_emotion.valence, "arousal": user_emotion.arousal} if user_emotion else None,
+            )
+            await async_storage.enqueue(user_task)
+
+            # 助手消息存储任务
+            assistant_task = StorageTask.create(
+                message_id=assistant_message_id,
+                conversation_id=conversation_id,
+                user_id=userId,
+                role="assistant",
+                content=full_reply,
+                emotion={"valence": assistant_emotion.valence, "arousal": assistant_emotion.arousal} if assistant_emotion else None,
+            )
+            await async_storage.enqueue(assistant_task)
 
             yield f"data: {json.dumps({'done': True, 'emotion': {'valence': assistant_emotion.valence, 'arousal': assistant_emotion.arousal}})}\n\n"
 
