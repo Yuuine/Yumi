@@ -35,7 +35,6 @@ const showModelsModal = ref(false)
 const showSettingsModal = ref(false)
 const isDeepThinking = ref(false)
 
-// 组件挂载时加载历史记录并滚动到底部
 onMounted(async () => {
   await chatStore.loadHistory()
   nextTick(() => {
@@ -44,11 +43,8 @@ onMounted(async () => {
 })
 
 async function handleSend(content: string) {
+  messageListRef.value?.forceScrollToBottom()
   await chatStore.sendMessage(content, isDeepThinking.value)
-  
-  setTimeout(() => {
-    messageListRef.value?.scrollToBottom()
-  }, 100)
 }
 
 function handleCopy(content: string) {

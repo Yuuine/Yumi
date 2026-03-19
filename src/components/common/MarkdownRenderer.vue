@@ -92,27 +92,33 @@ const renderedContent = computed(() => renderMarkdown(props.content))
 
   :deep(code) {
     background: #f3f4f6;
-    padding: 2px 6px;
-    border-radius: 4px;
+    padding: 3px 8px;
+    border-radius: 6px;
     font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
-    font-size: 0.9em;
+    font-size: 0.875em;
     color: #e11d48;
+    border: 1px solid #e5e7eb;
   }
 
   :deep(pre) {
-    background: #1f2937;
-    color: #e5e7eb;
-    padding: 12px 16px;
-    border-radius: 8px;
+    background: #1e293b;
+    color: #e2e8f0;
+    padding: 16px;
+    border-radius: 12px;
     overflow-x: auto;
-    margin: 12px 0;
+    margin: 16px 0;
+    border: 1px solid #334155;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1),
+                0 2px 4px -2px rgba(0, 0, 0, 0.1),
+                inset 0 1px 0 rgba(255, 255, 255, 0.05);
 
     code {
       background: transparent;
       padding: 0;
       color: inherit;
       font-size: var(--font-size-xs);
-      line-height: 1.5;
+      line-height: 1.6;
+      border: none;
     }
   }
 

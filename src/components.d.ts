@@ -43,6 +43,7 @@ declare module 'vue' {
     ProxySettingsModal: typeof import('./components/settings/ProxySettingsModal.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    ScrollToBottom: typeof import('./components/chat/ScrollToBottom.vue')['default']
     SettingsModal: typeof import('./components/settings/SettingsModal.vue')['default']
     SidebarNav: typeof import('./components/sidebar/SidebarNav.vue')['default']
     TestResultDialog: typeof import('./components/models/TestResultDialog.vue')['default']

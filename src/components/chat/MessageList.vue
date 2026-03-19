@@ -23,13 +23,19 @@
         <span>暂无消息</span>
       </div>
     </div>
+
+    <ScrollToBottom
+      :visible="showScrollButton"
+      @click="smoothScrollToBottom"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, watch, nextTick, onMounted, onUnmounted, computed } from 'vue'
 import type { ChatMessage } from '@/types'
 import MessageItem from './MessageItem.vue'
+import ScrollToBottom from './ScrollToBottom.vue'
 import { IconSpinner } from '@/components/icons'
 
 interface Props {
@@ -43,6 +49,7 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
   copy: [content: string]
   loadMore: []
+  scrollStateChange: [isAtBottom: boolean]
 }>()
 
 const containerRef = ref<HTMLElement | null>(null)
@@ -55,9 +62,18 @@ const isNearBottom = ref(true)
 const isInternalUpdate = ref(false)
 const isInitialLoad = ref(true)
 const scrollDebounceTimer = ref<ReturnType<typeof setTimeout> | null>(null)
+const isAutoScrolling = ref(false)
+const showScrollButton = ref(false)
 
 const SCROLL_THRESHOLD = 150
 const DEBOUNCE_DELAY = 100
+const BOTTOM_THRESHOLD = 50
+
+const isAtBottom = computed(() => {
+  if (!containerRef.value) return true
+  const { scrollTop, scrollHeight, clientHeight } = containerRef.value
+  return scrollHeight - scrollTop - clientHeight < BOTTOM_THRESHOLD
+})
 
 onMounted(() => {
   // 首次加载的滚动已在 watch 中处理
@@ -69,35 +85,56 @@ onUnmounted(() => {
   }
 })
 
+const forceScrollFlag = ref(false)
+
 watch(
   () => props.messages,
   (newMessages, oldMessages) => {
     const prevLength = oldMessages?.length || 0
     const newLength = newMessages.length
 
-    // 首次加载：只更新消息，然后滚动到底部
+    // 首次加载：直接显示消息并滚动到底部
     if (isInitialLoad.value) {
       displayMessages.value = [...newMessages]
       isInitialLoad.value = false
       nextTick(() => {
         scrollToBottom()
+        emit('scrollStateChange', true)
       })
       return
     }
 
-    // 内部更新（加载历史）：保持位置
+    // 内部更新（加载历史消息）：保持当前滚动位置
     if (isInternalUpdate.value) {
       displayMessages.value = [...newMessages]
       isInternalUpdate.value = false
       return
     }
 
-    // 新消息到达：延迟滚动确保 DOM 更新
+    // 接收新消息：根据用户位置或强制滚动标志决定是否自动滚动
     if (newLength > prevLength) {
       displayMessages.value = [...newMessages]
-      setTimeout(() => {
-        scrollToBottom()
-      }, 50)
+      
+      // 强制滚动（用户发送消息时）
+      if (forceScrollFlag.value) {
+        forceScrollFlag.value = false
+        nextTick(() => {
+          scrollToBottom()
+          emit('scrollStateChange', true)
+        })
+        return
+      }
+
+      // 用户在底部位置，自动滚动到底部查看新消息
+      const wasAtBottom = isAtBottom.value
+      if (wasAtBottom) {
+        nextTick(() => {
+          scrollToBottom()
+          emit('scrollStateChange', true)
+        })
+      }
+      // 用户不在底部时，不自动滚动，保持当前位置
+      // 滚动按钮由 handleScroll 中的 scrollStateChange 事件控制
     } else {
       displayMessages.value = [...newMessages]
     }
@@ -107,11 +144,32 @@ watch(
 
 function scrollToBottom() {
   if (!containerRef.value) return
-  
+
+  isAutoScrolling.value = true
   requestAnimationFrame(() => {
     if (!containerRef.value) return
     containerRef.value.scrollTop = containerRef.value.scrollHeight
+    setTimeout(() => {
+      isAutoScrolling.value = false
+    }, 100)
   })
+}
+
+function smoothScrollToBottom() {
+  if (!containerRef.value) return
+
+  isAutoScrolling.value = true
+  containerRef.value.scrollTo({
+    top: containerRef.value.scrollHeight,
+    behavior: 'smooth'
+  })
+  setTimeout(() => {
+    isAutoScrolling.value = false
+  }, 500)
+}
+
+function forceScrollToBottom() {
+  forceScrollFlag.value = true
 }
 
 function getFirstVisibleMessageId(): string | null {
@@ -140,9 +198,16 @@ function scrollToMessage(messageId: string | null) {
 function handleScroll() {
   if (!containerRef.value) return
 
-  const { scrollTop, scrollHeight, clientHeight } = containerRef.value
+  if (isAutoScrolling.value) return
 
-  isNearBottom.value = scrollHeight - scrollTop - clientHeight < 100
+  const { scrollTop, scrollHeight, clientHeight } = containerRef.value
+  const distanceFromBottom = scrollHeight - scrollTop - clientHeight
+  const currentIsAtBottom = distanceFromBottom < BOTTOM_THRESHOLD
+
+  isNearBottom.value = distanceFromBottom < 100
+  showScrollButton.value = !currentIsAtBottom
+
+  emit('scrollStateChange', currentIsAtBottom)
 
   if (scrollDebounceTimer.value) {
     clearTimeout(scrollDebounceTimer.value)
@@ -217,6 +282,9 @@ function getMessageProgress(): number {
 
 defineExpose({
   scrollToBottom,
+  smoothScrollToBottom,
+  forceScrollToBottom,
+  isAtBottom,
   addMessage: (message: ChatMessage) => {
     displayMessages.value.push(message)
     nextTick(scrollToBottom)
@@ -230,6 +298,7 @@ defineExpose({
 
 <style lang="scss" scoped>
 .message-list {
+  position: relative;
   flex: 1;
   overflow-y: auto;
   padding: 24px 24px 200px;
