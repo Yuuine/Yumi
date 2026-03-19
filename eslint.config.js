@@ -15,6 +15,7 @@ export default [
       'src/auto-imports.d.ts',
       'src/components.d.ts',
       '*.local',
+      'vite.config.ts.timestamp-*',
     ],
   },
   js.configs.recommended,
@@ -60,6 +61,10 @@ export default [
         test: 'readonly',
         expect: 'readonly',
         __dirname: 'readonly',
+        crypto: 'readonly',
+        requestAnimationFrame: 'readonly',
+        ReadableStreamDefaultReader: 'readonly',
+        Uint8Array: 'readonly',
       },
     },
     plugins: {

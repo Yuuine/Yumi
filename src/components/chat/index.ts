@@ -1,6 +1,2 @@
 export { default as MessageList } from './MessageList.vue'
-export { default as MessageItem } from './MessageItem.vue'
-export { default as MessageActionsFooter } from './MessageActionsFooter.vue'
 export { default as ChatInput } from './ChatInput.vue'
-export { default as DeepThinkingModal } from './DeepThinkingModal.vue'
-export { default as ScrollToBottom } from './ScrollToBottom.vue'

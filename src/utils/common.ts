@@ -2,12 +2,6 @@
  * 通用工具函数
  */
 
-export function generateId(prefix = ''): string {
-  const timestamp = Date.now().toString(36)
-  const random = Math.random().toString(36).substring(2, 8)
-  return prefix ? `${prefix}-${timestamp}-${random}` : `${timestamp}-${random}`
-}
-
 export function formatDateTime(
   date: Date | string,
   format: 'full' | 'date' | 'time' | 'relative' = 'full'
@@ -73,69 +67,6 @@ export async function copyToClipboard(text: string): Promise<boolean> {
     const success = document.execCommand('copy')
     document.body.removeChild(textarea)
     return success
-  }
-}
-
-export function debounce<T extends (...args: unknown[]) => unknown>(
-  fn: T,
-  delay: number
-): (...args: Parameters<T>) => void {
-  let timer: ReturnType<typeof setTimeout> | null = null
-
-  return function (this: unknown, ...args: Parameters<T>) {
-    if (timer) clearTimeout(timer)
-    timer = setTimeout(() => {
-      fn.apply(this, args)
-      timer = null
-    }, delay)
-  }
-}
-
-export function throttle<T extends (...args: unknown[]) => unknown>(
-  fn: T,
-  limit: number
-): (...args: Parameters<T>) => void {
-  let inThrottle = false
-
-  return function (this: unknown, ...args: Parameters<T>) {
-    if (!inThrottle) {
-      fn.apply(this, args)
-      inThrottle = true
-      setTimeout(() => {
-        inThrottle = false
-      }, limit)
-    }
-  }
-}
-
-export function deepClone<T>(obj: T): T {
-  if (obj === null || typeof obj !== 'object') {
-    return obj
-  }
-
-  if (Array.isArray(obj)) {
-    return obj.map(item => deepClone(item)) as T
-  }
-
-  const cloned = {} as T
-  for (const key in obj) {
-    if (Object.prototype.hasOwnProperty.call(obj, key)) {
-      cloned[key] = deepClone(obj[key])
-    }
-  }
-
-  return cloned
-}
-
-export function isMobileDevice(): boolean {
-  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
-}
-
-export function safeJsonParse<T>(str: string, fallback: T): T {
-  try {
-    return JSON.parse(str)
-  } catch {
-    return fallback
   }
 }
 

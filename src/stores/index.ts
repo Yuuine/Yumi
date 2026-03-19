@@ -1,6 +1,5 @@
 export { useChatStore } from './chat'
 export { useSettingsStore } from './settings'
-export { useUserStore } from './user'
 export { useThemeStore } from './theme'
 export { useModelsStore } from './models'
 export { useProxyStore } from './proxy'

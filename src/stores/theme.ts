@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { computed, ref, watch } from 'vue'
+import { ref, watch } from 'vue'
 
 export type Theme = 'light' | 'dark'
 
@@ -33,12 +33,3 @@ export const useThemeStore = defineStore('theme', () => {
     initTheme,
   }
 })
-
-export const useTheme = () => {
-  const themeStore = useThemeStore()
-  return {
-    theme: themeStore.theme,
-    isDark: computed(() => themeStore.theme === 'dark'),
-    setTheme: themeStore.setTheme,
-  }
-}

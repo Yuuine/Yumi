@@ -36,35 +36,3 @@ export function convertObjectKeys<T extends Record<string, unknown>>(
   }
   return result
 }
-
-export function toSnakeCase<T extends Record<string, unknown>>(obj: T): Record<string, unknown> {
-  return convertObjectKeys(obj, 'camelToSnake')
-}
-
-export function toCamelCase<T extends Record<string, unknown>>(obj: T): Record<string, unknown> {
-  return convertObjectKeys(obj, 'snakeToCamel')
-}
-
-export function pickFields<T extends Record<string, unknown>, K extends keyof T>(
-  obj: T,
-  keys: K[]
-): Pick<T, K> {
-  const result = {} as Pick<T, K>
-  for (const key of keys) {
-    if (key in obj) {
-      result[key] = obj[key]
-    }
-  }
-  return result
-}
-
-export function omitFields<T extends Record<string, unknown>, K extends keyof T>(
-  obj: T,
-  keys: K[]
-): Omit<T, K> {
-  const result = { ...obj }
-  for (const key of keys) {
-    delete result[key]
-  }
-  return result as Omit<T, K>
-}

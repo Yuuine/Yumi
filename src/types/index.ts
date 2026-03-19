@@ -107,20 +107,6 @@ export interface ModelConfig {
   updatedAt?: string
 }
 
-export interface ModelConfigInput {
-  providerId?: string
-  name: string
-  baseUrl: string
-  apiKey: string
-  modelName: string
-  customModelName?: string
-  modelType?: ModelType
-  maxTokens?: number
-  temperature?: number
-  isEnabled?: boolean
-  apiKeyUnchanged?: boolean
-}
-
 export interface ModelTestRequest {
   baseUrl: string
   apiKey: string

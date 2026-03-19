@@ -20,17 +20,3 @@ export function getOrCreateUserId(): string {
   
   return userId
 }
-
-/**
- * 清除用户ID（用于登出或重置）
- */
-export function clearUserId(): void {
-  localStorage.removeItem(USER_ID_KEY)
-}
-
-/**
- * 检查是否为匿名用户
- */
-export function isAnonymousUser(userId: string): boolean {
-  return userId.startsWith('anonymous-')
-}

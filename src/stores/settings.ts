@@ -62,11 +62,6 @@ export const useSettingsStore = defineStore('settings', () => {
     saveSettings()
   }
 
-  function resetSettings() {
-    settings.value = { ...DEFAULT_SETTINGS }
-    saveSettings()
-  }
-
   loadSettings()
 
   return {
@@ -79,6 +74,5 @@ export const useSettingsStore = defineStore('settings', () => {
     setShowReasoning,
     setVerboseTest,
     setTheme,
-    resetSettings,
   }
 })

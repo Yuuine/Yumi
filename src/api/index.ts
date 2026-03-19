@@ -1,6 +1,4 @@
 export { chatApi } from './chat'
-export { settingsApi } from './settings'
 export { userApi } from './user'
-export { memoryApi } from './memory'
-export { httpClient, HttpClient } from './http-client'
-export type { ApiError, ApiErrorResponse } from './http-client'
+export { httpClient } from './http-client'
+export type { ApiError } from './http-client'

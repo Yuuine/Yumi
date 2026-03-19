@@ -64,13 +64,6 @@ export function getCachedMessages<T>(): T[] {
 }
 
 /**
- * 获取最后同步时间
- */
-export function getLastSyncTime(): string | null {
-  return loadFromStorage<string | null>(KEYS.LAST_SYNC, null)
-}
-
-/**
  * 清除所有缓存数据
  */
 export function clearAllCache(): void {

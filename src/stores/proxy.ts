@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import type { ProxySettings } from '@/types'
 import { proxyApi } from '@/api/proxy'
 import { logger } from '@/utils/logger'
@@ -18,17 +18,6 @@ export const useProxyStore = defineStore('proxy', () => {
   const proxySettings = ref<ProxySettings>({ ...DEFAULT_PROXY_SETTINGS })
   const isLoading = ref(false)
   const isScanning = ref(false)
-
-  const hasProxyConfigured = computed(() => {
-    const s = proxySettings.value
-    if (!s.enabled) return false
-    if (s.mode === 'normal') return !!s.normalProxyUrl.trim()
-    if (s.mode === 'smart') {
-      if (s.smartSubMode === 'manual') return !!s.manualProxyHost.trim() && s.manualProxyPort > 0
-      return s.scannedProxies.length > 0
-    }
-    return false
-  })
 
   async function loadProxySettings(): Promise<void> {
     isLoading.value = true
@@ -62,7 +51,6 @@ export const useProxyStore = defineStore('proxy', () => {
     isScanning.value = true
     try {
       const proxies = await proxyApi.scanProxyPorts()
-      // 仅更新 scannedProxies，保留其他字段，避免覆盖用户正在编辑的 enabled 等状态
       proxySettings.value = {
         ...proxySettings.value,
         scannedProxies: proxies,
@@ -81,7 +69,6 @@ export const useProxyStore = defineStore('proxy', () => {
     proxySettings,
     isLoading,
     isScanning,
-    hasProxyConfigured,
     loadProxySettings,
     saveProxySettings,
     scanProxyPorts,
