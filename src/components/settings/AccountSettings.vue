@@ -98,6 +98,10 @@
             <span>导入账号</span>
           </button>
         </div>
+        <div class="action-buttons account-manage-buttons">
+          <button class="action-btn" @click="handleCreateAccount">创建账号</button>
+          <button class="action-btn" @click="handleSwitchAccount">切换账号</button>
+        </div>
         <button class="action-btn danger full-width" @click="handleDelete">
           <IconDelete class="btn-icon" />
           <span>删除账号</span>
@@ -190,6 +194,27 @@
         </button>
       </template>
     </Dialog>
+
+    <Dialog v-model="showSwitchAccountModal" title="切换账号">
+      <div class="dialog-form">
+        <div v-if="accounts.length === 0" class="dialog-hint">未找到本地账号</div>
+        <div v-else class="switch-account-list">
+          <button
+            v-for="account in accounts"
+            :key="account.id"
+            class="switch-account-item"
+            :class="{ active: account.id === currentAccount?.id }"
+            @click="confirmSwitchAccount(account.id)"
+          >
+            <span>{{ account.displayName }}</span>
+            <small>{{ account.id }}</small>
+          </button>
+        </div>
+      </div>
+      <template #footer>
+        <button class="dialog-btn" @click="showSwitchAccountModal = false">关闭</button>
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -215,6 +240,7 @@ const showPasswordModal = ref(false)
 const showDeleteConfirm = ref(false)
 const showDeleteFinalConfirm = ref(false)
 const showImportModal = ref(false)
+const showSwitchAccountModal = ref(false)
 const savedExportPassword = ref('')
 const exportPasswordInput = ref('')
 const importPassword = ref('')
@@ -238,6 +264,7 @@ const stats = ref({
 })
 
 const currentAccount = computed(() => accountStore.currentAccount)
+const accounts = computed(() => accountStore.accounts)
 const encryptEnabled = computed(() => accountStore.currentConfig?.privacy?.encryptSecrets ?? true)
 const canProceedDeleteStepOne = computed(() => deleteConfirmText.value.trim() === '确认')
 const canConfirmDeleteFinal = computed(() => deleteCountdown.value === 0 && !isDeleting.value)
@@ -417,6 +444,40 @@ function handleImport() {
   showImportModal.value = true
 }
 
+async function handleCreateAccount(): Promise<void> {
+  try {
+    const created = await accountStore.createDefaultAccount()
+    const accountSuffix = created.id.slice(-6)
+    toast.success(`已创建并切换到新账号：${created.displayName}（...${accountSuffix}）`)
+    logger.info('AccountSettings', 'Default account created from settings', {
+      accountId: created.id,
+    })
+    await loadStats()
+  } catch (error) {
+    const errMsg = error instanceof Error ? error.message : '创建账号失败'
+    toast.error(`创建失败: ${errMsg}`)
+    logger.error('AccountSettings', 'Failed to create account from settings', error)
+  }
+}
+
+function handleSwitchAccount(): void {
+  showSwitchAccountModal.value = true
+}
+
+async function confirmSwitchAccount(accountId: string): Promise<void> {
+  try {
+    await accountStore.switchAccount(accountId)
+    showSwitchAccountModal.value = false
+    toast.success('账号切换成功')
+    logger.info('AccountSettings', 'Account switched from settings', { accountId })
+    await loadStats()
+  } catch (error) {
+    const errMsg = error instanceof Error ? error.message : '切换账号失败'
+    toast.error(`切换失败: ${errMsg}`)
+    logger.error('AccountSettings', 'Failed to switch account from settings', error)
+  }
+}
+
 function handleFileSelect(event: Event): void {
   const input = event.target as HTMLInputElement
   selectedFile.value = input.files && input.files.length > 0 ? input.files[0] : null
@@ -535,7 +596,12 @@ async function confirmDelete() {
     }
 
     showDeleteFinalConfirm.value = false
-    toast.success('账号已删除，关联历史记录与模型配置已清理')
+    const switchedAccount = accountStore.currentAccount
+    if (switchedAccount) {
+      toast.success(`账号已删除，已自动切换到：${switchedAccount.displayName}`)
+    } else {
+      toast.success('账号已删除，关联历史记录与模型配置已清理')
+    }
     logger.info('AccountSettings', 'Account deleted', { accountId: deletedId })
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : '删除失败'
@@ -781,6 +847,40 @@ async function confirmImport(): Promise<void> {
   width: 100%;
   max-width: 320px;
   margin: var(--spacing-md) auto 0;
+}
+
+.account-manage-buttons {
+  margin-top: var(--spacing-sm);
+}
+
+.switch-account-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.switch-account-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  cursor: pointer;
+  color: var(--text-primary);
+
+  &.active {
+    border-color: var(--color-primary);
+    background: var(--color-primary-light-9, #eff6ff);
+  }
+
+  small {
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
+  }
 }
 
 .setting-item {

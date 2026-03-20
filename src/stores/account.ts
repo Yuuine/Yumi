@@ -976,6 +976,7 @@ export const useAccountStore = defineStore('account', () => {
     hasAccounts,
     currentAccountId,
     initialize,
+    createDefaultAccount,
     createAccount,
     switchAccount,
     updateAccountProfile,
