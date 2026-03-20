@@ -1,0 +1,45 @@
+# DeepSeek Reasoner 模型配置
+# 推理增强模型，部分 API 参数不支持
+
+model:
+  name: "deepseek-reasoner"
+  provider: "deepseek"
+  description: "DeepSeek 推理增强模型，输出详细推理过程"
+
+api:
+  endpoint_suffix: "/chat/completions"
+  auth_type: "bearer"
+
+request:
+  defaults:
+    max_tokens: 4096
+    response_format:
+      type: "text"
+    tool_choice: "none"
+
+  unsupported_fields:
+    - temperature
+    - top_p
+    - frequency_penalty
+    - presence_penalty
+    - logprobs
+    - top_logprobs
+
+  supported_fields:
+    - max_tokens
+    - response_format
+    - stop
+    - stream
+    - stream_options
+    - tools
+    - tool_choice
+    - thinking
+
+response:
+  content_field: "choices[0].message.content"
+  reasoning_field: "reasoning_content"
+
+stream:
+  format: "sse"
+  done_signal: "[DONE]"
+  content_field: "choices[0].delta.content"

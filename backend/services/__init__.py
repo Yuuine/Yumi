@@ -8,9 +8,6 @@ from .model_adapters import (
     ChatResponse,
     ModelConfig,
     OpenAICompatibleAdapter,
-    ProviderDiffConfig,
-    RequestDiff,
-    ResponseDiff,
     StreamChunk,
     create_adapter,
 )
@@ -34,9 +31,6 @@ __all__ = [
     "ChatResponse",
     "ModelConfig",
     "OpenAICompatibleAdapter",
-    "ProviderDiffConfig",
-    "RequestDiff",
-    "ResponseDiff",
     "StreamChunk",
     "create_adapter",
 ]

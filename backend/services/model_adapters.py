@@ -1,7 +1,7 @@
 """
 Model Adapters - 配置驱动的模型适配器
 
-基于 OpenAI API 格式，通过差异配置实现多提供商适配。
+基于 OpenAI API 格式，通过 YAML 配置文件实现多提供商适配。
 """
 from __future__ import annotations
 
@@ -13,39 +13,16 @@ from typing import Any
 import httpx
 
 from ..core import LLMException, get_logger
+from .providers import load_model_config
+from .providers.base import ProviderModelConfig
 from .proxy_config import ProxyConfig
 
 logger = get_logger(__name__)
 
 
 @dataclass
-class RequestDiff:
-    """请求差异配置"""
-    remove_fields: list[str] = field(default_factory=list)
-    add_fields: dict[str, Any] = field(default_factory=dict)
-    field_mapping: dict[str, str] = field(default_factory=dict)
-    default_values: dict[str, Any] = field(default_factory=dict)
-    rename_fields: dict[str, str] = field(default_factory=dict)
-
-
-@dataclass
-class ResponseDiff:
-    """响应差异配置"""
-    extra_content_fields: list[str] = field(default_factory=list)
-    reasoning_field: str | None = None
-    field_mapping: dict[str, str] = field(default_factory=dict)
-
-
-@dataclass
-class ProviderDiffConfig:
-    """提供商差异配置"""
-    request_diff: RequestDiff = field(default_factory=RequestDiff)
-    response_diff: ResponseDiff = field(default_factory=ResponseDiff)
-
-
-@dataclass
 class ModelConfig:
-    """模型配置"""
+    """模型运行时配置"""
     provider_id: str
     base_url: str
     api_key: str
@@ -72,64 +49,34 @@ class StreamChunk:
     is_done: bool = False
 
 
-PROVIDER_CONFIGS: dict[str, ProviderDiffConfig] = {
-    "deepseek": ProviderDiffConfig(
-        request_diff=RequestDiff(
-            remove_fields=["temperature", "top_p", "presence_penalty", "frequency_penalty", "logprobs", "top_logprobs"],
-        ),
-        response_diff=ResponseDiff(
-            reasoning_field="reasoning_content",
-        ),
-    ),
-    "kimi": ProviderDiffConfig(
-        request_diff=RequestDiff(
-            remove_fields=["temperature", "top_p", "n", "presence_penalty", "frequency_penalty"],
-            rename_fields={"max_tokens": "max_completion_tokens"},
-        ),
-        response_diff=ResponseDiff(),
-    ),
-    "kimi-k2.5": ProviderDiffConfig(
-        request_diff=RequestDiff(
-            remove_fields=["temperature", "top_p", "n", "presence_penalty", "frequency_penalty"],
-            rename_fields={"max_tokens": "max_completion_tokens"},
-        ),
-        response_diff=ResponseDiff(),
-    ),
-    "kimi-k2-turbo-preview": ProviderDiffConfig(
-        request_diff=RequestDiff(),
-        response_diff=ResponseDiff(),
-    ),
-}
-
-
-def get_diff_config(model_name: str, provider_id: str) -> ProviderDiffConfig:
-    """获取模型的差异配置"""
-    model_lower = model_name.lower()
-    if model_lower in PROVIDER_CONFIGS:
-        return PROVIDER_CONFIGS[model_lower]
-    provider_lower = provider_id.lower()
-    if provider_lower in PROVIDER_CONFIGS:
-        return PROVIDER_CONFIGS[provider_lower]
-    return ProviderDiffConfig()
-
-
 class OpenAICompatibleAdapter:
-    """OpenAI 兼容适配器 - 基于差异配置动态调整"""
+    """OpenAI 兼容适配器 - 基于 YAML 配置动态调整"""
 
-    def __init__(self, config: ModelConfig, diff_config: ProviderDiffConfig | None = None):
+    def __init__(
+        self,
+        config: ModelConfig,
+        provider_config: ProviderModelConfig | None = None,
+    ):
         self.config = config
-        self.diff_config = diff_config or get_diff_config(config.model_name, config.provider_id)
+        self.provider_config = provider_config or load_model_config(config.model_name)
         proxy_url = None
         if config.proxy_config and config.proxy_config.enabled:
             proxy_url = config.proxy_config.get_normal_proxy()
         self.client = httpx.AsyncClient(
             timeout=config.timeout,
             proxy=proxy_url,
-            trust_env=proxy_url is not None,  # 代理关闭时禁用 env 代理
+            trust_env=proxy_url is not None,
         )
 
     def get_endpoint(self) -> str:
         base = self.config.base_url.rstrip("/")
+        if self.provider_config:
+            suffix = self.provider_config.api.endpoint_suffix
+            if base.endswith("/v1") and suffix.startswith("/v1"):
+                return f"{base}{suffix[3:]}"
+            if base.endswith(suffix):
+                return base
+            return f"{base}{suffix}"
         if base.endswith("/v1"):
             return f"{base}/chat/completions"
         if base.endswith("/chat/completions"):
@@ -138,7 +85,10 @@ class OpenAICompatibleAdapter:
 
     def get_headers(self) -> dict[str, str]:
         headers = {"Content-Type": "application/json"}
-        if self.config.api_key:
+        auth_type = "bearer"
+        if self.provider_config:
+            auth_type = self.provider_config.api.auth_type
+        if self.config.api_key and auth_type == "bearer":
             headers["Authorization"] = f"Bearer {self.config.api_key}"
         return headers
 
@@ -149,55 +99,87 @@ class OpenAICompatibleAdapter:
         max_tokens: int | None = None,
         stream: bool = False,
         use_thinking: bool = False,
+        frequency_penalty: float | None = None,
+        presence_penalty: float | None = None,
+        response_format: dict | None = None,
+        stop: str | list[str] | None = None,
+        stream_options: dict | None = None,
+        top_p: float | None = None,
+        tools: list | None = None,
+        tool_choice: str | dict | None = None,
+        logprobs: bool = False,
+        top_logprobs: int | None = None,
         **kwargs,
     ) -> dict[str, Any]:
+        """
+        构建请求体
+
+        TODO: 多模态支持
+        - 支持 content 字段为 List[Dict] 类型
+        - 支持 image_url 和 video_url 类型
+        - 参考 Kimi API 文档的 content 字段说明
+        """
         payload: dict[str, Any] = {
             "model": self.config.model_name,
             "messages": messages,
         }
 
-        if temperature is not None:
-            payload["temperature"] = temperature
-        elif self.config.temperature:
-            payload["temperature"] = self.config.temperature
+        if self.provider_config:
+            defaults = self.provider_config.request.defaults
+            unsupported = self.provider_config.request.unsupported_fields
+            special = self.provider_config.request.special
 
-        if max_tokens:
-            payload["max_tokens"] = max_tokens
-        elif self.config.max_tokens:
-            payload["max_tokens"] = self.config.max_tokens
+            def add_field(name: str, value: Any, default: Any = None):
+                if name in unsupported:
+                    return
+                if value is not None:
+                    payload[name] = value
+                elif default is not None:
+                    payload[name] = default
+                elif name in defaults:
+                    payload[name] = defaults[name]
 
-        if stream:
-            payload["stream"] = True
+            add_field("temperature", temperature, self.config.temperature)
+            add_field("max_tokens", max_tokens, self.config.max_tokens)
+            add_field("top_p", top_p)
+            add_field("frequency_penalty", frequency_penalty)
+            add_field("presence_penalty", presence_penalty)
+            add_field("response_format", response_format)
+            add_field("stop", stop)
+            add_field("stream_options", stream_options)
+            add_field("tools", tools)
+            add_field("tool_choice", tool_choice)
+            add_field("logprobs", logprobs)
+            add_field("top_logprobs", top_logprobs)
 
-        model_lower = self.config.model_name.lower()
-        if use_thinking:
-            if model_lower == "deepseek-chat":
-                payload["thinking"] = {"type": "enabled"}
-                logger.info("Deep thinking enabled for deepseek-chat")
-            elif model_lower == "kimi-k2.5":
-                payload["thinking"] = {"type": "enabled"}
-                logger.info("Deep thinking enabled for kimi-k2.5")
-        elif model_lower == "kimi-k2.5":
-            # k2.5 默认开启思考，需显式禁用
-            payload["thinking"] = {"type": "disabled"}
+            if stream:
+                payload["stream"] = True
 
-        for key, value in self.diff_config.request_diff.default_values.items():
-            if key not in payload:
-                payload[key] = value
+            thinking_config = special.get("thinking", {})
+            if thinking_config.get("supported"):
+                if use_thinking:
+                    payload["thinking"] = {"type": "enabled"}
+                    logger.info("Deep thinking enabled for %s", self.config.model_name)
+                elif thinking_config.get("default_on"):
+                    payload["thinking"] = {"type": "disabled"}
 
-        for field_name in self.diff_config.request_diff.remove_fields:
-            payload.pop(field_name, None)
+            field_rename = special.get("field_rename", {})
+            for old_key, new_key in field_rename.items():
+                if old_key in payload:
+                    payload[new_key] = payload.pop(old_key)
+        else:
+            if temperature is not None:
+                payload["temperature"] = temperature
+            elif self.config.temperature:
+                payload["temperature"] = self.config.temperature
 
-        for old_key, new_key in self.diff_config.request_diff.field_mapping.items():
-            if old_key in payload:
-                payload[new_key] = payload.pop(old_key)
+            if max_tokens:
+                payload["max_tokens"] = max_tokens
+            elif self.config.max_tokens:
+                payload["max_tokens"] = self.config.max_tokens
 
-        for old_key, new_key in self.diff_config.request_diff.rename_fields.items():
-            if old_key in payload:
-                payload[new_key] = payload.pop(old_key)
-
-        for key, value in self.diff_config.request_diff.add_fields.items():
-            payload[key] = value
+            if stream:
+                payload["stream"] = True
 
         return payload
 
@@ -214,8 +196,8 @@ class OpenAICompatibleAdapter:
         content = message.get("content", "")
 
         reasoning_content = None
-        if self.diff_config.response_diff.reasoning_field:
-            reasoning_content = message.get(self.diff_config.response_diff.reasoning_field)
+        if self.provider_config and self.provider_config.response.reasoning_field:
+            reasoning_content = message.get(self.provider_config.response.reasoning_field)
 
         if not content and not reasoning_content:
             logger.warning(
@@ -245,8 +227,8 @@ class OpenAICompatibleAdapter:
         content = delta.get("content")
 
         reasoning_content = None
-        if self.diff_config.response_diff.reasoning_field:
-            reasoning_content = delta.get(self.diff_config.response_diff.reasoning_field)
+        if self.provider_config and self.provider_config.response.reasoning_field:
+            reasoning_content = delta.get(self.provider_config.response.reasoning_field)
 
         return StreamChunk(
             content=content,
@@ -260,7 +242,6 @@ class OpenAICompatibleAdapter:
         payload: dict[str, Any],
         stream: bool = False,
     ):
-        """执行 HTTP 请求，支持智能代理重试"""
         last_error: Exception | None = None
         proxy_urls: list[str] = []
 
@@ -268,7 +249,6 @@ class OpenAICompatibleAdapter:
             if self.config.proxy_config.mode == "smart":
                 proxy_urls = self.config.proxy_config.get_proxy_urls_for_fallback()
 
-        # 首次请求（无代理或普通代理已在 client 中）
         try:
             if stream:
                 return await self._stream_request(url, headers, payload)
@@ -282,7 +262,6 @@ class OpenAICompatibleAdapter:
         except Exception as e:
             raise
 
-        # 智能代理：依次用备用代理重试（最多 5 个）
         for proxy_url in proxy_urls[:5]:
             try:
                 async with httpx.AsyncClient(
@@ -314,7 +293,6 @@ class OpenAICompatibleAdapter:
         payload: dict[str, Any],
         client: httpx.AsyncClient | None = None,
     ):
-        """流式请求"""
         c = client or self.client
         return c.stream("POST", url, json=payload, headers=headers)
 
@@ -400,7 +378,7 @@ class OpenAICompatibleAdapter:
 
         clients: list[tuple[httpx.AsyncClient, bool]] = [
             (self.client, False)
-        ]  # (client, should_close)
+        ]
         if self.config.proxy_config and self.config.proxy_config.enabled:
             if self.config.proxy_config.mode == "smart":
                 for proxy_url in self.config.proxy_config.get_proxy_urls_for_fallback():
@@ -459,5 +437,5 @@ class OpenAICompatibleAdapter:
 
 def create_adapter(config: ModelConfig) -> OpenAICompatibleAdapter:
     """创建适配器实例"""
-    diff_config = get_diff_config(config.model_name, config.provider_id)
-    return OpenAICompatibleAdapter(config, diff_config)
+    provider_config = load_model_config(config.model_name)
+    return OpenAICompatibleAdapter(config, provider_config)

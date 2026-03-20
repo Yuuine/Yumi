@@ -34,10 +34,12 @@ export const API_PROVIDERS: Record<string, ProviderConfig> = {
     ],
     apiKeyUrl: 'https://platform.moonshot.cn/console/api-keys',
   },
-  custom: {
-    baseUrl: '',
-    models: [{ label: '自定义模型', value: 'custom' }],
-    apiKeyUrl: '',
+  openai: {
+    baseUrl: 'https://api.openai.com',
+    models: [
+      { label: 'GPT-5.4', value: 'gpt-5.4' },
+    ],
+    apiKeyUrl: 'https://platform.openai.com/api-keys',
   },
 }
 
@@ -45,7 +47,7 @@ export const API_PROVIDERS: Record<string, ProviderConfig> = {
 export const PROVIDER_NAMES: Record<string, string> = {
   deepseek: 'DeepSeek',
   kimi: 'Kimi',
-  custom: '自定义',
+  openai: 'OpenAI',
 }
 
 /** 提供商选项列表（用于下拉选择） */
@@ -81,16 +83,23 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
   'kimi-k2-turbo-preview': {
     toolCall: true,
     reasoning: false,
-    webSearch: true,
+    webSearch: true, // Kimi 系列支持联网搜索
     multimodal: false,
     imageRecognition: false,
   },
   'kimi-k2.5': {
     toolCall: true,
-    reasoning: true,
-    webSearch: true,
-    multimodal: true,
-    imageRecognition: true,
+    reasoning: true, // 支持 thinking 参数
+    webSearch: true, // Kimi 系列支持联网搜索
+    multimodal: true, // 原生多模态架构，支持视觉输入
+    imageRecognition: true, // 支持视觉理解
+  },
+  'gpt-5.4': {
+    toolCall: true,
+    reasoning: true, // 支持 reasoning.effort 参数
+    webSearch: true, // 支持 web_search 工具
+    multimodal: true, // 支持图像感知
+    imageRecognition: true, // 支持图像理解
   },
 }
 
@@ -108,8 +117,8 @@ export function getModelCapabilities(modelName: string): ModelCapabilities {
 
 /** 支持深度思考开关的模型（通过 thinking 参数控制） */
 const DEEP_THINKING_MODELS = new Set([
-  'deepseek-chat', // 启用时传 thinking: { type: "enabled" }
   'kimi-k2.5', // 支持 enabled/disabled
+  'gpt-5.4', // 支持 reasoning.effort
 ])
 
 /** reasoner 类模型自带推理能力，不显示深度思考按钮 */
