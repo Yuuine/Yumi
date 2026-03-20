@@ -8,15 +8,13 @@ Implements: 8 recent + 6 RAG + 6 intent prediction
 """
 from __future__ import annotations
 
-import json
 import uuid
 from typing import Any
 
 from ..core import get_logger, settings
-from ..database import get_db
 from .character_card import (
-    CharacterCard,
     DEFAULT_CHARACTER_CARD_DATA,
+    CharacterCard,
 )
 from .emotion import EmotionData, EmotionEngine
 from .memory import MemoryEngine
@@ -140,19 +138,19 @@ class PromptBuilder:
     ) -> CharacterCard:
         """
         加载角色卡数据（静态部分，缓存后不变）
-        
+
         角色卡初次加载是在用户打开一个对话时，
         加载到缓存后，后续如果该对话未关闭或多开新建，不再重新加载。
         """
         cache_key = f"{user_id}:{conversation_id or 'default'}"
-        
+
         if cache_key in self._character_card_cache:
             return self._character_card_cache[cache_key]
-        
+
         card = await self._fetch_or_create_character_card(user_id, conversation_id)
         self._character_card_cache[cache_key] = card
         logger.info("Loaded character card for user=%s conversation=%s", user_id, conversation_id)
-        
+
         return card
 
     async def _fetch_or_create_character_card(
@@ -167,9 +165,9 @@ class PromptBuilder:
         # 1. 如果 conversation_id 存在，尝试根据 conversation_id 查询
         # 2. 如果不存在，尝试获取用户的默认角色卡（conversation_id 为 NULL）
         # 3. 如果都不存在，创建新的默认角色卡并插入数据库
-        
+
         card_id = str(uuid.uuid4())
-        
+
         return CharacterCard(
             id=card_id,
             user_id=user_id,
@@ -180,7 +178,7 @@ class PromptBuilder:
     def clear_character_card_cache(self, user_id: str, conversation_id: str | None) -> None:
         """
         清除角色卡缓存
-        
+
         当用户修改角色卡后调用此方法
         """
         cache_key = f"{user_id}:{conversation_id or 'default'}"
@@ -195,11 +193,11 @@ class PromptBuilder:
     ) -> str:
         """
         实时获取用户当前情绪
-        
+
         Args:
             user_message: 用户当前消息
             user_emotion: 情感分析结果
-        
+
         Returns:
             情绪标签字符串
         """
@@ -207,7 +205,7 @@ class PromptBuilder:
         # 1. 调用 self.emotion_engine.get_emotion_label(user_emotion)
         # 2. 可选：结合用户消息内容进行更精细的情绪判断
         # 3. 返回情绪标签，如 "愉悦"、"焦虑"、"悲伤"、"平静" 等
-        
+
         emotion_label = await self.emotion_engine.get_emotion_label(user_emotion)
         return emotion_label
 
@@ -218,11 +216,11 @@ class PromptBuilder:
     ) -> str:
         """
         实时获取关键记忆摘要
-        
+
         Args:
             user_id: 用户ID
             current_message: 当前用户消息
-        
+
         Returns:
             格式化的记忆摘要（项目符号列表）
         """
@@ -230,22 +228,22 @@ class PromptBuilder:
         # 1. 调用 self.memory_engine.search(current_message, top_k=6)
         # 2. 格式化为项目符号列表
         # 3. 返回格式化字符串
-        
+
         memories = await self.memory_engine.search(
             query=current_message,
             top_k=6,
             user_id=user_id,
         )
-        
+
         if not memories:
             return "- 暂无相关记忆"
-        
+
         bullets = []
         for mem in memories:
             content = mem.get("content", "")
             if content:
                 bullets.append(f"- {content[:100]}")
-        
+
         return "\n".join(bullets) if bullets else "- 暂无相关记忆"
 
     async def _build_system_prompt(
@@ -257,14 +255,14 @@ class PromptBuilder:
     ) -> str:
         """
         构建系统提示词
-        
+
         静态字段从角色卡加载，动态字段实时获取
         """
         card = await self._load_character_card(user_id, conversation_id)
-        
+
         current_emotion = await self._get_current_emotion(current_message, user_emotion)
         memory_bullets = await self._get_memory_summary_bullets(user_id, current_message)
-        
+
         return SYSTEM_PROMPT_TEMPLATE.format(
             role_overview=card.role_overview,
             formal_name=card.formal_name[:30],

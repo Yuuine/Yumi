@@ -626,7 +626,7 @@ class ModelTestByIdRequest(BaseModel):
 @router.post("/models/{model_id}/test")
 async def test_model_by_id(
     model_id: str,
-    request: ModelTestByIdRequest = None,
+    request: ModelTestByIdRequest = None,  # type: ignore[assignment]
     accountId: str = Query(..., min_length=1),
 ):
     from ..database import get_db

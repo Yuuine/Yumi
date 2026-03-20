@@ -231,7 +231,7 @@ class AsyncStorageService:
                 logger.error("DB storage failed: %s", db_result)
                 task.db_stored = False
             else:
-                task.db_stored = db_result
+                task.db_stored = bool(db_result)
 
             if isinstance(vector_result, Exception):
                 logger.error("Vector storage failed: %s", vector_result)
@@ -503,7 +503,7 @@ class AsyncStorageService:
                        LIMIT ?""",
                     (self.MAX_RETRIES, limit),
                 )
-                rows = await cursor.fetchall()
+                rows = list(await cursor.fetchall())
 
                 for row in rows:
                     emotion = None

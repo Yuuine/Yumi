@@ -20,9 +20,9 @@ class CharacterCard:
     id: str
     user_id: str
     conversation_id: str | None = None
-    
+
     role_overview: str = ""
-    
+
     formal_name: str = ""
     nickname: str = ""
     race_or_form: str = "人类"
@@ -31,22 +31,22 @@ class CharacterCard:
     actual_age: str = ""
     location: str = ""
     appearance_desc: str = ""
-    
+
     core_personality: str = ""
     self_perception: str = ""
     attitude_to_user: str = ""
     likes: str = ""
     dislikes: str = ""
-    
+
     tone_base: str = ""
     word_habits: str = ""
     emotion_rules: str = ""
     length_pref: str = ""
-    
+
     special_logic_list: str = ""
-    
+
     few_shot_examples: str = ""
-    
+
     is_active: bool = True
 
 
@@ -82,21 +82,17 @@ async def insert_character_card(
 ) -> str:
     """
     插入角色卡数据
-    
+
     Args:
         db: 数据库连接
         user_id: 用户ID
         conversation_id: 会话ID（可选，用于多角色卡场景）
         card_data: 角色卡数据，为空则使用默认数据
-    
+
     Returns:
         角色卡ID
     """
-    # TODO: 实现完整的角色卡插入逻辑
-    # 1. 验证字段长度限制
-    # 2. 处理 conversation_id 关联
-    # 3. 插入数据库并返回 ID
-    pass
+    raise NotImplementedError("insert_character_card not implemented")
 
 
 async def get_character_card_by_conversation(
@@ -106,17 +102,16 @@ async def get_character_card_by_conversation(
 ) -> CharacterCard | None:
     """
     根据会话ID获取角色卡
-    
+
     Args:
         db: 数据库连接
         user_id: 用户ID
         conversation_id: 会话ID
-    
+
     Returns:
         角色卡对象，不存在返回 None
     """
-    # TODO: 实现根据 conversation_id 查询角色卡
-    pass
+    raise NotImplementedError("get_character_card_by_conversation not implemented")
 
 
 async def get_or_create_character_card(
@@ -126,18 +121,15 @@ async def get_or_create_character_card(
 ) -> CharacterCard:
     """
     获取或创建角色卡
-    
+
     如果指定会话已有角色卡则返回，否则创建新的默认角色卡。
-    
+
     Args:
         db: 数据库连接
         user_id: 用户ID
         conversation_id: 会话ID
-    
+
     Returns:
         角色卡对象
     """
-    # TODO: 实现获取或创建逻辑
-    # 1. 尝试根据 conversation_id 获取
-    # 2. 不存在则创建默认角色卡
-    pass
+    raise NotImplementedError("get_or_create_character_card not implemented")

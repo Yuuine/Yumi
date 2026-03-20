@@ -155,9 +155,9 @@ async def init_db() -> None:
                 id TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,
                 conversation_id TEXT,
-                
+
                 role_overview TEXT DEFAULT '',
-                
+
                 formal_name TEXT DEFAULT '',
                 nickname TEXT DEFAULT '',
                 race_or_form TEXT DEFAULT '人类',
@@ -166,25 +166,25 @@ async def init_db() -> None:
                 actual_age TEXT DEFAULT '',
                 location TEXT DEFAULT '',
                 appearance_desc TEXT DEFAULT '',
-                
+
                 core_personality TEXT DEFAULT '',
                 self_perception TEXT DEFAULT '',
                 attitude_to_user TEXT DEFAULT '',
                 likes TEXT DEFAULT '',
                 dislikes TEXT DEFAULT '',
-                
+
                 tone_base TEXT DEFAULT '',
                 word_habits TEXT DEFAULT '',
                 emotion_rules TEXT DEFAULT '',
                 length_pref TEXT DEFAULT '',
-                
+
                 special_logic_list TEXT DEFAULT '',
                 few_shot_examples TEXT DEFAULT '',
-                
+
                 is_active BOOLEAN DEFAULT 1,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                
+
                 FOREIGN KEY (user_id) REFERENCES users(id),
                 FOREIGN KEY (conversation_id) REFERENCES conversations(id)
             )

@@ -77,10 +77,10 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("Shutting down Yumi backend services...")
-    
+
     # 关闭异步存储服务
     await async_storage.stop()
-    
+
     await lifecycle_manager.stop()
     if memory_engine:
         await memory_engine.close()

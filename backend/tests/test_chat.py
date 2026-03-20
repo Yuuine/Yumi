@@ -32,23 +32,37 @@ class TestChatRouter:
 
         app.include_router(router, prefix="/api")
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
-            response = await client.post(
-                "/api/chat",
-                json={
-                    "userId": test_user_id,
-                    "message": test_message,
-                    "temperature": 0.85,
-                },
-            )
+        mock_model_config = {
+            "model_id": "test-model-id",
+            "provider_id": "test-provider",
+            "base_url": "https://api.test.com",
+            "api_key": "test-api-key",
+            "model_name": "test-model",
+            "display_name": "Test Model",
+        }
 
-            assert response.status_code == 200
-            data = response.json()
-            assert "reply" in data
-            assert "emotion" in data
-            assert data["memoryUsed"] == 0
+        with patch(
+            "backend.routers.chat._get_active_model_config",
+            new_callable=AsyncMock,
+            return_value=mock_model_config,
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                response = await client.post(
+                    "/api/chat",
+                    json={
+                        "userId": test_user_id,
+                        "message": test_message,
+                        "temperature": 0.85,
+                    },
+                )
+
+                assert response.status_code == 200
+                data = response.json()
+                assert "reply" in data
+                assert "emotion" in data
+                assert data["memoryUsed"] == 0
 
     @pytest.mark.asyncio
     async def test_send_message_with_memories(
@@ -70,37 +84,51 @@ class TestChatRouter:
             ]
         )
 
+        mock_model_config = {
+            "model_id": "test-model-id",
+            "provider_id": "test-provider",
+            "base_url": "https://api.test.com",
+            "api_key": "test-api-key",
+            "model_name": "test-model",
+            "display_name": "Test Model",
+        }
+
         with patch("backend.routers.chat.settings") as mock_settings:
             mock_settings.app.debug = False
             mock_settings.memory.summary_trigger_turns = 70
 
-            from fastapi import FastAPI
-            from httpx import ASGITransport, AsyncClient
+            with patch(
+                "backend.routers.chat._get_active_model_config",
+                new_callable=AsyncMock,
+                return_value=mock_model_config,
+            ):
+                from fastapi import FastAPI
+                from httpx import ASGITransport, AsyncClient
 
-            from backend.routers.chat import router
+                from backend.routers.chat import router
 
-            app = FastAPI()
-            app.state.memory_engine = mock_memory_engine
-            app.state.emotion_engine = mock_emotion_engine
-            app.state.llm_service = mock_llm_service
-            app.state.prompt_builder = mock_prompt_builder
+                app = FastAPI()
+                app.state.memory_engine = mock_memory_engine
+                app.state.emotion_engine = mock_emotion_engine
+                app.state.llm_service = mock_llm_service
+                app.state.prompt_builder = mock_prompt_builder
 
-            app.include_router(router, prefix="/api")
+                app.include_router(router, prefix="/api")
 
-            async with AsyncClient(
-                transport=ASGITransport(app=app), base_url="http://test"
-            ) as client:
-                response = await client.post(
-                    "/api/chat",
-                    json={
-                        "userId": test_user_id,
-                        "message": test_message,
-                    },
-                )
+                async with AsyncClient(
+                    transport=ASGITransport(app=app), base_url="http://test"
+                ) as client:
+                    response = await client.post(
+                        "/api/chat",
+                        json={
+                            "userId": test_user_id,
+                            "message": test_message,
+                        },
+                    )
 
-                assert response.status_code == 200
-                data = response.json()
-                assert data["memoryUsed"] == 1
+                    assert response.status_code == 200
+                    data = response.json()
+                    assert data["memoryUsed"] == 1
 
     @pytest.mark.asyncio
     async def test_send_message_llm_error(

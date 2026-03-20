@@ -315,7 +315,7 @@ class LogService:
         extra: dict[str, Any] | None = None,
     ) -> None:
         """记录数据库操作日志
-        
+
         Args:
             operation: 操作类型 (INSERT/UPDATE/DELETE)
             table: 表名

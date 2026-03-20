@@ -32,7 +32,7 @@ class ErrorResponse:
         self.request_id = request_id
 
     def to_dict(self) -> dict[str, Any]:
-        result = {
+        result: dict[str, Any] = {
             "success": False,
             "error": {
                 "code": self.code,

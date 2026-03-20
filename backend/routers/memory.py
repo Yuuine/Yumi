@@ -36,9 +36,9 @@ async def search_memory(
     query: str,
     top_k: int = 6,
     decay_days: bool = True,
-    req: Request = None
+    request: Request = None  # type: ignore[assignment]
 ):
-    memory_engine = req.app.state.memory_engine
+    memory_engine = request.app.state.memory_engine
 
     try:
         results = await memory_engine.search(

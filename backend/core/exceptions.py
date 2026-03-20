@@ -22,7 +22,7 @@ class YumiException(Exception):
         super().__init__(message)
 
     def to_dict(self) -> dict[str, Any]:
-        result = {
+        result: dict[str, Any] = {
             "code": self.code,
             "message": self.message,
         }

@@ -4,7 +4,7 @@ Proxy configuration - reads from database
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from ..database import get_db
 
@@ -21,7 +21,7 @@ class ProxyConfig:
     smart_sub_mode: str = "auto"  # auto | manual
     manual_proxy_host: str = ""
     manual_proxy_port: int = 7890
-    scanned_proxies: list[str] = ()
+    scanned_proxies: list[str] = field(default_factory=list)
     normal_proxy_url: str = ""
 
     def get_proxy_urls_for_fallback(self) -> list[str]:

@@ -69,6 +69,14 @@ ignore_missing_imports = true
 module = "sentence_transformers.*"
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = "transformers.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "numpy.*"
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]

@@ -4,7 +4,7 @@ Integration Tests for Async Storage
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -29,21 +29,23 @@ class TestMessageStorageIntegration:
             emotion={"valence": 0.5, "arousal": 0.3},
         )
 
-        with patch.object(service, "_store_to_db", new_callable=AsyncMock) as mock_db:
-            with patch.object(service, "_store_to_vector", new_callable=AsyncMock) as mock_vector:
-                with patch.object(service, "_update_db_status", new_callable=AsyncMock):
-                    mock_db.return_value = True
-                    mock_vector.return_value = "memory-integration-1"
+        with (
+            patch.object(service, "_store_to_db", new_callable=AsyncMock) as mock_db,
+            patch.object(service, "_store_to_vector", new_callable=AsyncMock) as mock_vector,
+            patch.object(service, "_update_db_status", new_callable=AsyncMock),
+        ):
+            mock_db.return_value = True
+            mock_vector.return_value = "memory-integration-1"
 
-                    task_id = await service.enqueue(task)
-                    assert task_id is not None
+            task_id = await service.enqueue(task)
+            assert task_id is not None
 
-                    await service._process_task(task)
+            await service._process_task(task)
 
-                    assert task.status == StorageTaskStatus.COMPLETED
-                    assert task.db_stored is True
-                    assert task.vector_stored is True
-                    assert task.stored_at is not None
+            assert task.status == StorageTaskStatus.COMPLETED
+            assert task.db_stored is True
+            assert task.vector_stored is True
+            assert task.stored_at is not None
 
     @pytest.mark.asyncio
     async def test_storage_failure_recovery(self):
@@ -72,20 +74,22 @@ class TestMessageStorageIntegration:
                 raise Exception("Simulated DB failure")
             return True
 
-        with patch.object(service, "_store_to_db", side_effect=failing_db_store):
-            with patch.object(service, "_store_to_vector", new_callable=AsyncMock) as mock_vector:
-                with patch.object(service, "_update_db_status", new_callable=AsyncMock):
-                    mock_vector.return_value = "memory-recovery-1"
+        with (
+            patch.object(service, "_store_to_db", side_effect=failing_db_store),
+            patch.object(service, "_store_to_vector", new_callable=AsyncMock) as mock_vector,
+            patch.object(service, "_update_db_status", new_callable=AsyncMock),
+        ):
+            mock_vector.return_value = "memory-recovery-1"
 
-                    await service._process_task(task)
-                    assert task.attempts == 1
+            await service._process_task(task)
+            assert task.attempts == 1
 
-                    await service._process_task(task)
-                    assert task.attempts == 2
+            await service._process_task(task)
+            assert task.attempts == 2
 
-                    await service._process_task(task)
-                    assert task.status == StorageTaskStatus.COMPLETED
-                    assert task.db_stored is True
+            await service._process_task(task)
+            assert task.status == StorageTaskStatus.COMPLETED
+            assert task.db_stored is True
 
     @pytest.mark.asyncio
     async def test_concurrent_storage_tasks(self):
@@ -108,31 +112,32 @@ class TestMessageStorageIntegration:
             )
             tasks.append(task)
 
-        with patch.object(service, "_store_to_db", new_callable=AsyncMock) as mock_db:
-            with patch.object(service, "_store_to_vector", new_callable=AsyncMock) as mock_vector:
-                with patch.object(service, "_update_db_status", new_callable=AsyncMock):
-                    mock_db.return_value = True
-                    mock_vector.return_value = "memory-concurrent"
+        with (
+            patch.object(service, "_store_to_db", new_callable=AsyncMock) as mock_db,
+            patch.object(service, "_store_to_vector", new_callable=AsyncMock) as mock_vector,
+            patch.object(service, "_update_db_status", new_callable=AsyncMock),
+        ):
+            mock_db.return_value = True
+            mock_vector.return_value = "memory-concurrent"
 
-                    for task in tasks:
-                        await service.enqueue(task)
+            for task in tasks:
+                await service.enqueue(task)
 
-                    assert service._stats["total_enqueued"] == 10
+            assert service._stats["total_enqueued"] == 10
 
-                    for task in tasks:
-                        await service._process_task(task)
+            for task in tasks:
+                await service._process_task(task)
 
-                    assert service._stats["total_completed"] == 10
+            assert service._stats["total_completed"] == 10
 
-                    for task in tasks:
-                        assert task.status == StorageTaskStatus.COMPLETED
+            for task in tasks:
+                assert task.status == StorageTaskStatus.COMPLETED
 
     @pytest.mark.asyncio
     async def test_worker_queue_processing(self):
         from backend.services.async_storage import (
             AsyncStorageService,
             StorageTask,
-            StorageTaskStatus,
         )
 
         service = AsyncStorageService()
@@ -145,22 +150,24 @@ class TestMessageStorageIntegration:
             content="Worker test message",
         )
 
-        with patch.object(service, "_store_to_db", new_callable=AsyncMock) as mock_db:
-            with patch.object(service, "_store_to_vector", new_callable=AsyncMock) as mock_vector:
-                with patch.object(service, "_update_db_status", new_callable=AsyncMock):
-                    mock_db.return_value = True
-                    mock_vector.return_value = "memory-worker-1"
+        with (
+            patch.object(service, "_store_to_db", new_callable=AsyncMock) as mock_db,
+            patch.object(service, "_store_to_vector", new_callable=AsyncMock) as mock_vector,
+            patch.object(service, "_update_db_status", new_callable=AsyncMock),
+        ):
+            mock_db.return_value = True
+            mock_vector.return_value = "memory-worker-1"
 
-                    await service.start()
+            await service.start()
 
-                    await service.enqueue(task)
+            await service.enqueue(task)
 
-                    await asyncio.sleep(0.5)
+            await asyncio.sleep(0.5)
 
-                    await service.stop()
+            await service.stop()
 
-                    stats = await service.get_stats()
-                    assert stats["total_enqueued"] >= 1
+            stats = await service.get_stats()
+            assert stats["total_enqueued"] >= 1
 
 
 class TestStorageStatsIntegration:
@@ -183,18 +190,20 @@ class TestStorageStatsIntegration:
             content="Stats test message",
         )
 
-        with patch.object(service, "_store_to_db", new_callable=AsyncMock) as mock_db:
-            with patch.object(service, "_store_to_vector", new_callable=AsyncMock) as mock_vector:
-                with patch.object(service, "_update_db_status", new_callable=AsyncMock):
-                    mock_db.return_value = True
-                    mock_vector.return_value = "memory-stats-1"
+        with (
+            patch.object(service, "_store_to_db", new_callable=AsyncMock) as mock_db,
+            patch.object(service, "_store_to_vector", new_callable=AsyncMock) as mock_vector,
+            patch.object(service, "_update_db_status", new_callable=AsyncMock),
+        ):
+            mock_db.return_value = True
+            mock_vector.return_value = "memory-stats-1"
 
-                    await service.enqueue(task)
-                    await service._process_task(task)
+            await service.enqueue(task)
+            await service._process_task(task)
 
-                    stats = await service.get_stats()
-                    assert stats["total_enqueued"] == 1
-                    assert stats["total_completed"] == 1
+            stats = await service.get_stats()
+            assert stats["total_enqueued"] == 1
+            assert stats["total_completed"] == 1
 
     @pytest.mark.asyncio
     async def test_latency_tracking(self):
@@ -210,14 +219,16 @@ class TestStorageStatsIntegration:
             content="Latency test message",
         )
 
-        with patch.object(service, "_store_to_db", new_callable=AsyncMock) as mock_db:
-            with patch.object(service, "_store_to_vector", new_callable=AsyncMock) as mock_vector:
-                with patch.object(service, "_update_db_status", new_callable=AsyncMock):
-                    mock_db.return_value = True
-                    mock_vector.return_value = "memory-latency-1"
+        with (
+            patch.object(service, "_store_to_db", new_callable=AsyncMock) as mock_db,
+            patch.object(service, "_store_to_vector", new_callable=AsyncMock) as mock_vector,
+            patch.object(service, "_update_db_status", new_callable=AsyncMock),
+        ):
+            mock_db.return_value = True
+            mock_vector.return_value = "memory-latency-1"
 
-                    await service.enqueue(task)
-                    await service._process_task(task)
+            await service.enqueue(task)
+            await service._process_task(task)
 
-                    stats = await service.get_stats()
-                    assert stats["avg_latency_ms"] >= 0
+            stats = await service.get_stats()
+            assert stats["avg_latency_ms"] >= 0

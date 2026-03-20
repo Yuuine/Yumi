@@ -5,6 +5,7 @@ Supports keyword-based analysis and optional transformer model
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -132,7 +133,7 @@ class KeywordEmotionAnalyzer(EmotionAnalyzer):
 class TransformerEmotionAnalyzer(EmotionAnalyzer):
     def __init__(self, model_name: str = "uer/roberta-base-finetuned-chinanews-chinese") -> None:
         self.model_name = model_name
-        self.pipeline = None
+        self.pipeline: Any = None
         self.label_mapping = {
             "positive": (0.7, 0.5),
             "negative": (-0.7, 0.5),
@@ -167,7 +168,7 @@ class TransformerEmotionAnalyzer(EmotionAnalyzer):
 
             valence = 0.0
             arousal = 0.3
-            max_label = max(scores, key=scores.get)
+            max_label = max(scores.keys(), key=lambda k: scores[k])
             confidence = scores[max_label]
 
             if "positive" in scores:
@@ -229,6 +230,7 @@ class EmotionEngine:
         if not self.analyzer:
             await self.initialize()
 
+        assert self.analyzer is not None
         return await self.analyzer.analyze(text)
 
     async def get_emotion_label(self, emotion: EmotionData) -> str:

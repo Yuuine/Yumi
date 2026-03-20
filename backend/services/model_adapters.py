@@ -245,9 +245,8 @@ class OpenAICompatibleAdapter:
         last_error: Exception | None = None
         proxy_urls: list[str] = []
 
-        if self.config.proxy_config and self.config.proxy_config.enabled:
-            if self.config.proxy_config.mode == "smart":
-                proxy_urls = self.config.proxy_config.get_proxy_urls_for_fallback()
+        if self.config.proxy_config and self.config.proxy_config.enabled and self.config.proxy_config.mode == "smart":
+            proxy_urls = self.config.proxy_config.get_proxy_urls_for_fallback()
 
         try:
             if stream:
@@ -259,7 +258,7 @@ class OpenAICompatibleAdapter:
             last_error = e
             if not proxy_urls:
                 raise
-        except Exception as e:
+        except Exception:
             raise
 
         for proxy_url in proxy_urls[:5]:
@@ -379,18 +378,17 @@ class OpenAICompatibleAdapter:
         clients: list[tuple[httpx.AsyncClient, bool]] = [
             (self.client, False)
         ]
-        if self.config.proxy_config and self.config.proxy_config.enabled:
-            if self.config.proxy_config.mode == "smart":
-                for proxy_url in self.config.proxy_config.get_proxy_urls_for_fallback():
-                    clients.append(
-                        (
-                            httpx.AsyncClient(
-                                timeout=self.config.timeout,
-                                proxy=proxy_url,
-                            ),
-                            True,
-                        )
+        if self.config.proxy_config and self.config.proxy_config.enabled and self.config.proxy_config.mode == "smart":
+            for proxy_url in self.config.proxy_config.get_proxy_urls_for_fallback():
+                clients.append(
+                    (
+                        httpx.AsyncClient(
+                            timeout=self.config.timeout,
+                            proxy=proxy_url,
+                        ),
+                        True,
                     )
+                )
 
         last_error: Exception | None = None
         for client, should_close in clients:

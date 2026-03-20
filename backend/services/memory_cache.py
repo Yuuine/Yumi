@@ -122,7 +122,8 @@ class MemoryOptimizer:
             return 0
 
         try:
-            results = self._engine.collection.get(include=["metadatas", "ids"])
+            collection = self._engine._ensure_collection()
+            results = collection.get(include=["metadatas", "ids"])
 
             if not results["ids"]:
                 return 0
@@ -140,7 +141,7 @@ class MemoryOptimizer:
                         pass
 
             if ids_to_delete:
-                self._engine.collection.delete(ids=ids_to_delete)
+                collection.delete(ids=ids_to_delete)
                 logger.info("Cleaned up %d old memories", len(ids_to_delete))
 
             self._last_cleanup = now

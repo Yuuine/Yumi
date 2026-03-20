@@ -6,7 +6,6 @@ from __future__ import annotations
 import json
 import time
 import uuid
-from datetime import datetime
 
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
@@ -304,7 +303,7 @@ async def send_message(request: ChatRequest, req: Request):
 
 
 @router.get("/chat/history", response_model=ChatHistory)
-async def get_chat_history(userId: str, limit: int = 50, offset: int = 0, req: Request = None):
+async def get_chat_history(userId: str, limit: int = 50, offset: int = 0, request: Request = None):  # type: ignore[assignment]
     async with get_db() as db:
         cursor = await db.execute(
             """SELECT id, role, content, timestamp, emotion_valence, emotion_arousal
@@ -317,7 +316,7 @@ async def get_chat_history(userId: str, limit: int = 50, offset: int = 0, req: R
         rows = await cursor.fetchall()
 
         messages = []
-        for row in reversed(rows):
+        for row in list(reversed(list(rows))):
             emotion = None
             if row[4] is not None and row[5] is not None:
                 emotion = EmotionData(valence=row[4], arousal=row[5])
@@ -351,7 +350,7 @@ async def stream_chat(
     active_model = await _get_active_model_config(userId)
 
     conversation_id = conversationId or str(uuid.uuid4())
-    
+
     user_message_id = str(uuid.uuid4())
     assistant_message_id = str(uuid.uuid4())
 

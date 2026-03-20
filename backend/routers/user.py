@@ -76,7 +76,7 @@ async def update_user_profile(profile: UserProfile, req: Request):
     from ..database import get_db
 
     start_time = time.time()
-    
+
     try:
         async with get_db() as db:
             cursor = await db.execute(

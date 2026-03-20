@@ -131,9 +131,9 @@ class LogLifecycleManager:
             except (ValueError, IndexError):
                 continue
 
-    async def run_cleanup_once(self) -> dict:
+    async def run_cleanup_once(self) -> dict[str, int | str]:
         """执行一次清理（用于手动触发）"""
-        result = {
+        result: dict[str, int | str] = {
             "system_logs_archived": 0,
             "audit_logs_archived": 0,
             "archives_deleted": 0,
@@ -162,14 +162,16 @@ class LogLifecycleManager:
             await self._archive_old_logs()
 
             cutoff_cold = datetime.now() - timedelta(days=self.COLD_STORAGE_DAYS)
+            archives_deleted = 0
             for file in self.archive_dir.glob("*.json.gz"):
                 try:
                     file_date_str = file.stem.split('_')[-1]
                     file_date = datetime.strptime(file_date_str, '%Y%m%d')
                     if file_date < cutoff_cold:
-                        result["archives_deleted"] += 1
+                        archives_deleted += 1
                 except (ValueError, IndexError):
                     continue
+            result["archives_deleted"] = archives_deleted
 
             await self._delete_expired_archives()
 
