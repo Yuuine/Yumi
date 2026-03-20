@@ -6,14 +6,16 @@ Async Storage Service - 异步存储服务
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
 from ..core import get_logger
 from ..database import get_db
+from .log_service import log_service
 
 logger = get_logger(__name__)
 
@@ -37,7 +39,7 @@ class StorageTask:
     role: str
     content: str
     emotion: dict[str, Any] | None = None
-    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     status: StorageTaskStatus = StorageTaskStatus.PENDING
     attempts: int = 0
     error: str | None = None
@@ -208,7 +210,7 @@ class AsyncStorageService:
         Args:
             task: 存储任务
         """
-        start_time = datetime.now(UTC)
+        start_time = datetime.now(timezone.utc)
         task.attempts += 1
 
         logger.debug(
@@ -240,12 +242,12 @@ class AsyncStorageService:
 
             if task.db_stored and task.vector_stored:
                 task.status = StorageTaskStatus.COMPLETED
-                task.stored_at = datetime.now(UTC)
+                task.stored_at = datetime.now(timezone.utc)
                 self._stats["total_completed"] += 1
                 self._stats["total_db_stored"] += 1
                 self._stats["total_vector_stored"] += 1
 
-                latency = (datetime.now(UTC) - start_time).total_seconds() * 1000
+                latency = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
                 self._stats["total_latency_ms"] += latency
 
                 logger.debug(
@@ -319,6 +321,7 @@ class AsyncStorageService:
         Returns:
             是否成功
         """
+        start_time = time.time()
         try:
             async with get_db() as db:
                 await db.execute(
@@ -340,6 +343,22 @@ class AsyncStorageService:
                 )
                 await db.commit()
 
+            latency_ms = (time.time() - start_time) * 1000
+
+            await log_service.log_db_operation(
+                operation="INSERT",
+                table="conversation_logs",
+                resource_id=task.conversation_id,
+                result="SUCCESS",
+                latency_ms=latency_ms,
+                affected_rows=1,
+                user_id=task.user_id,
+                extra={
+                    "message_id": task.message_id,
+                    "role": task.role,
+                },
+            )
+
             logger.debug(
                 "Stored message to DB: conversation=%s, role=%s",
                 task.conversation_id,
@@ -348,6 +367,16 @@ class AsyncStorageService:
             return True
 
         except Exception as e:
+            latency_ms = (time.time() - start_time) * 1000
+            await log_service.log_db_operation(
+                operation="INSERT",
+                table="conversation_logs",
+                resource_id=task.conversation_id,
+                result="FAIL",
+                error=str(e),
+                latency_ms=latency_ms,
+                user_id=task.user_id,
+            )
             logger.error("Failed to store to DB: %s", e)
             raise
 
@@ -402,6 +431,7 @@ class AsyncStorageService:
         Args:
             task: 存储任务
         """
+        start_time = time.time()
         try:
             async with get_db() as db:
                 await db.execute(
@@ -423,7 +453,31 @@ class AsyncStorageService:
                 )
                 await db.commit()
 
+            latency_ms = (time.time() - start_time) * 1000
+            await log_service.log_db_operation(
+                operation="UPDATE",
+                table="conversation_logs",
+                resource_id=task.conversation_id,
+                result="SUCCESS",
+                latency_ms=latency_ms,
+                user_id=task.user_id,
+                extra={
+                    "status": task.status.value,
+                    "attempts": task.attempts,
+                },
+            )
+
         except Exception as e:
+            latency_ms = (time.time() - start_time) * 1000
+            await log_service.log_db_operation(
+                operation="UPDATE",
+                table="conversation_logs",
+                resource_id=task.conversation_id,
+                result="FAIL",
+                error=str(e),
+                latency_ms=latency_ms,
+                user_id=task.user_id,
+            )
             logger.error("Failed to update DB status: %s", e)
 
     async def process_pending_records(self, limit: int = 100) -> int:

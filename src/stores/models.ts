@@ -108,10 +108,7 @@ export const useModelsStore = defineStore('models', () => {
     config: Omit<ModelConfig, 'id'>,
     silent = false
   ): Promise<ModelConfig> {
-    const newModel = await executeWithLoading(
-      () => modelsApi.createModel(config),
-      !silent
-    )
+    const newModel = await executeWithLoading(() => modelsApi.createModel(config), !silent)
 
     if (silent) {
       models.value.unshift(newModel)
@@ -169,10 +166,7 @@ export const useModelsStore = defineStore('models', () => {
    * @param silent - 是否静默模式
    */
   async function deleteModel(modelId: string, silent = false): Promise<void> {
-    await executeWithLoading(
-      () => modelsApi.deleteModel(modelId),
-      !silent
-    )
+    await executeWithLoading(() => modelsApi.deleteModel(modelId), !silent)
 
     if (silent) {
       removeModelFromList(modelId)
@@ -292,9 +286,7 @@ export const useModelsStore = defineStore('models', () => {
   /**
    * 已启用且有 API Key 的模型列表
    */
-  const enabledModels = computed(() =>
-    models.value.filter(m => m.isEnabled && m.apiKey)
-  )
+  const enabledModels = computed(() => models.value.filter(m => m.isEnabled && m.apiKey))
 
   return {
     models,

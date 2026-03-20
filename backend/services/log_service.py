@@ -23,6 +23,7 @@ class EventType(str, Enum):
     API_CALL = "API_CALL"
     SYSTEM_EVENT = "SYSTEM_EVENT"
     SECURITY_AUDIT = "SECURITY_AUDIT"
+    DB_OPERATION = "DB_OPERATION"
 
 
 class AuditAction(str, Enum):
@@ -35,6 +36,11 @@ class AuditAction(str, Enum):
     SETTINGS_CHANGE = "SETTINGS_CHANGE"
     DATA_EXPORT = "DATA_EXPORT"
     DATA_DELETE = "DATA_DELETE"
+    USER_PROFILE_UPDATE = "USER_PROFILE_UPDATE"
+    SETTINGS_UPDATE = "SETTINGS_UPDATE"
+    MEMORY_STORE = "MEMORY_STORE"
+    MEMORY_DELETE = "MEMORY_DELETE"
+    MEMORY_CLEAR = "MEMORY_CLEAR"
 
 
 class LogService:
@@ -295,6 +301,87 @@ class LogService:
                 await db.commit()
         except Exception as e:
             logger.error("Failed to save audit log: %s", e)
+
+    @staticmethod
+    async def log_db_operation(
+        operation: str,
+        table: str,
+        resource_id: str | None = None,
+        result: str = "SUCCESS",
+        error: str | None = None,
+        latency_ms: float | None = None,
+        affected_rows: int | None = None,
+        user_id: str | None = None,
+        extra: dict[str, Any] | None = None,
+    ) -> None:
+        """记录数据库操作日志
+        
+        Args:
+            operation: 操作类型 (INSERT/UPDATE/DELETE)
+            table: 表名
+            resource_id: 资源ID
+            result: 结果 (SUCCESS/FAIL)
+            error: 错误信息
+            latency_ms: 延迟毫秒数
+            affected_rows: 影响行数
+            user_id: 用户ID
+            extra: 额外信息
+        """
+        trace_id = LogService._get_trace_id()
+        timestamp = datetime.now(UTC).isoformat()
+
+        log_entry = {
+            "timestamp": timestamp,
+            "level": "ERROR" if error else "INFO",
+            "event_type": EventType.DB_OPERATION.value,
+            "trace_id": trace_id,
+            "user_id": user_id,
+            "operation": operation,
+            "table": table,
+            "resource_id": resource_id,
+            "result": result,
+            "error": error,
+            "latency_ms": latency_ms,
+            "affected_rows": affected_rows,
+            "extra": extra or {},
+        }
+
+        if error:
+            logger.error(
+                "DB Operation FAILED: %s on %s - %s",
+                operation,
+                table,
+                error,
+                extra={"log_data": log_entry},
+            )
+        else:
+            logger.info(
+                "DB Operation: %s on %s.%s (%.2fms)",
+                operation,
+                table,
+                f" id={resource_id}" if resource_id else "",
+                latency_ms or 0,
+                extra={"log_data": log_entry},
+            )
+
+        try:
+            async with get_db() as db:
+                await db.execute(
+                    """INSERT INTO system_logs
+                       (timestamp, level, event_type, trace_id, user_id, content)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (
+                        timestamp,
+                        log_entry["level"],
+                        EventType.DB_OPERATION.value,
+                        trace_id,
+                        user_id,
+                        json.dumps(log_entry, ensure_ascii=False),
+                    ),
+                )
+                await db.commit()
+        except Exception as e:
+            logger.error("Failed to save DB operation log: %s", e)
 
 
 log_service = LogService()

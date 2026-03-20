@@ -68,20 +68,11 @@
     </Transition>
 
     <Transition name="modal">
-      <div
-        v-if="formDialogVisible"
-        class="models-modal-overlay"
-        @click.self="handleCancel"
-      >
+      <div v-if="formDialogVisible" class="models-modal-overlay" @click.self="handleCancel">
         <div class="form-dialog">
           <div class="dialog-header">
             <h3>{{ isEditing ? '编辑模型' : '添加模型' }}</h3>
-            <button
-              class="close-btn"
-              @click="handleCancel"
-              aria-label="关闭"
-              type="button"
-            >
+            <button class="close-btn" @click="handleCancel" aria-label="关闭" type="button">
               <IconClose />
             </button>
           </div>
@@ -97,9 +88,7 @@
           </div>
 
           <div class="dialog-footer">
-            <button class="dialog-btn secondary" @click="handleCancel" type="button">
-              取消
-            </button>
+            <button class="dialog-btn secondary" @click="handleCancel" type="button">取消</button>
             <button
               class="dialog-btn primary"
               @click="handleSubmit"

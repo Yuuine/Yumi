@@ -142,7 +142,9 @@ export const useChatStore = defineStore('chat', () => {
    * @param content - 用户消息内容
    * @returns ReadableStream reader 或 null
    */
-  async function fetchStreamResponse(content: string): Promise<ReadableStreamDefaultReader<Uint8Array> | null> {
+  async function fetchStreamResponse(
+    content: string
+  ): Promise<ReadableStreamDefaultReader<Uint8Array> | null> {
     const params = new URLSearchParams({
       userId: currentUserId.value,
       message: content.trim(),
@@ -178,6 +180,7 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     if (parsed.done) {
+      if (messages.value.length === 0) return false
       const lastMessage = messages.value[messages.value.length - 1]
       if (lastMessage.role === 'assistant' && parsed.emotion) {
         lastMessage.emotion = parsed.emotion
@@ -188,6 +191,7 @@ export const useChatStore = defineStore('chat', () => {
 
     if (parsed.content) {
       streamingContent.value += parsed.content
+      if (messages.value.length === 0) return false
       const lastMessage = messages.value[messages.value.length - 1]
       if (lastMessage.role === 'assistant') {
         lastMessage.content = streamingContent.value
@@ -217,7 +221,9 @@ export const useChatStore = defineStore('chat', () => {
    * 读取并处理流式响应
    * @param reader - ReadableStream reader
    */
-  async function processStreamReader(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<void> {
+  async function processStreamReader(
+    reader: ReadableStreamDefaultReader<Uint8Array>
+  ): Promise<void> {
     const decoder = new TextDecoder()
     let buffer = ''
 
@@ -231,7 +237,15 @@ export const useChatStore = defineStore('chat', () => {
 
       for (const line of lines) {
         parseStreamLine(line)
+        if (lastError.value) {
+          return
+        }
       }
+    }
+
+    const remaining = buffer.trim()
+    if (remaining) {
+      parseStreamLine(remaining)
     }
   }
 
@@ -245,6 +259,7 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     lastError.value = error as ApiError
+    if (messages.value.length === 0) return
     const lastMessage = messages.value[messages.value.length - 1]
     if (lastMessage.role === 'assistant' && !lastMessage.content) {
       lastMessage.content = '抱歉，我遇到了一些问题，请稍后再试。'
@@ -269,6 +284,9 @@ export const useChatStore = defineStore('chat', () => {
     } catch (error) {
       handleStreamError(error)
     } finally {
+      if (messages.value.length > 0) {
+        cacheMessages(messages.value)
+      }
       isStreaming.value = false
       abortController.value = null
     }

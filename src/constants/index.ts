@@ -36,9 +36,7 @@ export const API_PROVIDERS: Record<string, ProviderConfig> = {
   },
   openai: {
     baseUrl: 'https://api.openai.com',
-    models: [
-      { label: 'GPT-5.4', value: 'gpt-5.4' },
-    ],
+    models: [{ label: 'GPT-5.4', value: 'gpt-5.4' }],
     apiKeyUrl: 'https://platform.openai.com/api-keys',
   },
 }

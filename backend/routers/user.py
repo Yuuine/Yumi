@@ -2,11 +2,15 @@
 User API Router
 """
 import json
+import time
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
+from ..services.log_service import AuditAction, log_service
+
 router = APIRouter()
+logger = log_service.logger if hasattr(log_service, 'logger') else None
 
 
 class BigFiveTraits(BaseModel):
@@ -61,17 +65,63 @@ async def get_user_profile(userId: str, req: Request):
 async def update_user_profile(profile: UserProfile, req: Request):
     from ..database import get_db
 
-    async with get_db() as db:
-        await db.execute(
-            """INSERT OR REPLACE INTO users (id, role_name, big_five_json, preferences_json, updated_at)
-               VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)""",
-            (
-                profile.id,
-                profile.role_name,
-                json.dumps(profile.big_five.dict()),
-                json.dumps(profile.preferences.dict())
+    start_time = time.time()
+    
+    try:
+        async with get_db() as db:
+            cursor = await db.execute(
+                "SELECT big_five_json, preferences_json FROM users WHERE id = ?",
+                (profile.id,)
             )
+            old_row = await cursor.fetchone()
+            old_big_five = json.loads(old_row[0]) if old_row and old_row[0] else {}
+            old_preferences = json.loads(old_row[1]) if old_row and old_row[1] else {}
+
+            await db.execute(
+                """INSERT OR REPLACE INTO users (id, role_name, big_five_json, preferences_json, updated_at)
+                   VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)""",
+                (
+                    profile.id,
+                    profile.role_name,
+                    json.dumps(profile.big_five.dict()),
+                    json.dumps(profile.preferences.dict())
+                )
+            )
+            await db.commit()
+
+        latency_ms = (time.time() - start_time) * 1000
+
+        fields_changed = []
+        if old_big_five != profile.big_five.dict():
+            fields_changed.append("big_five")
+        if old_preferences != profile.preferences.dict():
+            fields_changed.append("preferences")
+
+        await log_service.log_audit(
+            action=AuditAction.USER_PROFILE_UPDATE,
+            resource_type="user",
+            resource_id=profile.id,
+            result="SUCCESS",
+            user_id=profile.id,
+            details={
+                "fields_changed": fields_changed,
+                "latency_ms": round(latency_ms, 2),
+            },
         )
-        await db.commit()
 
         return profile
+
+    except Exception as e:
+        latency_ms = (time.time() - start_time) * 1000
+        await log_service.log_audit(
+            action=AuditAction.USER_PROFILE_UPDATE,
+            resource_type="user",
+            resource_id=profile.id,
+            result="FAIL",
+            user_id=profile.id,
+            details={
+                "error": str(e),
+                "latency_ms": round(latency_ms, 2),
+            },
+        )
+        raise
