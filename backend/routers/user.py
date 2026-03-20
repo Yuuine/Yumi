@@ -177,12 +177,12 @@ async def purge_user_data(payload: PurgeUserRequest, req: Request):
             cursor = await db.execute("DELETE FROM users WHERE id = ?", (user_id,))
             cleared_user_profile = cursor.rowcount or 0
 
-            cursor = await db.execute("DELETE FROM model_configs")
+            cursor = await db.execute("DELETE FROM model_configs WHERE account_id = ?", (user_id,))
             cleared_model_configs = cursor.rowcount or 0
 
             await db.commit()
 
-        clear_active_model()
+        clear_active_model(user_id)
         conversation_cache = get_conversation_cache()
         conversation_cache.clear_user(user_id)
 

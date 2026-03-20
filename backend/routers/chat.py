@@ -59,9 +59,9 @@ class ChatHistory(BaseModel):
     messages: list[ChatMessage]
 
 
-async def _get_active_model_config() -> dict | None:
+async def _get_active_model_config(account_id: str) -> dict | None:
     """获取活动模型配置（优先从全局状态获取，若为空则从数据库加载）"""
-    active_model = get_active_model()
+    active_model = get_active_model(account_id)
     if active_model:
         if settings.app.debug:
             logger.info(
@@ -77,9 +77,11 @@ async def _get_active_model_config() -> dict | None:
             cursor = await db.execute(
                 """SELECT id, provider_id, base_url, api_key, model_name, name
                    FROM model_configs
-                   WHERE is_enabled = 1
+                   WHERE account_id = ? AND is_enabled = 1
                    ORDER BY updated_at DESC
                    LIMIT 1"""
+                ,
+                (account_id,),
             )
             row = await cursor.fetchone()
 
@@ -92,7 +94,7 @@ async def _get_active_model_config() -> dict | None:
                     "model_name": row[4],
                     "display_name": row[5],
                 }
-                set_active_model(config)
+                set_active_model(account_id, config)
                 if settings.app.debug:
                     logger.info(
                         "Active model loaded from DB: %s (provider=%s, model=%s)",
@@ -119,7 +121,7 @@ async def send_message(request: ChatRequest, req: Request):
     llm_service = req.app.state.llm_service
     prompt_builder = req.app.state.prompt_builder
 
-    active_model = await _get_active_model_config()
+    active_model = await _get_active_model_config(request.userId)
     if not active_model:
         raise NoActiveModelException()
 
@@ -346,7 +348,7 @@ async def stream_chat(
     emotion_engine = req.app.state.emotion_engine
     llm_service = req.app.state.llm_service
     prompt_builder = req.app.state.prompt_builder
-    active_model = await _get_active_model_config()
+    active_model = await _get_active_model_config(userId)
 
     conversation_id = conversationId or str(uuid.uuid4())
     

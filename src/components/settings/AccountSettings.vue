@@ -194,7 +194,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useAccountStore, useChatStore, useModelsStore } from '@/stores'
 import { IconExport, IconDelete, IconCopy } from '@/components/icons'
 import Dialog from '@/components/common/Dialog.vue'
@@ -202,6 +202,8 @@ import ToggleSwitch from '@/components/common/ToggleSwitch.vue'
 import { useToast } from '@/composables/useToast'
 import { logger } from '@/utils/logger'
 import { userApi } from '@/api/user'
+
+const DEFAULT_ACCOUNT_CREATED_TOAST_KEY = 'yumi_show_default_account_created_toast'
 
 const accountStore = useAccountStore()
 const chatStore = useChatStore()
@@ -227,6 +229,7 @@ const isImporting = ref(false)
 const deleteConfirmText = ref('')
 const deleteCountdown = ref(0)
 let deleteCountdownTimer: ReturnType<typeof setInterval> | null = null
+let statsRefreshTimer: ReturnType<typeof setInterval> | null = null
 
 const stats = ref({
   characterCount: 0,
@@ -255,6 +258,18 @@ watch(
 
 onMounted(() => {
   logger.info('AccountSettings', 'Component mounted')
+  statsRefreshTimer = setInterval(() => {
+    void loadStats()
+  }, 3000)
+  window.addEventListener('focus', handleWindowFocus)
+})
+
+onUnmounted(() => {
+  if (statsRefreshTimer) {
+    clearInterval(statsRefreshTimer)
+    statsRefreshTimer = null
+  }
+  window.removeEventListener('focus', handleWindowFocus)
 })
 
 watch(
@@ -267,6 +282,17 @@ watch(
   },
   { immediate: true }
 )
+
+watch(
+  () => accountStore.currentAccountId,
+  () => {
+    void loadStats()
+  }
+)
+
+function handleWindowFocus(): void {
+  void loadStats()
+}
 
 async function loadStats() {
   try {
@@ -484,12 +510,14 @@ async function confirmDelete() {
     await accountStore.deleteAccount(deletedId)
 
     chatStore.clearMessages()
-    await modelsStore.loadModels()
-    await modelsStore.loadActiveModel()
 
     if (accountStore.currentAccountId) {
       chatStore.currentUserId = accountStore.currentAccountId
-      await chatStore.loadHistory()
+      await Promise.all([
+        chatStore.loadHistory(),
+        modelsStore.loadModels(),
+        modelsStore.loadActiveModel(),
+      ])
     }
 
     showDeleteConfirm.value = false
@@ -500,6 +528,7 @@ async function confirmDelete() {
         'No accounts remaining, reloading app for fresh initialization'
       )
       toast.success('账号已彻底删除，正在清理并重置...')
+      sessionStorage.setItem(DEFAULT_ACCOUNT_CREATED_TOAST_KEY, '1')
       await wait(3000)
       window.location.reload()
       return

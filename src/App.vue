@@ -11,18 +11,44 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
-import { useAccountStore } from '@/stores'
+import { useAccountStore, useChatStore, useModelsStore } from '@/stores'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
+import { ElMessage } from 'element-plus'
+
+const DEFAULT_ACCOUNT_CREATED_TOAST_KEY = 'yumi_show_default_account_created_toast'
 
 const settingsStore = useSettingsStore()
 const accountStore = useAccountStore()
+const chatStore = useChatStore()
+const modelsStore = useModelsStore()
 const themeClass = computed(() => `theme-${settingsStore.theme}`)
 
 onMounted(async () => {
   await accountStore.initialize()
+  if (sessionStorage.getItem(DEFAULT_ACCOUNT_CREATED_TOAST_KEY) === '1') {
+    sessionStorage.removeItem(DEFAULT_ACCOUNT_CREATED_TOAST_KEY)
+    ElMessage.success('已创建新默认角色')
+  }
 })
+
+watch(
+  () => accountStore.currentAccountId,
+  async accountId => {
+    chatStore.clearMessages()
+    if (!accountId) {
+      return
+    }
+    chatStore.currentUserId = accountId
+    await Promise.all([
+      chatStore.loadHistory(),
+      modelsStore.loadModels(),
+      modelsStore.loadActiveModel(),
+    ])
+  },
+  { immediate: true }
+)
 </script>
 
 <style lang="scss">

@@ -105,6 +105,10 @@ const STORAGE_KEY = 'yumi_accounts'
 const ACCOUNT_DATA_KEY_PREFIX = 'yumi_account_'
 const RELATED_CACHE_KEYS = ['yumi_cached_messages', 'yumi_last_sync', 'yumi_user_id']
 
+function getAccountStorageKey(accountId: string): string {
+  return `${ACCOUNT_DATA_KEY_PREFIX}${accountId}`
+}
+
 function createDefaultAccountConfig(): AccountConfig {
   return JSON.parse(JSON.stringify(DEFAULT_ACCOUNT_CONFIG)) as AccountConfig
 }
@@ -212,12 +216,7 @@ export const useAccountStore = defineStore('account', () => {
     try {
       deviceFingerprint.value = await generateDeviceFingerprint()
       await loadAccountsIndex()
-
-      if (accounts.value.length === 0) {
-        await createDefaultAccount()
-      } else if (currentAccount.value) {
-        await loadCurrentAccountData()
-      }
+      await ensureCurrentAccountAvailable()
 
       isInitialized.value = true
       logger.info('AccountStore', 'Initialized', {
@@ -234,6 +233,7 @@ export const useAccountStore = defineStore('account', () => {
 
   async function loadAccountsIndex(): Promise<void> {
     const stored = localStorage.getItem(STORAGE_KEY)
+    currentAccount.value = null
     if (!stored) {
       accounts.value = []
       return
@@ -251,6 +251,50 @@ export const useAccountStore = defineStore('account', () => {
       logger.error('AccountStore', 'Failed to parse accounts index', error)
       accounts.value = []
     }
+  }
+
+  async function ensureCurrentAccountAvailable(): Promise<void> {
+    // Remove broken index entries that no longer have account data payload.
+    const validAccounts = accounts.value.filter(account =>
+      localStorage.getItem(getAccountStorageKey(account.id))
+    )
+    if (validAccounts.length !== accounts.value.length) {
+      accounts.value = validAccounts
+      if (
+        currentAccount.value &&
+        !validAccounts.some(account => account.id === currentAccount.value?.id)
+      ) {
+        currentAccount.value = null
+      }
+    }
+
+    if (accounts.value.length === 0) {
+      await createDefaultAccount()
+      return
+    }
+
+    if (!currentAccount.value) {
+      currentAccount.value = accounts.value[0]
+    }
+
+    const currentData = currentAccount.value
+      ? localStorage.getItem(getAccountStorageKey(currentAccount.value.id))
+      : null
+    if (!currentData) {
+      // Current account payload is missing, fallback to first valid account or create default.
+      const fallbackAccount = accounts.value.find(account =>
+        localStorage.getItem(getAccountStorageKey(account.id))
+      )
+      currentAccount.value = fallbackAccount ?? null
+      if (!currentAccount.value) {
+        accounts.value = []
+        await createDefaultAccount()
+        return
+      }
+    }
+
+    await saveAccountsIndex()
+    await loadCurrentAccountData()
   }
 
   async function saveAccountsIndex(): Promise<void> {
@@ -313,7 +357,7 @@ export const useAccountStore = defineStore('account', () => {
       messages: [],
     }
 
-    return createAccount('我的账号', defaultCharacter, defaultConversation)
+    return createAccount('默认账号', defaultCharacter, defaultConversation)
   }
 
   async function createAccount(
@@ -353,7 +397,7 @@ export const useAccountStore = defineStore('account', () => {
 
     accountData.secrets = { models: [], version: '1.0.0', encryptedAt: now }
 
-    localStorage.setItem(`yumi_account_${accountId}`, JSON.stringify(accountData))
+    localStorage.setItem(getAccountStorageKey(accountId), JSON.stringify(accountData))
 
     accounts.value.push(account)
     await saveAccountsIndex()
@@ -369,7 +413,7 @@ export const useAccountStore = defineStore('account', () => {
   async function loadCurrentAccountData(): Promise<void> {
     if (!currentAccount.value) return
 
-    const stored = localStorage.getItem(`yumi_account_${currentAccount.value.id}`)
+    const stored = localStorage.getItem(getAccountStorageKey(currentAccount.value.id))
     if (!stored) {
       logger.warn('AccountStore', 'Account data not found', { id: currentAccount.value.id })
       return
@@ -414,11 +458,11 @@ export const useAccountStore = defineStore('account', () => {
     await saveAccountsIndex()
 
     const accountId = currentAccount.value.id
-    const stored = localStorage.getItem(`yumi_account_${accountId}`)
+    const stored = localStorage.getItem(getAccountStorageKey(accountId))
     if (stored) {
       const data = JSON.parse(stored)
       data.profile = { ...data.profile, ...updates }
-      localStorage.setItem(`yumi_account_${accountId}`, JSON.stringify(data))
+      localStorage.setItem(getAccountStorageKey(accountId), JSON.stringify(data))
     }
 
     logger.info('AccountStore', 'Updated account profile', { updates })
@@ -430,11 +474,11 @@ export const useAccountStore = defineStore('account', () => {
     Object.assign(currentConfig.value, updates)
 
     const accountId = currentAccount.value.id
-    const stored = localStorage.getItem(`yumi_account_${accountId}`)
+    const stored = localStorage.getItem(getAccountStorageKey(accountId))
     if (stored) {
       const data = JSON.parse(stored)
       data.config = currentConfig.value
-      localStorage.setItem(`yumi_account_${accountId}`, JSON.stringify(data))
+      localStorage.setItem(getAccountStorageKey(accountId), JSON.stringify(data))
     }
 
     logger.info('AccountStore', 'Updated account config', { updates })

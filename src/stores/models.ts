@@ -3,13 +3,23 @@ import { ref, computed } from 'vue'
 import type { ModelConfig, ModelTestResponse } from '@/types'
 import { modelsApi } from '@/api/models'
 import { logger } from '@/utils/logger'
+import { useAccountStore } from './account'
 
 /**
  * 模型管理 Store
  * 负责管理 AI 模型配置、切换和测试
  */
 export const useModelsStore = defineStore('models', () => {
+  const accountStore = useAccountStore()
   const models = ref<ModelConfig[]>([])
+  function getRequiredAccountId(): string {
+    const accountId = accountStore.currentAccountId
+    if (!accountId) {
+      throw new Error('当前无可用账号')
+    }
+    return accountId
+  }
+
   const activeModel = ref<ModelConfig | null>(null)
   const isLoading = ref(false)
   const isTesting = ref(false)
@@ -80,7 +90,8 @@ export const useModelsStore = defineStore('models', () => {
 
     await executeWithLoading(async () => {
       try {
-        models.value = await modelsApi.getModels()
+        const accountId = getRequiredAccountId()
+        models.value = await modelsApi.getModels(accountId)
       } catch (error) {
         logger.error('ModelsStore', 'Failed to load models', error)
         models.value = []
@@ -93,7 +104,8 @@ export const useModelsStore = defineStore('models', () => {
    */
   async function loadActiveModel(): Promise<void> {
     try {
-      activeModel.value = await modelsApi.getActiveModel()
+      const accountId = getRequiredAccountId()
+      activeModel.value = await modelsApi.getActiveModel(accountId)
     } catch (error) {
       logger.error('ModelsStore', 'Failed to load active model', error)
     }
@@ -108,7 +120,11 @@ export const useModelsStore = defineStore('models', () => {
     config: Omit<ModelConfig, 'id'>,
     silent = false
   ): Promise<ModelConfig> {
-    const newModel = await executeWithLoading(() => modelsApi.createModel(config), !silent)
+    const accountId = getRequiredAccountId()
+    const newModel = await executeWithLoading(
+      () => modelsApi.createModel(accountId, config),
+      !silent
+    )
 
     if (silent) {
       models.value.unshift(newModel)
@@ -138,7 +154,7 @@ export const useModelsStore = defineStore('models', () => {
     silent = false
   ): Promise<ModelConfig | void> {
     const updatedModel = await executeWithLoading(
-      () => modelsApi.updateModel(modelId, config),
+      () => modelsApi.updateModel(getRequiredAccountId(), modelId, config),
       !silent
     )
 
@@ -166,7 +182,7 @@ export const useModelsStore = defineStore('models', () => {
    * @param silent - 是否静默模式
    */
   async function deleteModel(modelId: string, silent = false): Promise<void> {
-    await executeWithLoading(() => modelsApi.deleteModel(modelId), !silent)
+    await executeWithLoading(() => modelsApi.deleteModel(getRequiredAccountId(), modelId), !silent)
 
     if (silent) {
       removeModelFromList(modelId)
@@ -191,8 +207,9 @@ export const useModelsStore = defineStore('models', () => {
     modelId: string,
     enabled: boolean
   ): Promise<{ success: boolean; message: string }> {
+    const accountId = getRequiredAccountId()
     const apiCall = enabled ? modelsApi.enableModel : modelsApi.disableModel
-    const result = await apiCall(modelId)
+    const result = await apiCall(accountId, modelId)
 
     if (result.success) {
       updateModelInList(modelId, { isEnabled: enabled })
@@ -230,7 +247,7 @@ export const useModelsStore = defineStore('models', () => {
 
     try {
       logger.info('ModelsStore', 'Testing model', { modelId, verbose })
-      const result = await modelsApi.testModelById(modelId, verbose)
+      const result = await modelsApi.testModelById(getRequiredAccountId(), modelId, verbose)
 
       testResult.value = {
         success: result.success,
@@ -270,7 +287,7 @@ export const useModelsStore = defineStore('models', () => {
     }
 
     try {
-      const result = await modelsApi.setActiveModel(modelId)
+      const result = await modelsApi.setActiveModel(getRequiredAccountId(), modelId)
 
       if (!result.success) return false
 
@@ -307,5 +324,6 @@ export const useModelsStore = defineStore('models', () => {
     disableModel,
     testModelById,
     switchModel,
+    getRequiredAccountId,
   }
 })

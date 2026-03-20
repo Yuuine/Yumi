@@ -12,7 +12,7 @@ from pathlib import Path
 
 import httpx
 from cryptography.fernet import Fernet
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from ..core import clear_active_model, get_logger, set_active_model
@@ -141,7 +141,7 @@ def mask_api_key(api_key: str) -> str:
 
 
 @router.get("/models", response_model=list[ModelConfig])
-async def get_models():
+async def get_models(accountId: str = Query(..., min_length=1)):
     from ..database import get_db
 
     try:
@@ -152,7 +152,9 @@ async def get_models():
                           is_enabled, is_tested, test_status, last_test_at,
                           last_test_message, edit_count, created_at, updated_at
                    FROM model_configs
-                   ORDER BY created_at DESC"""
+                   WHERE account_id = ?
+                   ORDER BY created_at DESC""",
+                (accountId,),
             )
             rows = await cursor.fetchall()
 
@@ -185,7 +187,7 @@ async def get_models():
 
 
 @router.post("/models", response_model=ModelConfig)
-async def create_model(config: ModelConfig):
+async def create_model(config: ModelConfig, accountId: str = Query(..., min_length=1)):
     from ..database import get_db
 
     model_id = str(uuid.uuid4())
@@ -194,18 +196,19 @@ async def create_model(config: ModelConfig):
     display_name = config.name.strip() if config.name and config.name.strip() else None
 
     if not display_name:
-        display_name = await _generate_unique_name(config.modelName)
+        display_name = await _generate_unique_name(config.modelName, accountId)
 
     try:
         async with get_db() as db:
             await db.execute(
                 """INSERT INTO model_configs
-                   (id, provider_id, name, base_url, api_key, model_name,
+                   (id, account_id, provider_id, name, base_url, api_key, model_name,
                     custom_model_name, model_type, max_tokens, temperature,
                     is_enabled, is_tested, test_status, edit_count, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     model_id,
+                    accountId,
                     config.providerId,
                     display_name,
                     _clean_base_url(config.baseUrl),
@@ -251,15 +254,15 @@ async def create_model(config: ModelConfig):
         raise
 
 
-async def _generate_unique_name(base_name: str) -> str:
+async def _generate_unique_name(base_name: str, account_id: str) -> str:
     """生成唯一的显示名称，如果重复则添加数字编号"""
     from ..database import get_db
 
     try:
         async with get_db() as db:
             cursor = await db.execute(
-                "SELECT name FROM model_configs WHERE name LIKE ?",
-                (f"{base_name}%",),
+                "SELECT name FROM model_configs WHERE account_id = ? AND name LIKE ?",
+                (account_id, f"{base_name}%"),
             )
             rows = await cursor.fetchall()
 
@@ -281,7 +284,7 @@ async def _generate_unique_name(base_name: str) -> str:
 
 
 @router.put("/models/{model_id}", response_model=ModelConfig)
-async def update_model(model_id: str, config: ModelConfig):
+async def update_model(model_id: str, config: ModelConfig, accountId: str = Query(..., min_length=1)):
     from ..database import get_db
 
     now = datetime.utcnow().isoformat()
@@ -289,14 +292,17 @@ async def update_model(model_id: str, config: ModelConfig):
     display_name = config.name.strip() if config.name and config.name.strip() else None
 
     if not display_name:
-        display_name = await _generate_unique_name_for_update(model_id, config.modelName)
+        display_name = await _generate_unique_name_for_update(model_id, config.modelName, accountId)
 
     try:
         async with get_db() as db:
             cursor = await db.execute(
-                "SELECT edit_count, api_key FROM model_configs WHERE id = ?", (model_id,)
+                "SELECT edit_count, api_key FROM model_configs WHERE id = ? AND account_id = ?",
+                (model_id, accountId),
             )
             row = await cursor.fetchone()
+            if row is None:
+                raise HTTPException(status_code=404, detail="模型不存在")
             current_edit_count = row[0] if row else 0
             existing_api_key = row[1] if row else ""
 
@@ -311,7 +317,7 @@ async def update_model(model_id: str, config: ModelConfig):
                        model_name = ?, custom_model_name = ?, model_type = ?,
                        max_tokens = ?, temperature = ?, is_enabled = ?,
                        edit_count = ?, updated_at = ?
-                   WHERE id = ?""",
+                   WHERE id = ? AND account_id = ?""",
                 (
                     config.providerId,
                     display_name,
@@ -326,6 +332,7 @@ async def update_model(model_id: str, config: ModelConfig):
                     current_edit_count + 1,
                     now,
                     model_id,
+                    accountId,
                 ),
             )
             await db.commit()
@@ -356,15 +363,15 @@ async def update_model(model_id: str, config: ModelConfig):
         raise
 
 
-async def _generate_unique_name_for_update(exclude_id: str, base_name: str) -> str:
+async def _generate_unique_name_for_update(exclude_id: str, base_name: str, account_id: str) -> str:
     """生成唯一的显示名称（更新时排除当前记录）"""
     from ..database import get_db
 
     try:
         async with get_db() as db:
             cursor = await db.execute(
-                "SELECT name FROM model_configs WHERE name LIKE ? AND id != ?",
-                (f"{base_name}%", exclude_id),
+                "SELECT name FROM model_configs WHERE account_id = ? AND name LIKE ? AND id != ?",
+                (account_id, f"{base_name}%", exclude_id),
             )
             rows = await cursor.fetchall()
 
@@ -386,18 +393,19 @@ async def _generate_unique_name_for_update(exclude_id: str, base_name: str) -> s
 
 
 @router.delete("/models/{model_id}")
-async def delete_model(model_id: str):
+async def delete_model(model_id: str, accountId: str = Query(..., min_length=1)):
     from ..database import get_db
 
     try:
         async with get_db() as db:
             cursor = await db.execute(
-                "SELECT name FROM model_configs WHERE id = ?", (model_id,)
+                "SELECT name FROM model_configs WHERE id = ? AND account_id = ?",
+                (model_id, accountId),
             )
             row = await cursor.fetchone()
             model_name = row[0] if row else None
 
-            await db.execute("DELETE FROM model_configs WHERE id = ?", (model_id,))
+            await db.execute("DELETE FROM model_configs WHERE id = ? AND account_id = ?", (model_id, accountId))
             await db.commit()
 
             await log_service.log_audit(
@@ -422,13 +430,14 @@ async def delete_model(model_id: str):
 
 
 @router.post("/models/{model_id}/enable")
-async def enable_model(model_id: str):
+async def enable_model(model_id: str, accountId: str = Query(..., min_length=1)):
     from ..database import get_db
 
     try:
         async with get_db() as db:
             cursor = await db.execute(
-                "SELECT api_key, name, provider_id, base_url, model_name FROM model_configs WHERE id = ?", (model_id,)
+                "SELECT api_key, name, provider_id, base_url, model_name FROM model_configs WHERE id = ? AND account_id = ?",
+                (model_id, accountId),
             )
             row = await cursor.fetchone()
 
@@ -456,8 +465,8 @@ async def enable_model(model_id: str):
 
             now = datetime.now(timezone.utc).isoformat()
             await db.execute(
-                "UPDATE model_configs SET is_enabled = 1, updated_at = ? WHERE id = ?",
-                (now, model_id),
+                "UPDATE model_configs SET is_enabled = 1, updated_at = ? WHERE id = ? AND account_id = ?",
+                (now, model_id, accountId),
             )
             await db.commit()
 
@@ -483,26 +492,27 @@ async def enable_model(model_id: str):
 
 
 @router.post("/models/{model_id}/disable")
-async def disable_model(model_id: str):
+async def disable_model(model_id: str, accountId: str = Query(..., min_length=1)):
     from ..database import get_db
 
     try:
         async with get_db() as db:
             cursor = await db.execute(
-                "SELECT name FROM model_configs WHERE id = ?", (model_id,)
+                "SELECT name FROM model_configs WHERE id = ? AND account_id = ?",
+                (model_id, accountId),
             )
             row = await cursor.fetchone()
             model_name = row[0] if row else None
 
             await db.execute(
-                "UPDATE model_configs SET is_enabled = 0, updated_at = ? WHERE id = ?",
-                (datetime.utcnow().isoformat(), model_id),
+                "UPDATE model_configs SET is_enabled = 0, updated_at = ? WHERE id = ? AND account_id = ?",
+                (datetime.utcnow().isoformat(), model_id, accountId),
             )
             await db.commit()
 
-            active_model = get_active_model_state()
+            active_model = get_active_model_state(accountId)
             if active_model and active_model.get("model_id") == model_id:
-                clear_active_model()
+                clear_active_model(accountId)
 
             await log_service.log_audit(
                 action=AuditAction.MODEL_DISABLE,
@@ -526,13 +536,14 @@ async def disable_model(model_id: str):
 
 
 @router.post("/models/{model_id}/set_active")
-async def set_active_model_endpoint(model_id: str):
+async def set_active_model_endpoint(model_id: str, accountId: str = Query(..., min_length=1)):
     from ..database import get_db
 
     try:
         async with get_db() as db:
             cursor = await db.execute(
-                "SELECT api_key, name, provider_id, base_url, model_name, is_enabled FROM model_configs WHERE id = ?", (model_id,)
+                "SELECT api_key, name, provider_id, base_url, model_name, is_enabled FROM model_configs WHERE id = ? AND account_id = ?",
+                (model_id, accountId),
             )
             row = await cursor.fetchone()
 
@@ -555,7 +566,7 @@ async def set_active_model_endpoint(model_id: str):
                 "model_name": model_name,
                 "display_name": name,
             }
-            set_active_model(model_config)
+            set_active_model(accountId, model_config)
 
             await log_service.log_audit(
                 action=AuditAction.MODEL_ENABLE,
@@ -613,7 +624,11 @@ class ModelTestByIdRequest(BaseModel):
 
 
 @router.post("/models/{model_id}/test")
-async def test_model_by_id(model_id: str, request: ModelTestByIdRequest = None):
+async def test_model_by_id(
+    model_id: str,
+    request: ModelTestByIdRequest = None,
+    accountId: str = Query(..., min_length=1),
+):
     from ..database import get_db
 
     verbose = request.verbose if request else True
@@ -622,8 +637,8 @@ async def test_model_by_id(model_id: str, request: ModelTestByIdRequest = None):
     try:
         async with get_db() as db:
             cursor = await db.execute(
-                "SELECT base_url, api_key, model_name FROM model_configs WHERE id = ?",
-                (model_id,),
+                "SELECT base_url, api_key, model_name FROM model_configs WHERE id = ? AND account_id = ?",
+                (model_id, accountId),
             )
             row = await cursor.fetchone()
 
@@ -643,7 +658,7 @@ async def test_model_by_id(model_id: str, request: ModelTestByIdRequest = None):
                 """UPDATE model_configs
                    SET is_tested = ?, test_status = ?, last_test_at = ?,
                        last_test_message = ?, updated_at = ?
-                   WHERE id = ?""",
+                   WHERE id = ? AND account_id = ?""",
                 (
                     1 if test_result["success"] else 0,
                     "passed" if test_result["success"] else "failed",
@@ -651,6 +666,7 @@ async def test_model_by_id(model_id: str, request: ModelTestByIdRequest = None):
                     test_result["message"],
                     now,
                     model_id,
+                    accountId,
                 ),
             )
             await db.commit()
@@ -759,7 +775,7 @@ async def _perform_test(
 
 
 @router.get("/active", response_model=ModelConfig | None)
-async def get_active_model():
+async def get_active_model(accountId: str = Query(..., min_length=1)):
     from ..database import get_db
 
     try:
@@ -770,8 +786,9 @@ async def get_active_model():
                           is_enabled, is_tested, test_status, last_test_at,
                           last_test_message, edit_count, created_at, updated_at
                    FROM model_configs
-                   WHERE is_enabled = 1
-                   LIMIT 1"""
+                   WHERE account_id = ? AND is_enabled = 1
+                   LIMIT 1""",
+                (accountId,),
             )
             row = await cursor.fetchone()
 

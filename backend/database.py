@@ -98,6 +98,7 @@ async def init_db() -> None:
         await db.execute("""
             CREATE TABLE IF NOT EXISTS model_configs (
                 id TEXT PRIMARY KEY,
+                account_id TEXT NOT NULL DEFAULT '',
                 provider_id TEXT NOT NULL,
                 name TEXT NOT NULL,
                 base_url TEXT NOT NULL,
@@ -115,6 +116,7 @@ async def init_db() -> None:
                 edit_count INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (account_id) REFERENCES users(id),
                 FOREIGN KEY (provider_id) REFERENCES model_providers(id)
             )
         """)
@@ -212,6 +214,13 @@ async def init_db() -> None:
             await db.execute("ALTER TABLE conversation_logs ADD COLUMN stored_at TIMESTAMP")
             logger.info("Added stored_at column to conversation_logs")
 
+        model_cursor = await db.execute("PRAGMA table_info(model_configs)")
+        model_columns = [row[1] for row in await model_cursor.fetchall()]
+        if 'account_id' not in model_columns:
+            await db.execute("ALTER TABLE model_configs ADD COLUMN account_id TEXT NOT NULL DEFAULT ''")
+            await db.execute("DELETE FROM model_configs")
+            logger.info("Added account_id column to model_configs and cleared legacy model records")
+
         await _create_indexes(db)
 
         await db.execute("""
@@ -247,6 +256,8 @@ async def _create_indexes(db: aiosqlite.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_conversations_active ON conversations(user_id, is_active)",
         "CREATE INDEX IF NOT EXISTS idx_memory_summaries_user ON memory_summaries(user_id)",
         "CREATE INDEX IF NOT EXISTS idx_model_configs_provider ON model_configs(provider_id)",
+        "CREATE INDEX IF NOT EXISTS idx_model_configs_account ON model_configs(account_id)",
+        "CREATE INDEX IF NOT EXISTS idx_model_configs_account_enabled ON model_configs(account_id, is_enabled)",
         "CREATE INDEX IF NOT EXISTS idx_model_configs_enabled ON model_configs(is_enabled)",
         "CREATE INDEX IF NOT EXISTS idx_model_configs_type ON model_configs(model_type)",
         "CREATE INDEX IF NOT EXISTS idx_system_logs_timestamp ON system_logs(timestamp)",
