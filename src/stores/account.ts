@@ -102,6 +102,8 @@ const DEFAULT_ACCOUNT_CONFIG: AccountConfig = {
 }
 
 const STORAGE_KEY = 'yumi_accounts'
+const ACCOUNT_DATA_KEY_PREFIX = 'yumi_account_'
+const RELATED_CACHE_KEYS = ['yumi_cached_messages', 'yumi_last_sync', 'yumi_user_id']
 
 function createDefaultAccountConfig(): AccountConfig {
   return JSON.parse(JSON.stringify(DEFAULT_ACCOUNT_CONFIG)) as AccountConfig
@@ -863,15 +865,30 @@ export const useAccountStore = defineStore('account', () => {
     const index = accounts.value.findIndex(a => a.id === accountId)
     if (index === -1) return
 
-    localStorage.removeItem(`yumi_account_${accountId}`)
+    localStorage.removeItem(`${ACCOUNT_DATA_KEY_PREFIX}${accountId}`)
+
+    // Extra safety cleanup: remove any key that still contains the deleted account id.
+    const keysToRemove: string[] = []
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i)
+      if (key && key.includes(accountId)) {
+        keysToRemove.push(key)
+      }
+    }
+    keysToRemove.forEach(key => localStorage.removeItem(key))
 
     accounts.value.splice(index, 1)
 
     if (currentAccount.value?.id === accountId) {
       currentAccount.value = accounts.value[0] ?? null
+      currentConfig.value = null
       if (currentAccount.value) {
         await loadCurrentAccountData()
       }
+    }
+
+    if (accounts.value.length === 0) {
+      RELATED_CACHE_KEYS.forEach(key => localStorage.removeItem(key))
     }
 
     await saveAccountsIndex()

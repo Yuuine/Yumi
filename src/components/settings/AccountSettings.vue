@@ -40,7 +40,7 @@
       </div>
 
       <div class="form-section">
-        <div class="section-title">数据管理</div>
+        <div class="section-title">数据概览</div>
 
         <div class="stats-grid">
           <div class="stat-item">
@@ -56,21 +56,6 @@
             <span class="stat-label">存储大小</span>
           </div>
         </div>
-
-        <div class="action-buttons">
-          <button class="action-btn" @click="handleExport">
-            <IconExport class="btn-icon" />
-            <span>导出/备份账号</span>
-          </button>
-          <button class="action-btn" @click="handleImport">
-            <IconExport class="btn-icon import-icon" />
-            <span>导入/恢复账号</span>
-          </button>
-          <button class="action-btn danger" @click="handleDelete">
-            <IconDelete class="btn-icon" />
-            <span>删除账号</span>
-          </button>
-        </div>
       </div>
 
       <div class="form-section">
@@ -78,7 +63,7 @@
 
         <div class="setting-item">
           <div class="setting-info">
-            <div class="setting-label">启用账密加密</div>
+            <div class="setting-label">API密钥加密存储</div>
             <div class="setting-description">开启后，模型账密将被加密存储</div>
           </div>
           <div class="setting-control">
@@ -92,7 +77,7 @@
 
         <div class="setting-item clickable" @click="showPasswordModal = true">
           <div class="setting-info">
-            <div class="setting-label">导出密码</div>
+            <div class="setting-label">数据密码</div>
             <div class="setting-description">设置密码后，导出的账号数据将被加密保护</div>
           </div>
           <span class="setting-status" :class="{ active: hasExportPassword }">
@@ -100,9 +85,27 @@
           </span>
         </div>
       </div>
+
+      <div class="form-section">
+        <div class="section-title">账号相关</div>
+        <div class="action-buttons">
+          <button class="action-btn" @click="handleExport">
+            <IconExport class="btn-icon" />
+            <span>导出账号</span>
+          </button>
+          <button class="action-btn" @click="handleImport">
+            <IconExport class="btn-icon import-icon" />
+            <span>导入账号</span>
+          </button>
+        </div>
+        <button class="action-btn danger full-width" @click="handleDelete">
+          <IconDelete class="btn-icon" />
+          <span>删除账号</span>
+        </button>
+      </div>
     </div>
 
-    <Dialog v-model="showPasswordModal" title="设置导出密码">
+    <Dialog v-model="showPasswordModal" title="设置数据密码">
       <div class="dialog-form">
         <input
           v-model="exportPasswordInput"
@@ -120,24 +123,6 @@
       </template>
     </Dialog>
 
-    <Dialog v-model="showExportModal" title="导出账号">
-      <div class="dialog-form">
-        <input
-          v-model="exportPasswordInput"
-          type="password"
-          class="form-input"
-          placeholder="设置密码加密（可选）"
-        />
-        <p class="dialog-hint">导出的文件可用于备份或迁移到其他设备</p>
-      </div>
-      <template #footer>
-        <button class="dialog-btn" @click="showExportModal = false">取消</button>
-        <button class="dialog-btn primary" :disabled="isExporting" @click="confirmExport">
-          {{ isExporting ? '导出中...' : '导出' }}
-        </button>
-      </template>
-    </Dialog>
-
     <Dialog v-model="showImportModal" title="导入账号">
       <div class="dialog-form">
         <input
@@ -148,11 +133,10 @@
           @change="handleFileSelect"
         />
         <input
-          v-if="selectedFile"
           v-model="importPassword"
           type="password"
           class="form-input"
-          placeholder="若备份设置了密码，请输入密码（可选）"
+          placeholder="请输入数据密码（如无可留空）"
         />
         <p class="dialog-hint">
           {{
@@ -174,13 +158,35 @@
 
     <Dialog v-model="showDeleteConfirm" title="删除账号">
       <div class="dialog-form">
-        <p class="dialog-text">确定要删除账号「{{ currentAccount?.displayName }}」吗？</p>
+        <p class="dialog-text">请输入“确认”以继续删除账号「{{ currentAccount?.displayName }}」</p>
+        <input
+          v-model="deleteConfirmText"
+          type="text"
+          class="form-input"
+          placeholder="请输入“确认”"
+        />
         <p class="dialog-warning">此操作不可恢复，所有角色卡和对话记录将被永久删除。</p>
       </div>
       <template #footer>
         <button class="dialog-btn" @click="showDeleteConfirm = false">取消</button>
-        <button class="dialog-btn danger" :disabled="isDeleting" @click="confirmDelete">
-          {{ isDeleting ? '删除中...' : '删除' }}
+        <button
+          class="dialog-btn danger"
+          :disabled="!canProceedDeleteStepOne"
+          @click="proceedDeleteStepTwo"
+        >
+          下一步
+        </button>
+      </template>
+    </Dialog>
+
+    <Dialog v-model="showDeleteFinalConfirm" title="最终确认删除">
+      <div class="dialog-form">
+        <p class="dialog-text">是否确认删除账号？此操作不可恢复</p>
+      </div>
+      <template #footer>
+        <button class="dialog-btn" @click="showDeleteFinalConfirm = false">取消</button>
+        <button class="dialog-btn danger" :disabled="!canConfirmDeleteFinal" @click="confirmDelete">
+          {{ deleteCountdown > 0 ? `${deleteCountdown}s` : isDeleting ? '删除中...' : '确认删除' }}
         </button>
       </template>
     </Dialog>
@@ -189,20 +195,23 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
-import { useAccountStore } from '@/stores'
+import { useAccountStore, useChatStore, useModelsStore } from '@/stores'
 import { IconExport, IconDelete, IconCopy } from '@/components/icons'
 import Dialog from '@/components/common/Dialog.vue'
 import ToggleSwitch from '@/components/common/ToggleSwitch.vue'
 import { useToast } from '@/composables/useToast'
 import { logger } from '@/utils/logger'
+import { userApi } from '@/api/user'
 
 const accountStore = useAccountStore()
+const chatStore = useChatStore()
+const modelsStore = useModelsStore()
 const toast = useToast()
 
 const displayName = ref('')
 const showPasswordModal = ref(false)
-const showExportModal = ref(false)
 const showDeleteConfirm = ref(false)
+const showDeleteFinalConfirm = ref(false)
 const showImportModal = ref(false)
 const savedExportPassword = ref('')
 const exportPasswordInput = ref('')
@@ -215,6 +224,9 @@ const isSettingPassword = ref(false)
 const isExporting = ref(false)
 const isDeleting = ref(false)
 const isImporting = ref(false)
+const deleteConfirmText = ref('')
+const deleteCountdown = ref(0)
+let deleteCountdownTimer: ReturnType<typeof setInterval> | null = null
 
 const stats = ref({
   characterCount: 0,
@@ -224,6 +236,8 @@ const stats = ref({
 
 const currentAccount = computed(() => accountStore.currentAccount)
 const encryptEnabled = computed(() => accountStore.currentConfig?.privacy?.encryptSecrets ?? true)
+const canProceedDeleteStepOne = computed(() => deleteConfirmText.value.trim() === '确认')
+const canConfirmDeleteFinal = computed(() => deleteCountdown.value === 0 && !isDeleting.value)
 
 watch(
   () => currentAccount.value,
@@ -335,7 +349,7 @@ async function handleToggleEncrypt(): Promise<void> {
         encryptSecrets: newValue,
       },
     })
-    toast.success(newValue ? '已启用账密加密' : '已关闭账密加密')
+    toast.success(newValue ? '已启用API密钥加密存储' : '已关闭API密钥加密存储')
     logger.info('AccountSettings', 'Encrypt toggled', { encryptSecrets: newValue })
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : '操作失败'
@@ -351,12 +365,12 @@ async function handleSetPassword(): Promise<void> {
   try {
     savedExportPassword.value = exportPasswordInput.value
     hasExportPassword.value = exportPasswordInput.value.length > 0
-    logger.info('AccountSettings', 'Export password set', { hasPassword: hasExportPassword.value })
+    logger.info('AccountSettings', 'Data password set', { hasPassword: hasExportPassword.value })
     showPasswordModal.value = false
-    toast.success(hasExportPassword.value ? '导出密码已设置' : '导出密码已清除')
+    toast.success(hasExportPassword.value ? '数据密码已设置' : '数据密码已清除')
     exportPasswordInput.value = ''
   } catch (error) {
-    const errMsg = error instanceof Error ? error.message : '设置导出密码失败'
+    const errMsg = error instanceof Error ? error.message : '设置数据密码失败'
     toast.error(`设置失败: ${errMsg}`)
     logger.error('AccountSettings', 'Failed to set export password', error)
   } finally {
@@ -365,13 +379,7 @@ async function handleSetPassword(): Promise<void> {
 }
 
 function handleExport() {
-  logger.debug('AccountSettings', 'Export button clicked')
-  if (hasExportPassword.value) {
-    exportPasswordInput.value = savedExportPassword.value
-  } else {
-    exportPasswordInput.value = ''
-  }
-  showExportModal.value = true
+  void exportNow()
 }
 
 function handleImport() {
@@ -388,12 +396,12 @@ function handleFileSelect(event: Event): void {
   selectedFile.value = input.files && input.files.length > 0 ? input.files[0] : null
 }
 
-async function confirmExport() {
+async function exportNow() {
   if (isExporting.value) return
-  logger.debug('AccountSettings', 'Confirming export')
+  logger.debug('AccountSettings', 'Exporting account directly')
   isExporting.value = true
   try {
-    const password = savedExportPassword.value || exportPasswordInput.value || undefined
+    const password = savedExportPassword.value || undefined
     const blob = await accountStore.exportAccount(password)
 
     const timestamp = new Date().toISOString().slice(0, 10)
@@ -408,8 +416,6 @@ async function confirmExport() {
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
 
-    showExportModal.value = false
-    exportPasswordInput.value = ''
     toast.success('账号导出成功')
     logger.info('AccountSettings', 'Account exported', { filename, hasPassword: !!password })
   } catch (error) {
@@ -423,7 +429,43 @@ async function confirmExport() {
 
 function handleDelete() {
   logger.debug('AccountSettings', 'Delete button clicked')
+  deleteConfirmText.value = ''
+  showDeleteFinalConfirm.value = false
   showDeleteConfirm.value = true
+}
+
+function proceedDeleteStepTwo(): void {
+  if (!canProceedDeleteStepOne.value) {
+    toast.warning('请输入“确认”以继续')
+    return
+  }
+  showDeleteConfirm.value = false
+  showDeleteFinalConfirm.value = true
+  startDeleteCountdown()
+}
+
+function startDeleteCountdown(): void {
+  if (deleteCountdownTimer) {
+    clearInterval(deleteCountdownTimer)
+  }
+  deleteCountdown.value = 3
+  deleteCountdownTimer = setInterval(() => {
+    if (deleteCountdown.value <= 1) {
+      deleteCountdown.value = 0
+      if (deleteCountdownTimer) {
+        clearInterval(deleteCountdownTimer)
+        deleteCountdownTimer = null
+      }
+      return
+    }
+    deleteCountdown.value -= 1
+  }, 1000)
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise(resolve => {
+    setTimeout(resolve, ms)
+  })
 }
 
 async function confirmDelete() {
@@ -438,15 +480,33 @@ async function confirmDelete() {
   isDeleting.value = true
   try {
     const deletedId = currentAccount.value.id
+    await userApi.purgeUserData(deletedId)
     await accountStore.deleteAccount(deletedId)
+
+    chatStore.clearMessages()
+    await modelsStore.loadModels()
+    await modelsStore.loadActiveModel()
+
+    if (accountStore.currentAccountId) {
+      chatStore.currentUserId = accountStore.currentAccountId
+      await chatStore.loadHistory()
+    }
+
     showDeleteConfirm.value = false
 
     if (!accountStore.hasAccounts) {
-      logger.info('AccountSettings', 'No accounts remaining, creating default account')
-      await accountStore.createAccount('我的账号')
+      logger.info(
+        'AccountSettings',
+        'No accounts remaining, reloading app for fresh initialization'
+      )
+      toast.success('账号已彻底删除，正在清理并重置...')
+      await wait(3000)
+      window.location.reload()
+      return
     }
 
-    toast.success('账号已删除')
+    showDeleteFinalConfirm.value = false
+    toast.success('账号已删除，关联历史记录与模型配置已清理')
     logger.info('AccountSettings', 'Account deleted', { accountId: deletedId })
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : '删除失败'
@@ -454,6 +514,11 @@ async function confirmDelete() {
     logger.error('AccountSettings', 'Delete failed', error)
   } finally {
     isDeleting.value = false
+    if (deleteCountdownTimer) {
+      clearInterval(deleteCountdownTimer)
+      deleteCountdownTimer = null
+    }
+    deleteCountdown.value = 0
   }
 }
 
@@ -462,7 +527,15 @@ async function confirmImport(): Promise<void> {
 
   isImporting.value = true
   try {
+    const text = await selectedFile.value.text()
+    const parsed = JSON.parse(text) as { secrets?: { encryptedBackup?: unknown } }
     const password = importPassword.value.trim() || undefined
+
+    if (parsed.secrets?.encryptedBackup && !password) {
+      toast.error('导入失败，请输入密码')
+      return
+    }
+
     const imported = await accountStore.importAccount(selectedFile.value, password)
     await accountStore.switchAccount(imported.id)
     await loadStats()
@@ -474,7 +547,11 @@ async function confirmImport(): Promise<void> {
     logger.info('AccountSettings', 'Account imported from settings', { accountId: imported.id })
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : '导入失败'
-    toast.error(`导入失败: ${errMsg}`)
+    if (errMsg.includes('密码错误') || errMsg.includes('Invalid password')) {
+      toast.error('密码错误')
+    } else {
+      toast.error(`导入失败: ${errMsg}`)
+    }
     logger.error('AccountSettings', 'Import failed in settings', error)
   } finally {
     isImporting.value = false
@@ -668,6 +745,13 @@ async function confirmImport(): Promise<void> {
   .import-icon {
     transform: rotate(180deg);
   }
+}
+
+.action-btn.full-width {
+  flex: 0 0 auto;
+  width: 100%;
+  max-width: 320px;
+  margin: var(--spacing-md) auto 0;
 }
 
 .setting-item {
