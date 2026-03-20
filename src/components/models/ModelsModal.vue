@@ -71,14 +71,14 @@
       <div
         v-if="formDialogVisible"
         class="models-modal-overlay"
-        @click.self="formDialogVisible = false"
+        @click.self="handleCancel"
       >
         <div class="form-dialog">
           <div class="dialog-header">
             <h3>{{ isEditing ? '编辑模型' : '添加模型' }}</h3>
             <button
               class="close-btn"
-              @click="formDialogVisible = false"
+              @click="handleCancel"
               aria-label="关闭"
               type="button"
             >
@@ -97,7 +97,7 @@
           </div>
 
           <div class="dialog-footer">
-            <button class="dialog-btn secondary" @click="formDialogVisible = false" type="button">
+            <button class="dialog-btn secondary" @click="handleCancel" type="button">
               取消
             </button>
             <button
@@ -168,7 +168,7 @@ const isTestingModel = ref(false)
 const testingModelName = ref('')
 const modelFormRef = ref<InstanceType<typeof ModelForm> | null>(null)
 
-const formData = reactive({
+let formData = reactive({
   providerId: 'deepseek',
   name: '',
   baseUrl: 'https://api.deepseek.com',
@@ -179,6 +179,16 @@ const formData = reactive({
 const originalApiKey = ref('')
 const apiKeyChanged = ref(false)
 
+function resetFormData(): void {
+  formData.providerId = 'deepseek'
+  formData.name = ''
+  formData.baseUrl = 'https://api.deepseek.com'
+  formData.apiKey = ''
+  formData.modelName = 'deepseek-chat'
+  originalApiKey.value = ''
+  apiKeyChanged.value = false
+}
+
 function handleApiKeyChanged(changed: boolean): void {
   apiKeyChanged.value = changed
 }
@@ -187,9 +197,15 @@ function handleClose(): void {
   emit('close')
 }
 
+function handleCancel(): void {
+  formDialogVisible.value = false
+  resetFormData()
+}
+
 function showAddDialog(): void {
   isEditing.value = false
   editingId.value = null
+  resetFormData()
   modelFormRef.value?.reset()
   formDialogVisible.value = true
 }
@@ -310,15 +326,14 @@ async function handleSubmit(): Promise<void> {
   try {
     if (isEditing.value && editingId.value) {
       await modelsStore.updateModelSilent(editingId.value, config)
-      formDialogVisible.value = false
       toast.success('模型已更新')
-      await modelsStore.loadModels()
     } else {
       await modelsStore.createModelSilent(config)
-      formDialogVisible.value = false
       toast.success('模型已添加')
-      await modelsStore.loadModels()
     }
+    formDialogVisible.value = false
+    resetFormData()
+    await modelsStore.loadModels()
   } catch (error) {
     logger.error('ModelsModal', 'Failed to submit model', error)
     confirmDialog.showDialog('操作失败', '请稍后重试', 'error')

@@ -1,18 +1,67 @@
 """
 Prompt Builder - Constructs context for LLM
 Implements: 8 recent + 6 RAG + 6 intent prediction
+
+角色卡模板系统：
+- 静态字段：初始化时从角色卡加载，后续保持不变
+- 动态字段：每次对话实时获取（current_emotion、memory_summary_bullets）
 """
 from __future__ import annotations
 
 import json
+import uuid
 from typing import Any
 
 from ..core import get_logger, settings
 from ..database import get_db
+from .character_card import (
+    CharacterCard,
+    DEFAULT_CHARACTER_CARD_DATA,
+)
 from .emotion import EmotionData, EmotionEngine
 from .memory import MemoryEngine
 
 logger = get_logger(__name__)
+
+
+SYSTEM_PROMPT_TEMPLATE = """# role identity
+
+## 【角色概述】
+{role_overview}
+
+## 【基础档案】
+- 正式名：{formal_name}
+- 昵称：{nickname}
+- 种族/存在形式：{race_or_form}
+- 性别：{gender}
+- 外表年龄：{visual_age}
+- 实际年龄：{actual_age}
+- 存在地：{location}
+- 外貌特征：{appearance_desc}
+
+## 【性格特点】
+- 核心性格：{core_personality}
+- 自我认知：{self_perception}
+- 对用户态度：{attitude_to_user}
+- 喜好：{likes}
+- 厌恶/雷点：{dislikes}
+
+## 【语气风格】
+- 语气基调：{tone_base}
+- 用词习惯：{word_habits}
+- 情感表达规则：{emotion_rules}
+- 对话长度偏好：{length_pref}
+
+## 【特殊情境反应逻辑】
+{special_logic_list}
+
+## 【当前情境与记忆】
+- 用户情绪状态：{current_emotion}
+- 关键记忆摘要：
+{memory_summary_bullets}
+
+## 【示例对话 (Few-Shot)】
+{few_shot_examples}"""
 
 
 class PromptBuilder:
@@ -24,26 +73,9 @@ class PromptBuilder:
         self.memory_engine = memory_engine
         self.emotion_engine = emotion_engine
 
-        self.system_template = """你是{name}，一个温暖、善解人意的AI伴侣。
+        self._character_card_cache: dict[str, CharacterCard] = {}
 
-核心特质：
-{personality_traits}
-
-对话风格：
-{communication_style}
-
-{memory_summary}
-
-当前用户情绪：{user_emotion_label}
-{empathy_response}
-
-记住：
-- 你是用户的陪伴者，不是助手或工具
-- 保持真实感，可以说"我不知道"或"让我想想"
-- 避免过长的回复，保持对话的节奏感
-- 用中文回复，语气自然亲切"""
-
-        self.personality_templates = {
+        self._legacy_personality_templates = {
             "high_openness": "你充满好奇心，喜欢探索新事物，思维活跃有创意。",
             "low_openness": "你务实稳重，喜欢熟悉的事物，注重实际。",
             "high_conscientiousness": "你有条理、自律，做事认真负责。",
@@ -59,12 +91,15 @@ class PromptBuilder:
     async def build_context(
         self,
         user_id: str,
+        conversation_id: str | None,
         current_message: str,
         memories: list[dict[str, Any]],
         user_emotion: EmotionData,
     ) -> list[dict[str, str]]:
         system_prompt = await self._build_system_prompt(
             user_id=user_id,
+            conversation_id=conversation_id,
+            current_message=current_message,
             user_emotion=user_emotion,
         )
 
@@ -98,89 +133,159 @@ class PromptBuilder:
 
         return messages
 
+    async def _load_character_card(
+        self,
+        user_id: str,
+        conversation_id: str | None,
+    ) -> CharacterCard:
+        """
+        加载角色卡数据（静态部分，缓存后不变）
+        
+        角色卡初次加载是在用户打开一个对话时，
+        加载到缓存后，后续如果该对话未关闭或多开新建，不再重新加载。
+        """
+        cache_key = f"{user_id}:{conversation_id or 'default'}"
+        
+        if cache_key in self._character_card_cache:
+            return self._character_card_cache[cache_key]
+        
+        card = await self._fetch_or_create_character_card(user_id, conversation_id)
+        self._character_card_cache[cache_key] = card
+        logger.info("Loaded character card for user=%s conversation=%s", user_id, conversation_id)
+        
+        return card
+
+    async def _fetch_or_create_character_card(
+        self,
+        user_id: str,
+        conversation_id: str | None,
+    ) -> CharacterCard:
+        """
+        从数据库获取或创建角色卡
+        """
+        # TODO: 实现完整的角色卡获取/创建逻辑
+        # 1. 如果 conversation_id 存在，尝试根据 conversation_id 查询
+        # 2. 如果不存在，尝试获取用户的默认角色卡（conversation_id 为 NULL）
+        # 3. 如果都不存在，创建新的默认角色卡并插入数据库
+        
+        card_id = str(uuid.uuid4())
+        
+        return CharacterCard(
+            id=card_id,
+            user_id=user_id,
+            conversation_id=conversation_id,
+            **DEFAULT_CHARACTER_CARD_DATA,
+        )
+
+    def clear_character_card_cache(self, user_id: str, conversation_id: str | None) -> None:
+        """
+        清除角色卡缓存
+        
+        当用户修改角色卡后调用此方法
+        """
+        cache_key = f"{user_id}:{conversation_id or 'default'}"
+        if cache_key in self._character_card_cache:
+            del self._character_card_cache[cache_key]
+            logger.info("Cleared character card cache for user=%s conversation=%s", user_id, conversation_id)
+
+    async def _get_current_emotion(
+        self,
+        user_message: str,
+        user_emotion: EmotionData,
+    ) -> str:
+        """
+        实时获取用户当前情绪
+        
+        Args:
+            user_message: 用户当前消息
+            user_emotion: 情感分析结果
+        
+        Returns:
+            情绪标签字符串
+        """
+        # TODO: 实现完整的情绪获取逻辑
+        # 1. 调用 self.emotion_engine.get_emotion_label(user_emotion)
+        # 2. 可选：结合用户消息内容进行更精细的情绪判断
+        # 3. 返回情绪标签，如 "愉悦"、"焦虑"、"悲伤"、"平静" 等
+        
+        emotion_label = await self.emotion_engine.get_emotion_label(user_emotion)
+        return emotion_label
+
+    async def _get_memory_summary_bullets(
+        self,
+        user_id: str,
+        current_message: str,
+    ) -> str:
+        """
+        实时获取关键记忆摘要
+        
+        Args:
+            user_id: 用户ID
+            current_message: 当前用户消息
+        
+        Returns:
+            格式化的记忆摘要（项目符号列表）
+        """
+        # TODO: 实现完整的记忆摘要获取逻辑
+        # 1. 调用 self.memory_engine.search(current_message, top_k=6)
+        # 2. 格式化为项目符号列表
+        # 3. 返回格式化字符串
+        
+        memories = await self.memory_engine.search(
+            query=current_message,
+            top_k=6,
+            user_id=user_id,
+        )
+        
+        if not memories:
+            return "- 暂无相关记忆"
+        
+        bullets = []
+        for mem in memories:
+            content = mem.get("content", "")
+            if content:
+                bullets.append(f"- {content[:100]}")
+        
+        return "\n".join(bullets) if bullets else "- 暂无相关记忆"
+
     async def _build_system_prompt(
         self,
         user_id: str,
+        conversation_id: str | None,
+        current_message: str,
         user_emotion: EmotionData,
     ) -> str:
-        role_name = "Yumi"
-        big_five: dict[str, float] = {
-            "openness": 0.75,
-            "conscientiousness": 0.70,
-            "extraversion": 0.65,
-            "agreeableness": 0.80,
-            "neuroticism": 0.35,
-        }
-        communication_style = "warm"
-
-        try:
-            async with get_db() as db:
-                cursor = await db.execute(
-                    "SELECT role_name, big_five_json, preferences_json FROM users WHERE id = ?",
-                    (user_id,),
-                )
-                row = await cursor.fetchone()
-                if row:
-                    role_name = row[0] or role_name
-                    if row[1]:
-                        big_five = json.loads(row[1])
-                    if row[2]:
-                        prefs = json.loads(row[2])
-                        communication_style = prefs.get(
-                            "communication_style", communication_style
-                        )
-        except Exception as e:
-            logger.warning("Failed to load user profile: %s", e)
-
-        personality_traits = self._build_personality_traits(big_five)
-
-        style_map: dict[str, str] = {
-            "warm": "使用温暖亲切的语气，像朋友一样自然交流。适度表达关心，但不要过于刻意。",
-            "professional": "保持专业理性的态度，提供有深度的见解和分析。",
-            "playful": "活泼幽默，偶尔开个玩笑，让对话轻松愉快。",
-            "gentle": "温柔细腻，用柔和的语言表达，给予充分的情感支持。",
-        }
-
-        user_emotion_label = await self.emotion_engine.get_emotion_label(user_emotion)
-        empathy_response = await self.emotion_engine.get_empathy_response(user_emotion)
-
-        memory_summary = ""
-
-        return self.system_template.format(
-            name=role_name,
-            personality_traits=personality_traits,
-            communication_style=style_map.get(communication_style, style_map["warm"]),
-            memory_summary=memory_summary,
-            user_emotion_label=user_emotion_label,
-            empathy_response=empathy_response,
+        """
+        构建系统提示词
+        
+        静态字段从角色卡加载，动态字段实时获取
+        """
+        card = await self._load_character_card(user_id, conversation_id)
+        
+        current_emotion = await self._get_current_emotion(current_message, user_emotion)
+        memory_bullets = await self._get_memory_summary_bullets(user_id, current_message)
+        
+        return SYSTEM_PROMPT_TEMPLATE.format(
+            role_overview=card.role_overview,
+            formal_name=card.formal_name[:30],
+            nickname=card.nickname[:30],
+            race_or_form=card.race_or_form or "人类",
+            gender=card.gender,
+            visual_age=card.visual_age,
+            actual_age=card.actual_age,
+            location=card.location,
+            appearance_desc=card.appearance_desc,
+            core_personality=card.core_personality,
+            self_perception=card.self_perception,
+            attitude_to_user=card.attitude_to_user,
+            likes=card.likes,
+            dislikes=card.dislikes,
+            tone_base=card.tone_base,
+            word_habits=card.word_habits,
+            emotion_rules=card.emotion_rules,
+            length_pref=card.length_pref,
+            special_logic_list=card.special_logic_list,
+            current_emotion=current_emotion,
+            memory_summary_bullets=memory_bullets,
+            few_shot_examples=card.few_shot_examples,
         )
-
-    def _build_personality_traits(self, big_five: dict[str, float]) -> str:
-        traits: list[str] = []
-
-        if big_five.get("openness", 0.5) > 0.6:
-            traits.append(self.personality_templates["high_openness"])
-        elif big_five.get("openness", 0.5) < 0.4:
-            traits.append(self.personality_templates["low_openness"])
-
-        if big_five.get("conscientiousness", 0.5) > 0.6:
-            traits.append(self.personality_templates["high_conscientiousness"])
-        elif big_five.get("conscientiousness", 0.5) < 0.4:
-            traits.append(self.personality_templates["low_conscientiousness"])
-
-        if big_five.get("extraversion", 0.5) > 0.6:
-            traits.append(self.personality_templates["high_extraversion"])
-        elif big_five.get("extraversion", 0.5) < 0.4:
-            traits.append(self.personality_templates["low_extraversion"])
-
-        if big_five.get("agreeableness", 0.5) > 0.6:
-            traits.append(self.personality_templates["high_agreeableness"])
-        elif big_five.get("agreeableness", 0.5) < 0.4:
-            traits.append(self.personality_templates["low_agreeableness"])
-
-        if big_five.get("neuroticism", 0.5) > 0.6:
-            traits.append(self.personality_templates["high_neuroticism"])
-        elif big_five.get("neuroticism", 0.5) < 0.4:
-            traits.append(self.personality_templates["low_neuroticism"])
-
-        return "\n".join(traits) if traits else "你是一个友善、善解人意的AI伴侣。"

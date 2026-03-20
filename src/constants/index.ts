@@ -62,7 +62,6 @@ export interface ModelCapabilities {
   reasoning: boolean
   webSearch: boolean
   multimodal: boolean
-  imageRecognition: boolean
 }
 
 export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
@@ -71,35 +70,30 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
     reasoning: false,
     webSearch: false,
     multimodal: false,
-    imageRecognition: false,
   },
   'deepseek-reasoner': {
     toolCall: true,
     reasoning: true,
     webSearch: false,
     multimodal: false,
-    imageRecognition: false,
   },
   'kimi-k2-turbo-preview': {
     toolCall: true,
     reasoning: false,
     webSearch: true, // Kimi 系列支持联网搜索
     multimodal: false,
-    imageRecognition: false,
   },
   'kimi-k2.5': {
     toolCall: true,
     reasoning: true, // 支持 thinking 参数
     webSearch: true, // Kimi 系列支持联网搜索
     multimodal: true, // 原生多模态架构，支持视觉输入
-    imageRecognition: true, // 支持视觉理解
   },
   'gpt-5.4': {
     toolCall: true,
     reasoning: true, // 支持 reasoning.effort 参数
     webSearch: true, // 支持 web_search 工具
     multimodal: true, // 支持图像感知
-    imageRecognition: true, // 支持图像理解
   },
 }
 
@@ -110,7 +104,6 @@ export function getModelCapabilities(modelName: string): ModelCapabilities {
       reasoning: false,
       webSearch: false,
       multimodal: false,
-      imageRecognition: false,
     }
   )
 }

@@ -16,6 +16,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from ..core import clear_active_model, get_logger, set_active_model
+from ..core.model_state import get_active_model as get_active_model_state
 from ..services.log_service import AuditAction, log_service
 from ..services.proxy_config import get_proxy_config
 
@@ -499,7 +500,7 @@ async def disable_model(model_id: str):
             )
             await db.commit()
 
-            active_model = get_active_model()
+            active_model = get_active_model_state()
             if active_model and active_model.get("model_id") == model_id:
                 clear_active_model()
 

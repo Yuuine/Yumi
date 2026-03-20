@@ -148,6 +148,46 @@ async def init_db() -> None:
             )
         """)
 
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS character_cards (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                conversation_id TEXT,
+                
+                role_overview TEXT DEFAULT '',
+                
+                formal_name TEXT DEFAULT '',
+                nickname TEXT DEFAULT '',
+                race_or_form TEXT DEFAULT '人类',
+                gender TEXT DEFAULT '中性',
+                visual_age TEXT DEFAULT '',
+                actual_age TEXT DEFAULT '',
+                location TEXT DEFAULT '',
+                appearance_desc TEXT DEFAULT '',
+                
+                core_personality TEXT DEFAULT '',
+                self_perception TEXT DEFAULT '',
+                attitude_to_user TEXT DEFAULT '',
+                likes TEXT DEFAULT '',
+                dislikes TEXT DEFAULT '',
+                
+                tone_base TEXT DEFAULT '',
+                word_habits TEXT DEFAULT '',
+                emotion_rules TEXT DEFAULT '',
+                length_pref TEXT DEFAULT '',
+                
+                special_logic_list TEXT DEFAULT '',
+                few_shot_examples TEXT DEFAULT '',
+                
+                is_active BOOLEAN DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                
+                FOREIGN KEY (user_id) REFERENCES users(id),
+                FOREIGN KEY (conversation_id) REFERENCES conversations(id)
+            )
+        """)
+
         # 迁移：为 conversation_logs 表添加存储状态相关字段
         # storage_status: 存储状态（pending/processing/stored/failed）
         # storage_attempts: 存储尝试次数
@@ -200,7 +240,6 @@ async def _create_indexes(db: aiosqlite.Connection) -> None:
     indexes = [
         "CREATE INDEX IF NOT EXISTS idx_conversation_logs_user_time ON conversation_logs(user_id, timestamp DESC)",
         "CREATE INDEX IF NOT EXISTS idx_conversation_logs_conversation ON conversation_logs(conversation_id)",
-        # 存储状态相关索引：用于查询待处理的记录和统计存储状态
         "CREATE INDEX IF NOT EXISTS idx_conversation_logs_storage_status ON conversation_logs(storage_status)",
         "CREATE INDEX IF NOT EXISTS idx_conversation_logs_storage_attempts ON conversation_logs(storage_attempts)",
         "CREATE INDEX IF NOT EXISTS idx_conversation_logs_stored_at ON conversation_logs(stored_at)",
@@ -218,6 +257,8 @@ async def _create_indexes(db: aiosqlite.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs(timestamp)",
         "CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id)",
         "CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action)",
+        "CREATE INDEX IF NOT EXISTS idx_character_cards_user ON character_cards(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_character_cards_conversation ON character_cards(conversation_id)",
     ]
 
     for index_sql in indexes:

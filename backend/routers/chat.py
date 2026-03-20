@@ -33,6 +33,7 @@ logger = get_logger(__name__)
 
 class ChatRequest(BaseModel):
     userId: str = Field(..., min_length=1, max_length=100, description="用户ID")
+    conversationId: str | None = Field(None, description="会话ID")
     message: str = Field(..., min_length=1, max_length=10000, description="消息内容")
     temperature: float | None = Field(0.85, ge=0.0, le=2.0, description="温度参数")
     stream: bool = False
@@ -148,6 +149,7 @@ async def send_message(request: ChatRequest, req: Request):
             # TODO: 后续需要支持自定义提示词模板和上下文长度配置
             messages = await prompt_builder.build_context(
                 user_id=request.userId,
+                conversation_id=request.conversationId,
                 current_message=request.message,
                 memories=relevant_memories,
                 user_emotion=user_emotion,
@@ -336,6 +338,7 @@ async def stream_chat(
     userId: str,
     message: str,
     req: Request,
+    conversationId: str | None = None,
     temperature: float = 0.85,
     deepThinking: bool = False,
 ):
@@ -343,11 +346,10 @@ async def stream_chat(
     emotion_engine = req.app.state.emotion_engine
     llm_service = req.app.state.llm_service
     prompt_builder = req.app.state.prompt_builder
-
     active_model = await _get_active_model_config()
 
-    # 生成消息ID和会话ID用于异步存储
-    conversation_id = str(uuid.uuid4())
+    conversation_id = conversationId or str(uuid.uuid4())
+    
     user_message_id = str(uuid.uuid4())
     assistant_message_id = str(uuid.uuid4())
 
@@ -379,6 +381,7 @@ async def stream_chat(
 
                 messages = await prompt_builder.build_context(
                     user_id=userId,
+                    conversation_id=conversation_id,
                     current_message=message,
                     memories=relevant_memories,
                     user_emotion=user_emotion,
