@@ -19,6 +19,7 @@ logger = get_logger(__name__)
 @dataclass
 class CacheStats:
     """缓存统计数据"""
+
     hits: int = 0
     misses: int = 0
     sets: int = 0
@@ -176,9 +177,13 @@ class CacheService:
         # 各个缓存实例
         self._user_cache = TrackedLRUCache("user", max_size=100, default_ttl=300.0)
         self._character_cache = TrackedLRUCache("character", max_size=200, default_ttl=600.0)
-        self._character_list_cache = TrackedLRUCache("character_list", max_size=100, default_ttl=120.0)
+        self._character_list_cache = TrackedLRUCache(
+            "character_list", max_size=100, default_ttl=120.0
+        )
         self._conversation_cache = TrackedLRUCache("conversation", max_size=100, default_ttl=120.0)
-        self._conversation_list_cache = TrackedLRUCache("conversation_list", max_size=100, default_ttl=60.0)
+        self._conversation_list_cache = TrackedLRUCache(
+            "conversation_list", max_size=100, default_ttl=60.0
+        )
         self._message_cache = TrackedLRUCache("message", max_size=500, default_ttl=60.0)
 
         self._caches: dict[str, TrackedLRUCache | TrackedTTLCache] = {
@@ -238,14 +243,18 @@ class CacheService:
         """失效角色卡相关缓存"""
         self._character_cache.delete(f"char:{user_id}:{char_id}")
         self._character_list_cache.delete(f"chars:{user_id}")
-        logger.debug("CacheService", "Invalidate character", {"user_id": user_id, "char_id": char_id})
+        logger.debug(
+            "CacheService", "Invalidate character", {"user_id": user_id, "char_id": char_id}
+        )
 
     def invalidate_conversation(self, user_id: str, conv_id: str) -> None:
         """失效对话相关缓存"""
         self._conversation_cache.delete(f"conv:{user_id}:{conv_id}")
         self._conversation_list_cache.delete(f"convs:{user_id}")
         self._message_cache.delete(f"msgs:{user_id}:{conv_id}")
-        logger.debug("CacheService", "Invalidate conversation", {"user_id": user_id, "conv_id": conv_id})
+        logger.debug(
+            "CacheService", "Invalidate conversation", {"user_id": user_id, "conv_id": conv_id}
+        )
 
 
 _cache_service: CacheService | None = None

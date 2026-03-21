@@ -1,6 +1,7 @@
 """
 Chat API Router - 支持流式响应
 """
+
 from __future__ import annotations
 
 import json
@@ -452,9 +453,11 @@ async def get_chat_history(userId: str, limit: int = 50, offset: int = 0) -> Cha
                 role=row[1],
                 content=row[2],
                 timestamp=row[3],
-                emotion=EmotionData(valence=row[4], arousal=row[5])
-                if row[4] is not None and row[5] is not None
-                else None,
+                emotion=(
+                    EmotionData(valence=row[4], arousal=row[5])
+                    if row[4] is not None and row[5] is not None
+                    else None
+                ),
             )
             for row in list(reversed(list(rows)))
         ]

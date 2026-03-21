@@ -19,10 +19,7 @@ async def get_cache_stats():
     """获取所有缓存统计"""
     cache_service = get_cache_service()
     stats = cache_service.get_all_stats()
-    return {
-        "success": True,
-        "data": stats
-    }
+    return {"success": True, "data": stats}
 
 
 @router.get("/cache/stats/{name}")
@@ -31,14 +28,8 @@ async def get_cache_stats_by_name(name: str):
     cache_service = get_cache_service()
     cache = cache_service.get_cache(name)
     if not cache:
-        return {
-            "success": False,
-            "error": f"Cache '{name}' not found"
-        }
-    return {
-        "success": True,
-        "data": cache.get_stats().to_dict()
-    }
+        return {"success": False, "error": f"Cache '{name}' not found"}
+    return {"success": True, "data": cache.get_stats().to_dict()}
 
 
 @router.post("/cache/stats/reset")
@@ -47,10 +38,7 @@ async def reset_cache_stats():
     cache_service = get_cache_service()
     cache_service.reset_all_stats()
     logger.info("CacheRouter", "Stats reset")
-    return {
-        "success": True,
-        "message": "Cache stats reset successfully"
-    }
+    return {"success": True, "message": "Cache stats reset successfully"}
 
 
 @router.post("/cache/stats/{name}/reset")
@@ -59,16 +47,10 @@ async def reset_cache_stats_by_name(name: str):
     cache_service = get_cache_service()
     cache = cache_service.get_cache(name)
     if not cache:
-        return {
-            "success": False,
-            "error": f"Cache '{name}' not found"
-        }
+        return {"success": False, "error": f"Cache '{name}' not found"}
     cache.reset_stats()
     logger.info("CacheRouter", "Stats reset for", {"cache": name})
-    return {
-        "success": True,
-        "message": f"Cache '{name}' stats reset successfully"
-    }
+    return {"success": True, "message": f"Cache '{name}' stats reset successfully"}
 
 
 @router.get("/cache/info")
@@ -90,5 +72,5 @@ async def get_cache_info():
             "total_requests": total_requests,
             "overall_hit_rate": round(overall_hit_rate, 2),
             "caches": list(stats.keys()),
-        }
+        },
     }

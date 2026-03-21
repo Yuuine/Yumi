@@ -65,12 +65,14 @@ class DialogueInteraction:
             "duration_ms": self.duration_ms,
             "is_normal_end": 1 if self.is_normal_end else 0,
             "end_reason": self.end_reason,
-            "user_emotion": json.dumps(self.user_emotion, ensure_ascii=False)
-            if self.user_emotion
-            else None,
-            "assistant_emotion": json.dumps(self.assistant_emotion, ensure_ascii=False)
-            if self.assistant_emotion
-            else None,
+            "user_emotion": (
+                json.dumps(self.user_emotion, ensure_ascii=False) if self.user_emotion else None
+            ),
+            "assistant_emotion": (
+                json.dumps(self.assistant_emotion, ensure_ascii=False)
+                if self.assistant_emotion
+                else None
+            ),
             "trace_id": self.trace_id,
         }
 

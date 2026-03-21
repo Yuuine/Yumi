@@ -526,9 +526,9 @@ class AsyncStorageService:
                         role=row[2],
                         content=row[3],
                         emotion=emotion,
-                        timestamp=datetime.fromisoformat(row[4])
-                        if isinstance(row[4], str)
-                        else row[4],
+                        timestamp=(
+                            datetime.fromisoformat(row[4]) if isinstance(row[4], str) else row[4]
+                        ),
                         attempts=row[7] or 0,
                     )
 
