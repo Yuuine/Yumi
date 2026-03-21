@@ -3,6 +3,7 @@
 
 定义模型配置的数据结构，用于解析和存储 YAML 配置文件。
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -12,6 +13,7 @@ from typing import Any
 @dataclass
 class ModelInfo:
     """模型基本信息"""
+
     name: str
     provider: str
     description: str = ""
@@ -20,6 +22,7 @@ class ModelInfo:
 @dataclass
 class RequestConfig:
     """请求参数配置"""
+
     defaults: dict[str, Any] = field(default_factory=dict)
     supported_fields: list[str] = field(default_factory=list)
     unsupported_fields: list[str] = field(default_factory=list)
@@ -29,6 +32,7 @@ class RequestConfig:
 @dataclass
 class ResponseConfig:
     """响应解析配置"""
+
     content_field: str = "choices[0].message.content"
     reasoning_field: str | None = None
 
@@ -36,6 +40,7 @@ class ResponseConfig:
 @dataclass
 class StreamConfig:
     """流式响应配置"""
+
     format: str = "sse"
     done_signal: str = "[DONE]"
     content_field: str = "choices[0].delta.content"
@@ -44,6 +49,7 @@ class StreamConfig:
 @dataclass
 class ApiConfig:
     """API 配置"""
+
     endpoint_suffix: str = "/chat/completions"
     auth_type: str = "bearer"
 
@@ -51,6 +57,7 @@ class ApiConfig:
 @dataclass
 class ProviderModelConfig:
     """提供商模型完整配置"""
+
     model: ModelInfo
     api: ApiConfig = field(default_factory=ApiConfig)
     request: RequestConfig = field(default_factory=RequestConfig)

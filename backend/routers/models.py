@@ -1,6 +1,7 @@
 """
 Model Management API Router
 """
+
 from __future__ import annotations
 
 import base64
@@ -284,7 +285,9 @@ async def _generate_unique_name(base_name: str, account_id: str) -> str:
 
 
 @router.put("/models/{model_id}", response_model=ModelConfig)
-async def update_model(model_id: str, config: ModelConfig, accountId: str = Query(..., min_length=1)):
+async def update_model(
+    model_id: str, config: ModelConfig, accountId: str = Query(..., min_length=1)
+):
     from ..database import get_db
 
     now = datetime.utcnow().isoformat()
@@ -405,7 +408,9 @@ async def delete_model(model_id: str, accountId: str = Query(..., min_length=1))
             row = await cursor.fetchone()
             model_name = row[0] if row else None
 
-            await db.execute("DELETE FROM model_configs WHERE id = ? AND account_id = ?", (model_id, accountId))
+            await db.execute(
+                "DELETE FROM model_configs WHERE id = ? AND account_id = ?", (model_id, accountId)
+            )
             await db.commit()
 
             await log_service.log_audit(
@@ -677,9 +682,7 @@ async def test_model_by_id(
         raise
 
 
-async def _perform_test(
-    base_url: str, api_key: str, model_name: str, verbose: bool = True
-) -> dict:
+async def _perform_test(base_url: str, api_key: str, model_name: str, verbose: bool = True) -> dict:
     cleaned_url = _clean_base_url(base_url)
     url = f"{cleaned_url}/chat/completions"
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
@@ -749,14 +752,23 @@ async def _perform_test(
     except httpx.TimeoutException as e:
         logger.error(
             "Model test timeout: url=%s, error=%s (type=%s)",
-            url, str(e), type(e).__name__,
+            url,
+            str(e),
+            type(e).__name__,
             exc_info=True,
         )
-        return {"success": False, "message": "测试失败: 连接超时", "response": None, "reasoning": None}
+        return {
+            "success": False,
+            "message": "测试失败: 连接超时",
+            "response": None,
+            "reasoning": None,
+        }
     except httpx.ConnectError as e:
         logger.error(
             "Model test ConnectError: url=%s, error=%s (type=%s)",
-            url, str(e), type(e).__name__,
+            url,
+            str(e),
+            type(e).__name__,
             exc_info=True,
         )
         return {
@@ -768,10 +780,17 @@ async def _perform_test(
     except Exception as e:
         logger.error(
             "Model test error: url=%s, error=%s (type=%s)",
-            url, str(e), type(e).__name__,
+            url,
+            str(e),
+            type(e).__name__,
             exc_info=True,
         )
-        return {"success": False, "message": f"测试失败: {str(e)}", "response": None, "reasoning": None}
+        return {
+            "success": False,
+            "message": f"测试失败: {str(e)}",
+            "response": None,
+            "reasoning": None,
+        }
 
 
 @router.get("/active", response_model=ModelConfig | None)

@@ -2,6 +2,7 @@
 Memory Engine - Long-term memory with ChromaDB
 Implements Ebbinghaus decay, semantic deduplication, and LLM summarization
 """
+
 from __future__ import annotations
 
 import time
@@ -40,9 +41,7 @@ class MemoryEngine:
             name=settings.vector_db.collection_name,
             metadata={"description": "Yumi long-term memory storage"},
         )
-        logger.info(
-            "Memory engine initialized with %d memories", self.collection.count()
-        )
+        logger.info("Memory engine initialized with %d memories", self.collection.count())
 
     def _ensure_collection(self) -> Collection:
         """确保 collection 已初始化"""
@@ -202,9 +201,7 @@ class MemoryEngine:
         memories.sort(key=lambda x: x["similarity"], reverse=True)
         return memories[:top_k]
 
-    async def get_recent(
-        self, user_id: str, limit: int | None = None
-    ) -> list[dict[str, Any]]:
+    async def get_recent(self, user_id: str, limit: int | None = None) -> list[dict[str, Any]]:
         limit = limit or settings.memory.recent_context_limit
 
         try:
@@ -327,9 +324,7 @@ class MemoryEngine:
             "total_memories": total,
             "oldest_memory": min(timestamps) if timestamps else None,
             "newest_memory": max(timestamps) if timestamps else None,
-            "avg_importance": float(np.mean(importance_scores))
-            if importance_scores
-            else 0.0,
+            "avg_importance": float(np.mean(importance_scores)) if importance_scores else 0.0,
         }
 
     async def delete_memory(self, memory_id: str, user_id: str | None = None) -> bool:

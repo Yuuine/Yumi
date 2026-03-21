@@ -20,48 +20,50 @@ const globalState: ToastState = {
 
 let toastTimer: ReturnType<typeof setTimeout> | null = null
 
-export function useToast() {
-  function show(msg: string, toastType: ToastType = 'success', options: ToastOptions = {}): void {
-    const { duration = 2500 } = options
+function show(msg: string, toastType: ToastType = 'success', options: ToastOptions = {}): void {
+  const { duration = 2500 } = options
 
-    if (toastTimer) {
-      clearTimeout(toastTimer)
-    }
-
-    globalState.message.value = msg
-    globalState.type.value = toastType
-    globalState.visible.value = true
-
-    toastTimer = setTimeout(() => {
-      globalState.visible.value = false
-      toastTimer = null
-    }, duration)
+  if (toastTimer) {
+    clearTimeout(toastTimer)
   }
 
-  function success(msg: string, options?: ToastOptions): void {
-    show(msg, 'success', options)
-  }
+  globalState.message.value = msg
+  globalState.type.value = toastType
+  globalState.visible.value = true
 
-  function error(msg: string, options?: ToastOptions): void {
-    show(msg, 'error', options)
-  }
-
-  function warning(msg: string, options?: ToastOptions): void {
-    show(msg, 'warning', options)
-  }
-
-  function info(msg: string, options?: ToastOptions): void {
-    show(msg, 'info', options)
-  }
-
-  function hide(): void {
-    if (toastTimer) {
-      clearTimeout(toastTimer)
-      toastTimer = null
-    }
+  toastTimer = setTimeout(() => {
     globalState.visible.value = false
-  }
+    toastTimer = null
+  }, duration)
+}
 
+function success(msg: string, options?: ToastOptions): void {
+  show(msg, 'success', options)
+}
+
+function error(msg: string, options?: ToastOptions): void {
+  show(msg, 'error', options)
+}
+
+function warning(msg: string, options?: ToastOptions): void {
+  show(msg, 'warning', options)
+}
+
+function info(msg: string, options?: ToastOptions): void {
+  show(msg, 'info', options)
+}
+
+function hide(): void {
+  if (toastTimer) {
+    clearTimeout(toastTimer)
+    toastTimer = null
+  }
+  globalState.visible.value = false
+}
+
+export { show, success, error, warning, info, hide }
+
+export function useToast() {
   return {
     visible: globalState.visible,
     message: globalState.message,

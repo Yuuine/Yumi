@@ -23,7 +23,7 @@
 <script setup lang="ts">
 import { ref, markRaw } from 'vue'
 import { useRouter } from 'vue-router'
-import { IconChat, IconModels } from '@/components/icons'
+import { IconChat, IconModels, IconCharacter } from '@/components/icons'
 import IconSettings from '@/components/icons/IconSettings.vue'
 
 interface MenuItem {
@@ -34,6 +34,7 @@ interface MenuItem {
 
 const emit = defineEmits<{
   openModels: []
+  openCharacter: []
   openSettings: []
 }>()
 
@@ -45,6 +46,11 @@ const menuItems: MenuItem[] = [
     id: 'chat',
     label: '对话',
     icon: markRaw(IconChat),
+  },
+  {
+    id: 'character',
+    label: '角色',
+    icon: markRaw(IconCharacter),
   },
   {
     id: 'models',
@@ -69,6 +75,11 @@ function collapseSidebar() {
 function handleMenuClick(menuId: string) {
   if (menuId === 'models') {
     emit('openModels')
+    return
+  }
+
+  if (menuId === 'character') {
+    emit('openCharacter')
     return
   }
 

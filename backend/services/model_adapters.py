@@ -3,6 +3,7 @@ Model Adapters - 配置驱动的模型适配器
 
 基于 OpenAI API 格式，通过 YAML 配置文件实现多提供商适配。
 """
+
 from __future__ import annotations
 
 import json
@@ -23,6 +24,7 @@ logger = get_logger(__name__)
 @dataclass
 class ModelConfig:
     """模型运行时配置"""
+
     provider_id: str
     base_url: str
     api_key: str
@@ -36,17 +38,29 @@ class ModelConfig:
 @dataclass
 class ChatResponse:
     """聊天响应"""
+
     content: str
     reasoning_content: str | None = None
     raw_response: dict[str, Any] = field(default_factory=dict)
+    request_payload: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
 class StreamChunk:
     """流式响应块"""
+
     content: str | None = None
     reasoning_content: str | None = None
     is_done: bool = False
+    raw_data: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class StreamChatResult:
+    """流式聊天结果"""
+
+    request_payload: dict[str, Any] = field(default_factory=dict)
+    raw_response_chunks: list[dict[str, Any]] = field(default_factory=list)
 
 
 class OpenAICompatibleAdapter:
@@ -186,7 +200,10 @@ class OpenAICompatibleAdapter:
     def parse_response(self, data: dict[str, Any]) -> ChatResponse:
         choices = data.get("choices", [])
         if not choices:
-            logger.error("API response missing choices. Full response: %s", json.dumps(data, ensure_ascii=False))
+            logger.error(
+                "API response missing choices. Full response: %s",
+                json.dumps(data, ensure_ascii=False),
+            )
             raise LLMException(
                 message="API 返回数据格式错误: 缺少 choices",
                 code="LLM_INVALID_RESPONSE",
@@ -203,13 +220,13 @@ class OpenAICompatibleAdapter:
             logger.warning(
                 "Empty response from API. Message keys: %s, Full response: %s",
                 list(message.keys()),
-                json.dumps(data, ensure_ascii=False)
+                json.dumps(data, ensure_ascii=False),
             )
         else:
             logger.debug(
                 "API response parsed. Content length: %d, Reasoning length: %d",
                 len(content) if content else 0,
-                len(reasoning_content) if reasoning_content else 0
+                len(reasoning_content) if reasoning_content else 0,
             )
 
         return ChatResponse(
@@ -221,7 +238,7 @@ class OpenAICompatibleAdapter:
     def parse_stream_chunk(self, data: dict[str, Any]) -> StreamChunk:
         choices = data.get("choices", [])
         if not choices:
-            return StreamChunk()
+            return StreamChunk(raw_data=data)
 
         delta = choices[0].get("delta", {})
         content = delta.get("content")
@@ -233,7 +250,37 @@ class OpenAICompatibleAdapter:
         return StreamChunk(
             content=content,
             reasoning_content=reasoning_content,
+            raw_data=data,
         )
+
+    def _get_proxy_urls(self) -> list[str]:
+        """获取代理URL列表"""
+        if (
+            self.config.proxy_config
+            and self.config.proxy_config.enabled
+            and self.config.proxy_config.mode == "smart"
+        ):
+            return self.config.proxy_config.get_proxy_urls_for_fallback()
+        return []
+
+    async def _try_request_with_proxy(
+        self,
+        url: str,
+        headers: dict[str, str],
+        payload: dict[str, Any],
+        proxy_url: str,
+        stream: bool = False,
+    ):
+        """使用指定代理尝试请求"""
+        async with httpx.AsyncClient(
+            timeout=self.config.timeout,
+            proxy=proxy_url,
+        ) as proxy_client:
+            if stream:
+                return await self._stream_request(url, headers, payload, client=proxy_client)
+            response = await proxy_client.post(url, json=payload, headers=headers)
+            response.raise_for_status()
+            return response
 
     async def _do_request(
         self,
@@ -243,10 +290,7 @@ class OpenAICompatibleAdapter:
         stream: bool = False,
     ):
         last_error: Exception | None = None
-        proxy_urls: list[str] = []
-
-        if self.config.proxy_config and self.config.proxy_config.enabled and self.config.proxy_config.mode == "smart":
-            proxy_urls = self.config.proxy_config.get_proxy_urls_for_fallback()
+        proxy_urls = self._get_proxy_urls()
 
         try:
             if stream:
@@ -263,20 +307,11 @@ class OpenAICompatibleAdapter:
 
         for proxy_url in proxy_urls[:5]:
             try:
-                async with httpx.AsyncClient(
-                    timeout=self.config.timeout,
-                    proxy=proxy_url,
-                ) as proxy_client:
-                    if stream:
-                        return await self._stream_request(
-                            url, headers, payload, client=proxy_client
-                        )
-                    response = await proxy_client.post(
-                        url, json=payload, headers=headers
-                    )
-                    response.raise_for_status()
-                    logger.info("Smart proxy retry success: %s", proxy_url)
-                    return response
+                response = await self._try_request_with_proxy(
+                    url, headers, payload, proxy_url, stream
+                )
+                logger.info("Smart proxy retry success: %s", proxy_url)
+                return response
             except (httpx.ConnectError, httpx.TimeoutException) as e:
                 last_error = e
                 logger.debug("Proxy %s failed: %s", proxy_url, e)
@@ -314,7 +349,9 @@ class OpenAICompatibleAdapter:
 
         logger.debug(
             "LLM API request: url=%s, model=%s, payload_keys=%s",
-            url, payload.get("model"), list(payload.keys())
+            url,
+            payload.get("model"),
+            list(payload.keys()),
         )
 
         try:
@@ -322,10 +359,18 @@ class OpenAICompatibleAdapter:
             if not isinstance(response, httpx.Response):
                 raise LLMException(message="Invalid response", code="LLM_INTERNAL_ERROR")
             data = response.json()
-            return self.parse_response(data)
+            parsed = self.parse_response(data)
+            return ChatResponse(
+                content=parsed.content,
+                reasoning_content=parsed.reasoning_content,
+                raw_response=data,
+                request_payload=payload,
+            )
         except httpx.HTTPStatusError as e:
             error_body = e.response.text[:500] if e.response else "No response"
-            logger.error("LLM API HTTP error: status=%d, body=%s", e.response.status_code, error_body)
+            logger.error(
+                "LLM API HTTP error: status=%d, body=%s", e.response.status_code, error_body
+            )
             raise LLMException(
                 message="LLM 服务调用失败",
                 code="LLM_HTTP_ERROR",
@@ -365,7 +410,7 @@ class OpenAICompatibleAdapter:
         messages: list[dict[str, str]],
         temperature: float | None = None,
         use_thinking: bool = False,
-    ) -> AsyncIterator[StreamChunk]:
+    ) -> AsyncIterator[StreamChunk | StreamChatResult]:
         url = self.get_endpoint()
         headers = self.get_headers()
         payload = self.build_request_payload(
@@ -375,10 +420,12 @@ class OpenAICompatibleAdapter:
             use_thinking=use_thinking,
         )
 
-        clients: list[tuple[httpx.AsyncClient, bool]] = [
-            (self.client, False)
-        ]
-        if self.config.proxy_config and self.config.proxy_config.enabled and self.config.proxy_config.mode == "smart":
+        clients: list[tuple[httpx.AsyncClient, bool]] = [(self.client, False)]
+        if (
+            self.config.proxy_config
+            and self.config.proxy_config.enabled
+            and self.config.proxy_config.mode == "smart"
+        ):
             for proxy_url in self.config.proxy_config.get_proxy_urls_for_fallback():
                 clients.append(
                     (
@@ -393,17 +440,21 @@ class OpenAICompatibleAdapter:
         last_error: Exception | None = None
         for client, should_close in clients:
             try:
-                async with client.stream(
-                    "POST", url, json=payload, headers=headers
-                ) as response:
+                chunks_data: list[dict[str, Any]] = []
+                async with client.stream("POST", url, json=payload, headers=headers) as response:
                     async for line in response.aiter_lines():
                         if line.startswith("data: "):
                             data = line[6:]
                             if data == "[DONE]":
                                 yield StreamChunk(is_done=True)
+                                yield StreamChatResult(
+                                    request_payload=payload,
+                                    raw_response_chunks=chunks_data,
+                                )
                                 return
                             try:
                                 chunk_data = json.loads(data)
+                                chunks_data.append(chunk_data)
                                 stream_chunk = self.parse_stream_chunk(chunk_data)
                                 if stream_chunk.content or stream_chunk.reasoning_content:
                                     yield stream_chunk

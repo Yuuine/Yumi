@@ -2,6 +2,7 @@
 异常处理模块
 定义统一的异常类型和错误响应格式
 """
+
 from __future__ import annotations
 
 from typing import Any

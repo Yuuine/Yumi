@@ -2,6 +2,7 @@
 Emotion Engine - Emotion detection and analysis
 Supports keyword-based analysis and optional transformer model
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -34,25 +35,84 @@ class EmotionAnalyzer(ABC):
 class KeywordEmotionAnalyzer(EmotionAnalyzer):
     def __init__(self) -> None:
         self.positive_words = [
-            "开心", "高兴", "快乐", "幸福", "喜欢", "爱", "美好", "温暖",
-            "感谢", "谢谢", "棒", "好", "太好了", "哈哈", "嘻嘻", "满意",
-            "兴奋", "期待", "希望", "信心", "成功", "胜利", "赞", "优秀",
+            "开心",
+            "高兴",
+            "快乐",
+            "幸福",
+            "喜欢",
+            "爱",
+            "美好",
+            "温暖",
+            "感谢",
+            "谢谢",
+            "棒",
+            "好",
+            "太好了",
+            "哈哈",
+            "嘻嘻",
+            "满意",
+            "兴奋",
+            "期待",
+            "希望",
+            "信心",
+            "成功",
+            "胜利",
+            "赞",
+            "优秀",
         ]
 
         self.negative_words = [
-            "难过", "伤心", "痛苦", "悲伤", "讨厌", "恨", "烦",
-            "担心", "害怕", "焦虑", "紧张", "压力", "累", "疲惫", "沮丧",
-            "失望", "绝望", "孤独", "寂寞", "无聊", "愤怒", "生气", "郁闷",
+            "难过",
+            "伤心",
+            "痛苦",
+            "悲伤",
+            "讨厌",
+            "恨",
+            "烦",
+            "担心",
+            "害怕",
+            "焦虑",
+            "紧张",
+            "压力",
+            "累",
+            "疲惫",
+            "沮丧",
+            "失望",
+            "绝望",
+            "孤独",
+            "寂寞",
+            "无聊",
+            "愤怒",
+            "生气",
+            "郁闷",
         ]
 
         self.high_arousal_words = [
-            "激动", "兴奋", "愤怒", "生气", "害怕", "紧张", "焦虑",
-            "惊喜", "震惊", "急", "疯狂", "狂喜",
+            "激动",
+            "兴奋",
+            "愤怒",
+            "生气",
+            "害怕",
+            "紧张",
+            "焦虑",
+            "惊喜",
+            "震惊",
+            "急",
+            "疯狂",
+            "狂喜",
         ]
 
         self.low_arousal_words = [
-            "平静", "放松", "无聊", "疲惫", "困", "累", "懒",
-            "安静", "沉默", "麻木",
+            "平静",
+            "放松",
+            "无聊",
+            "疲惫",
+            "困",
+            "累",
+            "懒",
+            "安静",
+            "沉默",
+            "麻木",
         ]
 
         self.emotion_patterns: dict[str, tuple[float, float]] = {
@@ -262,7 +322,7 @@ class EmotionEngine:
         return empathy_map.get(label, "")
 
     async def close(self) -> None:
-        if self.analyzer and hasattr(self.analyzer, 'close'):
+        if self.analyzer and hasattr(self.analyzer, "close"):
             await self.analyzer.close()
         self._initialized = False
         logger.info("Emotion engine closed")

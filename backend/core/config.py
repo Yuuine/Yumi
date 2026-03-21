@@ -3,6 +3,7 @@
 使用 pydantic-settings 实现类型安全的配置管理
 支持环境变量覆盖和 YAML 配置文件
 """
+
 from __future__ import annotations
 
 from functools import lru_cache
@@ -44,10 +45,15 @@ class DatabaseConfig(BaseSettings):
 
     type: str = "sqlite"
     path: str = "data/yumi.db"
+    log_path: str = "data/yumi_logs.db"
 
     @property
     def full_path(self) -> Path:
         return Path(self.path).resolve()
+
+    @property
+    def log_full_path(self) -> Path:
+        return Path(self.log_path).resolve()
 
 
 class VectorDBConfig(BaseSettings):

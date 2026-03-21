@@ -2,6 +2,7 @@
 依赖注入模块
 提供 FastAPI 依赖注入的服务实例
 """
+
 from __future__ import annotations
 
 from functools import lru_cache

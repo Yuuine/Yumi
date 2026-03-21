@@ -3,6 +3,7 @@ Async Storage Service - 异步存储服务
 实现消息的异步存储，包括数据库存储和向量存储
 支持重试机制和状态追踪
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -22,6 +23,7 @@ logger = get_logger(__name__)
 
 class StorageTaskStatus(str, Enum):
     """存储任务状态枚举"""
+
     PENDING = "pending"
     DB_STORED = "db_stored"
     VECTOR_STORED = "vector_stored"
@@ -32,6 +34,7 @@ class StorageTaskStatus(str, Enum):
 @dataclass
 class StorageTask:
     """存储任务数据类"""
+
     task_id: str
     message_id: str
     conversation_id: str
@@ -167,7 +170,9 @@ class AsyncStorageService:
         """
         stats = self._stats.copy()
         stats["queue_size"] = self._queue.qsize()
-        stats["pending_tasks"] = len([t for t in self._tasks.values() if t.status == StorageTaskStatus.PENDING])
+        stats["pending_tasks"] = len(
+            [t for t in self._tasks.values() if t.status == StorageTaskStatus.PENDING]
+        )
 
         if self._stats["total_completed"] > 0:
             stats["avg_latency_ms"] = (
@@ -521,7 +526,9 @@ class AsyncStorageService:
                         role=row[2],
                         content=row[3],
                         emotion=emotion,
-                        timestamp=datetime.fromisoformat(row[4]) if isinstance(row[4], str) else row[4],
+                        timestamp=datetime.fromisoformat(row[4])
+                        if isinstance(row[4], str)
+                        else row[4],
                         attempts=row[7] or 0,
                     )
 

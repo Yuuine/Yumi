@@ -1,6 +1,7 @@
 """
 Tests for chat router
 """
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
@@ -159,9 +160,7 @@ class TestChatRouter:
 
         app.include_router(router, prefix="/api")
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.post(
                 "/api/chat",
                 json={
@@ -185,9 +184,7 @@ class TestChatRouter:
         app = FastAPI()
         app.include_router(router, prefix="/api")
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             with patch("backend.routers.chat.get_db") as mock_get_db:
                 mock_db = AsyncMock()
                 mock_cursor = AsyncMock()

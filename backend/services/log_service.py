@@ -2,6 +2,7 @@
 Log Service - 统一日志记录服务
 提供结构化日志记录，支持多种日志类型
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -18,6 +19,7 @@ logger = get_logger(__name__)
 
 class EventType(str, Enum):
     """日志事件类型"""
+
     USER_ACTION = "USER_ACTION"
     AI_INTERACTION = "AI_INTERACTION"
     API_CALL = "API_CALL"
@@ -28,6 +30,7 @@ class EventType(str, Enum):
 
 class AuditAction(str, Enum):
     """审计动作类型"""
+
     MODEL_KEY_ADD = "MODEL_KEY_ADD"
     MODEL_KEY_UPDATE = "MODEL_KEY_UPDATE"
     MODEL_KEY_DELETE = "MODEL_KEY_DELETE"

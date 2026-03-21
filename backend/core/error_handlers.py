@@ -1,6 +1,7 @@
 """
 异常处理中间件和全局异常处理器
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -50,9 +51,7 @@ def setup_exception_handlers(app: FastAPI) -> None:
     """注册全局异常处理器"""
 
     @app.exception_handler(YumiException)
-    async def yumi_exception_handler(
-        request: Request, exc: YumiException
-    ) -> JSONResponse:
+    async def yumi_exception_handler(request: Request, exc: YumiException) -> JSONResponse:
         logger.warning(
             "Yumi exception occurred: %s - %s",
             exc.code,

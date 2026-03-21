@@ -1,6 +1,7 @@
 """
 Log Query API Router - 日志查询接口
 """
+
 from __future__ import annotations
 
 import json
@@ -19,7 +20,13 @@ router = APIRouter()
 logger = get_logger(__name__)
 
 EXPORT_SENSITIVE_PATTERNS = [
-    (re.compile(r"(api[_-]?key|apikey|token|secret|password|pwd)['\"]?\s*[:=]\s*['\"]?([^'\"\\s,}]+)", re.IGNORECASE), r"\1=***REDACTED***"),
+    (
+        re.compile(
+            r"(api[_-]?key|apikey|token|secret|password|pwd)['\"]?\s*[:=]\s*['\"]?([^'\"\\s,}]+)",
+            re.IGNORECASE,
+        ),
+        r"\1=***REDACTED***",
+    ),
     (re.compile(r"(Bearer\s+)[A-Za-z0-9\-._~+/]+=*", re.IGNORECASE), r"\1***REDACTED***"),
     (re.compile(r"(sk-[a-zA-Z0-9]{20,})"), r"sk-***REDACTED***"),
     (re.compile(r"(kimi-[a-zA-Z0-9]{20,})"), r"kimi-***REDACTED***"),

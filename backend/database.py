@@ -1,6 +1,8 @@
 """
 Database initialization and configuration
+支持主数据库和日志数据库分离
 """
+
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
@@ -29,7 +31,6 @@ async def init_db() -> None:
             CREATE TABLE IF NOT EXISTS users (
                 id TEXT PRIMARY KEY,
                 role_name TEXT DEFAULT 'Yumi',
-                big_five_json TEXT,
                 preferences_json TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -40,11 +41,13 @@ async def init_db() -> None:
             CREATE TABLE IF NOT EXISTS conversations (
                 id TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,
+                character_id TEXT,
                 title TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 is_active BOOLEAN DEFAULT 1,
-                FOREIGN KEY (user_id) REFERENCES users(id)
+                FOREIGN KEY (user_id) REFERENCES users(id),
+                FOREIGN KEY (character_id) REFERENCES character_cards(id)
             )
         """)
 
@@ -190,43 +193,49 @@ async def init_db() -> None:
             )
         """)
 
-        # 迁移：为 conversation_logs 表添加存储状态相关字段
-        # storage_status: 存储状态（pending/processing/stored/failed）
-        # storage_attempts: 存储尝试次数
-        # storage_error: 存储失败时的错误信息
-        # stored_at: 成功存储的时间戳
         cursor = await db.execute("PRAGMA table_info(conversation_logs)")
         columns = [row[1] for row in await cursor.fetchall()]
 
-        if 'storage_status' not in columns:
-            await db.execute("ALTER TABLE conversation_logs ADD COLUMN storage_status TEXT DEFAULT 'pending'")
+        if "storage_status" not in columns:
+            await db.execute(
+                "ALTER TABLE conversation_logs ADD COLUMN storage_status TEXT DEFAULT 'pending'"
+            )
             logger.info("Added storage_status column to conversation_logs")
 
-        if 'storage_attempts' not in columns:
-            await db.execute("ALTER TABLE conversation_logs ADD COLUMN storage_attempts INTEGER DEFAULT 0")
+        if "storage_attempts" not in columns:
+            await db.execute(
+                "ALTER TABLE conversation_logs ADD COLUMN storage_attempts INTEGER DEFAULT 0"
+            )
             logger.info("Added storage_attempts column to conversation_logs")
 
-        if 'storage_error' not in columns:
+        if "storage_error" not in columns:
             await db.execute("ALTER TABLE conversation_logs ADD COLUMN storage_error TEXT")
             logger.info("Added storage_error column to conversation_logs")
 
-        if 'stored_at' not in columns:
+        if "stored_at" not in columns:
             await db.execute("ALTER TABLE conversation_logs ADD COLUMN stored_at TIMESTAMP")
             logger.info("Added stored_at column to conversation_logs")
 
         model_cursor = await db.execute("PRAGMA table_info(model_configs)")
         model_columns = [row[1] for row in await model_cursor.fetchall()]
-        if 'account_id' not in model_columns:
-            await db.execute("ALTER TABLE model_configs ADD COLUMN account_id TEXT NOT NULL DEFAULT ''")
+        if "account_id" not in model_columns:
+            await db.execute(
+                "ALTER TABLE model_configs ADD COLUMN account_id TEXT NOT NULL DEFAULT ''"
+            )
             await db.execute("DELETE FROM model_configs")
             logger.info("Added account_id column to model_configs and cleared legacy model records")
+
+        conv_cursor = await db.execute("PRAGMA table_info(conversations)")
+        conv_columns = [row[1] for row in await conv_cursor.fetchall()]
+        if "character_id" not in conv_columns:
+            await db.execute("ALTER TABLE conversations ADD COLUMN character_id TEXT")
+            logger.info("Added character_id column to conversations")
 
         await _create_indexes(db)
 
         await db.execute("""
-            INSERT OR IGNORE INTO users (id, role_name, big_five_json, preferences_json)
+            INSERT OR IGNORE INTO users (id, role_name, preferences_json)
             VALUES ('default', 'Yumi',
-                '{"openness": 0.75, "conscientiousness": 0.70, "extraversion": 0.65, "agreeableness": 0.80, "neuroticism": 0.35}',
                 '{"communication_style": "warm", "topics_of_interest": ["生活", "工作", "情感"], "emotional_support_level": "high", "response_length": "medium"}'
             )
         """)
@@ -240,7 +249,45 @@ async def init_db() -> None:
         """)
 
         await db.commit()
-        logger.info("Database initialized at %s", db_path)
+        logger.info("Main database initialized at %s", db_path)
+    finally:
+        await db.close()
+
+
+async def init_log_db() -> None:
+    log_db_path = settings.database.log_full_path
+    log_db_path.parent.mkdir(parents=True, exist_ok=True)
+
+    db = await aiosqlite.connect(log_db_path)
+    try:
+        await db.execute("PRAGMA journal_mode=WAL")
+        await db.execute("PRAGMA synchronous=NORMAL")
+        await db.execute("PRAGMA cache_size=-32000")
+
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS dialogue_interaction_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id TEXT,
+                user_id TEXT NOT NULL,
+                character_id TEXT,
+                request_detail TEXT NOT NULL,
+                response_detail TEXT,
+                start_time TEXT NOT NULL,
+                end_time TEXT,
+                duration_ms INTEGER,
+                is_normal_end INTEGER DEFAULT 1,
+                end_reason TEXT DEFAULT '',
+                user_emotion TEXT,
+                assistant_emotion TEXT,
+                trace_id TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        await _create_log_indexes(db)
+
+        await db.commit()
+        logger.info("Log database initialized at %s", log_db_path)
     finally:
         await db.close()
 
@@ -254,6 +301,7 @@ async def _create_indexes(db: aiosqlite.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_conversation_logs_stored_at ON conversation_logs(stored_at)",
         "CREATE INDEX IF NOT EXISTS idx_conversations_user ON conversations(user_id)",
         "CREATE INDEX IF NOT EXISTS idx_conversations_active ON conversations(user_id, is_active)",
+        "CREATE INDEX IF NOT EXISTS idx_conversations_character ON conversations(character_id)",
         "CREATE INDEX IF NOT EXISTS idx_memory_summaries_user ON memory_summaries(user_id)",
         "CREATE INDEX IF NOT EXISTS idx_model_configs_provider ON model_configs(provider_id)",
         "CREATE INDEX IF NOT EXISTS idx_model_configs_account ON model_configs(account_id)",
@@ -276,9 +324,23 @@ async def _create_indexes(db: aiosqlite.Connection) -> None:
         await db.execute(index_sql)
 
 
+async def _create_log_indexes(db: aiosqlite.Connection) -> None:
+    indexes = [
+        "CREATE INDEX IF NOT EXISTS idx_dialogue_logs_user_time ON dialogue_interaction_logs(user_id, start_time DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_dialogue_logs_conversation ON dialogue_interaction_logs(conversation_id)",
+        "CREATE INDEX IF NOT EXISTS idx_dialogue_logs_character ON dialogue_interaction_logs(character_id)",
+        "CREATE INDEX IF NOT EXISTS idx_dialogue_logs_status ON dialogue_interaction_logs(is_normal_end)",
+        "CREATE INDEX IF NOT EXISTS idx_dialogue_logs_start_time ON dialogue_interaction_logs(start_time)",
+        "CREATE INDEX IF NOT EXISTS idx_dialogue_logs_trace_id ON dialogue_interaction_logs(trace_id)",
+    ]
+
+    for index_sql in indexes:
+        await db.execute(index_sql)
+
+
 @asynccontextmanager
 async def get_db() -> AsyncIterator[aiosqlite.Connection]:
-    """获取数据库连接的上下文管理器
+    """获取主数据库连接的上下文管理器
 
     Usage:
         async with get_db() as db:
@@ -286,6 +348,24 @@ async def get_db() -> AsyncIterator[aiosqlite.Connection]:
             await db.commit()
     """
     db = await aiosqlite.connect(settings.database.full_path)
+    try:
+        await db.execute("PRAGMA journal_mode=WAL")
+        await db.execute("PRAGMA synchronous=NORMAL")
+        yield db
+    finally:
+        await db.close()
+
+
+@asynccontextmanager
+async def get_log_db() -> AsyncIterator[aiosqlite.Connection]:
+    """获取日志数据库连接的上下文管理器
+
+    Usage:
+        async with get_log_db() as db:
+            await db.execute(...)
+            await db.commit()
+    """
+    db = await aiosqlite.connect(settings.database.log_full_path)
     try:
         await db.execute("PRAGMA journal_mode=WAL")
         await db.execute("PRAGMA synchronous=NORMAL")

@@ -6,15 +6,16 @@ Implements: 8 recent + 6 RAG + 6 intent prediction
 - 静态字段：初始化时从角色卡加载，后续保持不变
 - 动态字段：每次对话实时获取（current_emotion、memory_summary_bullets）
 """
+
 from __future__ import annotations
 
-import uuid
 from typing import Any
 
 from ..core import get_logger, settings
+from ..database import get_db
 from .character_card import (
-    DEFAULT_CHARACTER_CARD_DATA,
     CharacterCard,
+    get_character_card_for_chat,
 )
 from .emotion import EmotionData, EmotionEngine
 from .memory import MemoryEngine
@@ -73,19 +74,6 @@ class PromptBuilder:
 
         self._character_card_cache: dict[str, CharacterCard] = {}
 
-        self._legacy_personality_templates = {
-            "high_openness": "你充满好奇心，喜欢探索新事物，思维活跃有创意。",
-            "low_openness": "你务实稳重，喜欢熟悉的事物，注重实际。",
-            "high_conscientiousness": "你有条理、自律，做事认真负责。",
-            "low_conscientiousness": "你随性灵活，享受当下，不过分拘泥于计划。",
-            "high_extraversion": "你外向活跃，喜欢与人交流，充满活力。",
-            "low_extraversion": "你内向安静，喜欢深度思考，更享受一对一的交流。",
-            "high_agreeableness": "你友善体贴，善解人意，总是为他人着想。",
-            "low_agreeableness": "你独立有主见，直言不讳，有自己的立场。",
-            "high_neuroticism": "你情感丰富细腻，容易共情，对情绪变化敏感。",
-            "low_neuroticism": "你情绪稳定从容，不易受外界影响，给人安全感。",
-        }
-
     async def build_context(
         self,
         user_id: str,
@@ -93,12 +81,14 @@ class PromptBuilder:
         current_message: str,
         memories: list[dict[str, Any]],
         user_emotion: EmotionData,
+        character_id: str | None = None,
     ) -> list[dict[str, str]]:
         system_prompt = await self._build_system_prompt(
             user_id=user_id,
             conversation_id=conversation_id,
             current_message=current_message,
             user_emotion=user_emotion,
+            character_id=character_id,
         )
 
         messages: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
@@ -135,56 +125,64 @@ class PromptBuilder:
         self,
         user_id: str,
         conversation_id: str | None,
+        character_id: str | None,
     ) -> CharacterCard:
         """
         加载角色卡数据（静态部分，缓存后不变）
 
-        角色卡初次加载是在用户打开一个对话时，
-        加载到缓存后，后续如果该对话未关闭或多开新建，不再重新加载。
+        缓存键包含 character_id，避免多角色切换时串卡。
         """
-        cache_key = f"{user_id}:{conversation_id or 'default'}"
+        cache_key = f"{user_id}:{conversation_id or 'default'}:{character_id or 'none'}"
 
         if cache_key in self._character_card_cache:
             return self._character_card_cache[cache_key]
 
-        card = await self._fetch_or_create_character_card(user_id, conversation_id)
+        card = await self._fetch_character_card_for_prompt(user_id, character_id, conversation_id)
         self._character_card_cache[cache_key] = card
-        logger.info("Loaded character card for user=%s conversation=%s", user_id, conversation_id)
+        logger.info(
+            "Loaded character card for user=%s conversation=%s character=%s",
+            user_id,
+            conversation_id,
+            character_id,
+        )
 
         return card
 
-    async def _fetch_or_create_character_card(
+    async def _fetch_character_card_for_prompt(
         self,
         user_id: str,
+        character_id: str | None,
         conversation_id: str | None,
     ) -> CharacterCard:
-        """
-        从数据库获取或创建角色卡
-        """
-        # TODO: 实现完整的角色卡获取/创建逻辑
-        # 1. 如果 conversation_id 存在，尝试根据 conversation_id 查询
-        # 2. 如果不存在，尝试获取用户的默认角色卡（conversation_id 为 NULL）
-        # 3. 如果都不存在，创建新的默认角色卡并插入数据库
-
-        card_id = str(uuid.uuid4())
-
-        return CharacterCard(
-            id=card_id,
-            user_id=user_id,
-            conversation_id=conversation_id,
-            **DEFAULT_CHARACTER_CARD_DATA,
-        )
+        async with get_db() as db:
+            return await get_character_card_for_chat(db, user_id, character_id, conversation_id)
 
     def clear_character_card_cache(self, user_id: str, conversation_id: str | None) -> None:
         """
-        清除角色卡缓存
-
-        当用户修改角色卡后调用此方法
+        清除某一 user+conversation 下所有 character 变体的缓存键。
         """
-        cache_key = f"{user_id}:{conversation_id or 'default'}"
-        if cache_key in self._character_card_cache:
-            del self._character_card_cache[cache_key]
-            logger.info("Cleared character card cache for user=%s conversation=%s", user_id, conversation_id)
+        prefix = f"{user_id}:{conversation_id or 'default'}:"
+        keys_to_delete = [k for k in self._character_card_cache if k.startswith(prefix)]
+        for k in keys_to_delete:
+            del self._character_card_cache[k]
+        if keys_to_delete:
+            logger.info(
+                "Cleared character card cache for user=%s conversation=%s (%d keys)",
+                user_id,
+                conversation_id,
+                len(keys_to_delete),
+            )
+
+    def clear_character_card_cache_for_user(self, user_id: str) -> None:
+        """清除该用户下所有角色卡缓存条目（任意 conversation / character 组合）。"""
+        prefix = f"{user_id}:"
+        keys_to_delete = [key for key in self._character_card_cache if key.startswith(prefix)]
+        for key in keys_to_delete:
+            del self._character_card_cache[key]
+        if keys_to_delete:
+            logger.info(
+                "Cleared %d character card cache keys for user=%s", len(keys_to_delete), user_id
+            )
 
     async def _get_current_emotion(
         self,
@@ -252,13 +250,14 @@ class PromptBuilder:
         conversation_id: str | None,
         current_message: str,
         user_emotion: EmotionData,
+        character_id: str | None = None,
     ) -> str:
         """
         构建系统提示词
 
         静态字段从角色卡加载，动态字段实时获取
         """
-        card = await self._load_character_card(user_id, conversation_id)
+        card = await self._load_character_card(user_id, conversation_id, character_id)
 
         current_emotion = await self._get_current_emotion(current_message, user_emotion)
         memory_bullets = await self._get_memory_summary_bullets(user_id, current_message)

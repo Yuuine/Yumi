@@ -2,6 +2,7 @@
 Model State - 全局模型状态管理
 用于存储当前活跃模型的标识和配置
 """
+
 from __future__ import annotations
 
 from typing import Any

@@ -45,7 +45,7 @@ async def get_settings(req: Request):
             memory_enabled=settings_dict.get("memory_enabled", "true").lower() == "true",
             emotion_detection=settings_dict.get("emotion_detection", "true").lower() == "true",
             theme=settings_dict.get("theme", "light"),
-            language=settings_dict.get("language", "zh-CN")
+            language=settings_dict.get("language", "zh-CN"),
         )
 
 
@@ -73,7 +73,7 @@ async def update_settings(settings: AppSettings, req: Request):
                 await db.execute(
                     """INSERT OR REPLACE INTO settings (key, value, updated_at)
                        VALUES (?, ?, CURRENT_TIMESTAMP)""",
-                    (key, new_value)
+                    (key, new_value),
                 )
             await db.commit()
 
