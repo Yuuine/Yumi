@@ -2,6 +2,7 @@
 Memory Cache - 轻量级内存缓存层
 使用 Python 内置机制实现，无外部依赖
 """
+
 from __future__ import annotations
 
 import threading
@@ -51,10 +52,7 @@ class LRUCache:
                 if len(self._cache) >= self._max_size:
                     self._cache.popitem(last=False)
 
-            self._cache[key] = CacheEntry(
-                value=value,
-                expire_at=time.time() + ttl if ttl else None
-            )
+            self._cache[key] = CacheEntry(value=value, expire_at=time.time() + ttl if ttl else None)
 
     def delete(self, key: str) -> bool:
         with self._lock:
@@ -74,10 +72,7 @@ class LRUCache:
     def cleanup_expired(self) -> int:
         """清理过期条目，返回清理数量"""
         with self._lock:
-            expired_keys = [
-                key for key, entry in self._cache.items()
-                if entry.is_expired()
-            ]
+            expired_keys = [key for key, entry in self._cache.items() if entry.is_expired()]
             for key in expired_keys:
                 del self._cache[key]
             return len(expired_keys)
@@ -106,8 +101,7 @@ class TTLCache:
     def set(self, key: str, value: Any, ttl: float | None = None) -> None:
         with self._lock:
             self._cache[key] = CacheEntry(
-                value=value,
-                expire_at=time.time() + (ttl or self._default_ttl)
+                value=value, expire_at=time.time() + (ttl or self._default_ttl)
             )
 
     def delete(self, key: str) -> bool:
@@ -133,10 +127,7 @@ class TTLCache:
 
     def cleanup_expired(self) -> int:
         with self._lock:
-            expired_keys = [
-                key for key, entry in self._cache.items()
-                if entry.is_expired()
-            ]
+            expired_keys = [key for key, entry in self._cache.items() if entry.is_expired()]
             for key in expired_keys:
                 del self._cache[key]
             return len(expired_keys)
@@ -145,6 +136,7 @@ class TTLCache:
 @dataclass
 class ConversationContext:
     """对话上下文缓存"""
+
     user_id: str
     messages: list[dict[str, str]] = field(default_factory=list)
     last_update: float = field(default_factory=time.time)
@@ -195,7 +187,7 @@ class ConversationCache:
             ctx.last_update = time.time()
 
             if len(ctx.messages) > self._max_messages_per_user:
-                ctx.messages = ctx.messages[-self._max_messages_per_user:]
+                ctx.messages = ctx.messages[-self._max_messages_per_user :]
 
     def clear_user(self, user_id: str) -> bool:
         with self._lock:

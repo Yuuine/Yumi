@@ -27,7 +27,15 @@
                 </div>
 
                 <div class="settings-content">
-                  <div v-if="activeTab === 'general'" class="settings-panel">
+                  <div v-if="activeTab === 'appearance'" class="settings-panel">
+                    <div class="panel-title">外观设置</div>
+                    <div class="settings-placeholder">
+                      <IconInfo class="placeholder-icon" />
+                      <span>外观设置功能开发中...</span>
+                    </div>
+                  </div>
+
+                  <div v-else-if="activeTab === 'general'" class="settings-panel">
                     <div class="panel-title">通用设置</div>
 
                     <div class="settings-section">
@@ -75,14 +83,6 @@
                     </div>
                   </div>
 
-                  <div v-else-if="activeTab === 'appearance'" class="settings-panel">
-                    <div class="panel-title">外观设置</div>
-                    <div class="settings-placeholder">
-                      <IconInfo class="placeholder-icon" />
-                      <span>外观设置功能开发中...</span>
-                    </div>
-                  </div>
-
                   <div v-else-if="activeTab === 'other'" class="settings-panel">
                     <div class="panel-title">其他设置</div>
                     <div class="settings-section">
@@ -99,6 +99,10 @@
                         <IconChevronDown class="setting-arrow" />
                       </div>
                     </div>
+                  </div>
+
+                  <div v-else-if="activeTab === 'account'" class="settings-panel">
+                    <AccountSettings />
                   </div>
                 </div>
               </div>
@@ -122,8 +126,10 @@ import {
   IconModels,
   IconSettings,
   IconChevronDown,
+  IconUser,
 } from '@/components/icons'
 import ProxySettingsModal from './ProxySettingsModal.vue'
+import AccountSettings from './AccountSettings.vue'
 
 defineProps<{
   visible: boolean
@@ -136,9 +142,14 @@ const emit = defineEmits<{
 const settingsStore = useSettingsStore()
 const showProxyModal = ref(false)
 
-const activeTab = ref('general')
+const activeTab = ref('appearance')
 
 const tabs = [
+  {
+    id: 'appearance',
+    label: '外观设置',
+    icon: markRaw(IconInfo),
+  },
   {
     id: 'general',
     label: '通用设置',
@@ -150,14 +161,14 @@ const tabs = [
     icon: markRaw(IconChat),
   },
   {
-    id: 'appearance',
-    label: '外观设置',
-    icon: markRaw(IconInfo),
-  },
-  {
     id: 'other',
     label: '其他设置',
     icon: markRaw(IconSettings),
+  },
+  {
+    id: 'account',
+    label: '账号设置',
+    icon: markRaw(IconUser),
   },
 ]
 
@@ -194,7 +205,7 @@ function handleClose() {
   border-radius: 12px;
   width: 600px;
   max-width: 80vw;
-  max-height: 85vh;
+  height: min(48vh, 680px);
   display: flex;
   flex-direction: column;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);

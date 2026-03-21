@@ -1,6 +1,10 @@
 <template>
   <div class="chat-view">
-    <SidebarNav @open-models="openModelsModal" @open-settings="openSettingsModal" />
+    <SidebarNav
+      @open-models="openModelsModal"
+      @open-character="openCharacterModal"
+      @open-settings="openSettingsModal"
+    />
 
     <div class="chat-main">
       <MessageList
@@ -17,6 +21,7 @@
       :disabled="chatStore.isLoading"
     />
     <ModelsModal :visible="showModelsModal" @close="closeModelsModal" />
+    <CharacterModal :visible="showCharacterModal" @close="closeCharacterModal" />
     <SettingsModal :visible="showSettingsModal" @close="closeSettingsModal" />
   </div>
 </template>
@@ -27,11 +32,13 @@ import { useChatStore } from '@/stores'
 import { SidebarNav } from '@/components/sidebar'
 import { MessageList, ChatInput } from '@/components/chat'
 import ModelsModal from '@/components/models/ModelsModal.vue'
+import CharacterModal from '@/components/settings/CharacterModal.vue'
 import SettingsModal from '@/components/settings/SettingsModal.vue'
 
 const chatStore = useChatStore()
 const messageListRef = ref<InstanceType<typeof MessageList> | null>(null)
 const showModelsModal = ref(false)
+const showCharacterModal = ref(false)
 const showSettingsModal = ref(false)
 const isDeepThinking = ref(false)
 
@@ -65,6 +72,14 @@ function openModelsModal() {
 
 function closeModelsModal() {
   showModelsModal.value = false
+}
+
+function openCharacterModal() {
+  showCharacterModal.value = true
+}
+
+function closeCharacterModal() {
+  showCharacterModal.value = false
 }
 
 function openSettingsModal() {

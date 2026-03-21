@@ -1,6 +1,7 @@
 """
 Tests for Storage API Router
 """
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -31,9 +32,7 @@ class TestStorageStatusEndpoint:
         app = FastAPI()
         app.include_router(router, prefix="/api")
 
-        with patch(
-            "backend.routers.storage.get_async_storage_service"
-        ) as mock_get_service:
+        with patch("backend.routers.storage.get_async_storage_service") as mock_get_service:
             mock_service = MagicMock()
             mock_service.get_status = AsyncMock(return_value=mock_task)
             mock_get_service.return_value = mock_service
@@ -60,9 +59,7 @@ class TestStorageStatusEndpoint:
         app = FastAPI()
         app.include_router(router, prefix="/api")
 
-        with patch(
-            "backend.routers.storage.get_async_storage_service"
-        ) as mock_get_service:
+        with patch("backend.routers.storage.get_async_storage_service") as mock_get_service:
             mock_service = MagicMock()
             mock_service.get_status = AsyncMock(return_value=None)
             mock_get_service.return_value = mock_service
@@ -99,9 +96,7 @@ class TestStorageStatsEndpoint:
         app = FastAPI()
         app.include_router(router, prefix="/api")
 
-        with patch(
-            "backend.routers.storage.get_async_storage_service"
-        ) as mock_get_service:
+        with patch("backend.routers.storage.get_async_storage_service") as mock_get_service:
             mock_service = MagicMock()
             mock_service.get_stats = AsyncMock(return_value=mock_stats)
             mock_get_service.return_value = mock_service
@@ -138,9 +133,7 @@ class TestStorageStatsEndpoint:
         app = FastAPI()
         app.include_router(router, prefix="/api")
 
-        with patch(
-            "backend.routers.storage.get_async_storage_service"
-        ) as mock_get_service:
+        with patch("backend.routers.storage.get_async_storage_service") as mock_get_service:
             mock_service = MagicMock()
             mock_service.get_stats = AsyncMock(return_value=mock_stats)
             mock_get_service.return_value = mock_service

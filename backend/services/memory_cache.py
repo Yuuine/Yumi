@@ -2,6 +2,7 @@
 Cached Memory Engine - 优化的记忆引擎
 使用内存缓存减少 ChromaDB 查询频率
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -59,9 +60,7 @@ class CachedMemoryEngine:
         self._cache.set(cache_key, results, ttl=self._cache_ttl)
         return results
 
-    async def get_recent(
-        self, user_id: str, limit: int | None = None
-    ) -> list[dict[str, Any]]:
+    async def get_recent(self, user_id: str, limit: int | None = None) -> list[dict[str, Any]]:
         cache_key = f"recent:{user_id}:{limit}"
         cached = self._cache.get(cache_key)
         if cached is not None:
@@ -122,7 +121,8 @@ class MemoryOptimizer:
             return 0
 
         try:
-            results = self._engine.collection.get(include=["metadatas", "ids"])
+            collection = self._engine._ensure_collection()
+            results = collection.get(include=["metadatas", "ids"])
 
             if not results["ids"]:
                 return 0
@@ -140,7 +140,7 @@ class MemoryOptimizer:
                         pass
 
             if ids_to_delete:
-                self._engine.collection.delete(ids=ids_to_delete)
+                collection.delete(ids=ids_to_delete)
                 logger.info("Cleaned up %d old memories", len(ids_to_delete))
 
             self._last_cleanup = now

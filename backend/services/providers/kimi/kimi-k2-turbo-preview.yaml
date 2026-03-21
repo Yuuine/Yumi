@@ -1,0 +1,46 @@
+# Kimi K2 Turbo Preview 模型配置
+# 支持大部分 API 参数
+
+model:
+  name: "kimi-k2-turbo-preview"
+  provider: "kimi"
+  description: "Kimi K2 Turbo Preview 模型，256K 上下文"
+
+api:
+  endpoint_suffix: "/v1/chat/completions"
+  auth_type: "bearer"
+
+request:
+  defaults:
+    temperature: 0.6
+    max_completion_tokens: 4096
+    top_p: 1.0
+    n: 1
+    presence_penalty: 0
+    frequency_penalty: 0
+    response_format:
+      type: "text"
+    tool_choice: "auto"
+
+  supported_fields:
+    - temperature
+    - max_completion_tokens
+    - top_p
+    - n
+    - presence_penalty
+    - frequency_penalty
+    - response_format
+    - stop
+    - stream
+    - stream_options
+    - tools
+    - tool_choice
+
+response:
+  content_field: "choices[0].message.content"
+  reasoning_field: null
+
+stream:
+  format: "sse"
+  done_signal: "[DONE]"
+  content_field: "choices[0].delta.content"

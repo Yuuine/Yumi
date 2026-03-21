@@ -7,6 +7,7 @@ Logging System - 结构化日志系统
 - 日志文件轮转
 - 自动归档清理
 """
+
 from __future__ import annotations
 
 import json
@@ -26,7 +27,13 @@ BEIJING_TZ = timezone(timedelta(hours=8))
 
 
 SENSITIVE_PATTERNS = [
-    (re.compile(r"(api[_-]?key|apikey|token|secret|password|pwd)['\"]?\s*[:=]\s*['\"]?([^'\"\\s,}]+)", re.IGNORECASE), r"\1=***REDACTED***"),
+    (
+        re.compile(
+            r"(api[_-]?key|apikey|token|secret|password|pwd)['\"]?\s*[:=]\s*['\"]?([^'\"\\s,}]+)",
+            re.IGNORECASE,
+        ),
+        r"\1=***REDACTED***",
+    ),
     (re.compile(r"(Bearer\s+)[A-Za-z0-9\-._~+/]+=*", re.IGNORECASE), r"\1***REDACTED***"),
     (re.compile(r"(sk-[a-zA-Z0-9]{20,})"), r"sk-***REDACTED***"),
 ]
@@ -43,7 +50,9 @@ def filter_sensitive_info(message: str) -> str:
 class StructuredFormatter(logging.Formatter):
     """结构化 JSON 日志格式化器"""
 
-    def __init__(self, app_name: str = "yumi", app_version: str = "1.0.0", environment: str = "production"):
+    def __init__(
+        self, app_name: str = "yumi", app_version: str = "1.0.0", environment: str = "production"
+    ):
         super().__init__()
         self.app_name = app_name
         self.app_version = app_version
@@ -95,9 +104,15 @@ class SensitiveFilter(logging.Filter):
             record.msg = filter_sensitive_info(str(record.msg))
         if record.args:
             if isinstance(record.args, dict):
-                record.args = {k: filter_sensitive_info(str(v)) if isinstance(v, str) else v for k, v in record.args.items()}
+                record.args = {
+                    k: filter_sensitive_info(str(v)) if isinstance(v, str) else v
+                    for k, v in record.args.items()
+                }
             elif isinstance(record.args, tuple):
-                record.args = tuple(filter_sensitive_info(str(arg)) if isinstance(arg, str) else arg for arg in record.args)
+                record.args = tuple(
+                    filter_sensitive_info(str(arg)) if isinstance(arg, str) else arg
+                    for arg in record.args
+                )
         return True
 
 

@@ -24,10 +24,7 @@
       </div>
     </div>
 
-    <ScrollToBottom
-      :visible="showScrollButton"
-      @click="smoothScrollToBottom"
-    />
+    <ScrollToBottom :visible="showScrollButton" @click="smoothScrollToBottom" />
   </div>
 </template>
 
@@ -114,7 +111,7 @@ watch(
     // 接收新消息：根据用户位置或强制滚动标志决定是否自动滚动
     if (newLength > prevLength) {
       displayMessages.value = [...newMessages]
-      
+
       // 强制滚动（用户发送消息时）
       if (forceScrollFlag.value) {
         forceScrollFlag.value = false
@@ -161,7 +158,7 @@ function smoothScrollToBottom() {
   isAutoScrolling.value = true
   containerRef.value.scrollTo({
     top: containerRef.value.scrollHeight,
-    behavior: 'smooth'
+    behavior: 'smooth',
   })
   setTimeout(() => {
     isAutoScrolling.value = false
@@ -176,7 +173,7 @@ function getFirstVisibleMessageId(): string | null {
   if (!containerRef.value) return null
   const container = containerRef.value
   const messageElements = container.querySelectorAll('.message-item')
-  
+
   for (const el of messageElements) {
     const rect = el.getBoundingClientRect()
     const containerRect = container.getBoundingClientRect()
@@ -344,12 +341,7 @@ defineExpose({
     content: '';
     flex: 1;
     height: 1px;
-    background: linear-gradient(
-      to right,
-      transparent,
-      #e5e7eb 50%,
-      transparent
-    );
+    background: linear-gradient(to right, transparent, #e5e7eb 50%, transparent);
     margin: 0 12px;
   }
 }

@@ -13,9 +13,12 @@ export interface EmotionData {
 
 export interface ChatRequest {
   userId: string
+  conversationId?: string
   message: string
   temperature?: number
   deepThinking?: boolean
+  /** 当前账号下活跃角色卡 id，与后端 character_cards 对齐 */
+  characterId?: string
 }
 
 export interface ChatResponse {
@@ -23,6 +26,7 @@ export interface ChatResponse {
   emotion: EmotionData
   memoryUsed: number
   newSummary?: string
+  conversationId?: string
 }
 
 export interface ChatHistory {
@@ -32,16 +36,7 @@ export interface ChatHistory {
 export interface UserProfile {
   id: string
   roleName: string
-  bigFive: BigFiveTraits
   preferences: UserPreferences
-}
-
-export interface BigFiveTraits {
-  openness: number
-  conscientiousness: number
-  extraversion: number
-  agreeableness: number
-  neuroticism: number
 }
 
 export interface UserPreferences {

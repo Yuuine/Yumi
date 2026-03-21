@@ -1,5 +1,5 @@
 import axios, { type AxiosError, type AxiosInstance, type AxiosRequestConfig } from 'axios'
-import { ElMessage } from 'element-plus'
+import { error } from '@/composables/useToast'
 
 export interface ApiError {
   code: string
@@ -100,17 +100,13 @@ export class HttpClient {
     }
   }
 
-  private handleGlobalError(error: ApiError): void {
+  private handleGlobalError(apiError: ApiError): void {
     const silentErrors = ['VALIDATION_ERROR']
-    if (silentErrors.includes(error.code)) {
+    if (silentErrors.includes(apiError.code)) {
       return
     }
 
-    ElMessage({
-      message: error.message,
-      type: 'error',
-      duration: 5000,
-    })
+    error(apiError.message, { duration: 5000 })
   }
 
   async get<T>(url: string, config?: AxiosRequestConfig): Promise<T> {

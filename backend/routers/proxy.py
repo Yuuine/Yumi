@@ -1,6 +1,7 @@
 """
 Proxy Settings API Router
 """
+
 from __future__ import annotations
 
 import json
@@ -94,9 +95,7 @@ async def _check_port(port: int) -> str | None:
 async def get_proxy_settings():
     """获取代理配置"""
     async with get_db() as db:
-        cursor = await db.execute(
-            "SELECT value FROM settings WHERE key = ?", ("proxy_settings",)
-        )
+        cursor = await db.execute("SELECT value FROM settings WHERE key = ?", ("proxy_settings",))
         row = await cursor.fetchone()
         if row and row[0]:
             try:

@@ -1,0 +1,76 @@
+# GPT-5.4 模型配置
+# OpenAI 最新前沿模型，支持推理模式
+# TODO: 多模态能力 - 支持图片理解 (input_image, input_file)
+
+model:
+  name: "gpt-5.4"
+  provider: "openai"
+  description: "GPT-5.4 通用模型，支持推理模式"
+
+api:
+  endpoint_suffix: "/v1/responses"
+  auth_type: "bearer"
+
+request:
+  defaults:
+    max_output_tokens: 4096
+    temperature: 1
+    top_p: 1
+    response_format:
+      type: "text"
+    tool_choice: "auto"
+    reasoning:
+      effort: "none"
+    text:
+      verbosity: "medium"
+
+  supported_fields:
+    - max_output_tokens
+    - temperature
+    - top_p
+    - n
+    - presence_penalty
+    - frequency_penalty
+    - response_format
+    - stop
+    - stream
+    - stream_options
+    - tools
+    - tool_choice
+    - logprobs
+    - top_logprobs
+    - reasoning
+    - text
+
+  special:
+    reasoning:
+      supported: true
+      type: "object"
+      effort_values:
+        - "none"
+        - "low"
+        - "medium"
+        - "high"
+        - "xhigh"
+      default_effort: "none"
+    text:
+      supported: true
+      type: "object"
+      verbosity_values:
+        - "low"
+        - "medium"
+        - "high"
+      default_verbosity: "medium"
+    # TODO: 多模态支持 - content 字段支持 input_image, input_file 类型
+    field_rename:
+      messages: "input"
+      max_tokens: "max_output_tokens"
+
+response:
+  content_field: "output[0].content[0].text"
+  reasoning_field: null
+
+stream:
+  format: "sse"
+  done_signal: "[DONE]"
+  content_field: "output.content[0].text"

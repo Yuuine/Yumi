@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { ChatMessage, ChatRequest, ChatResponse, EmotionData } from '@/types'
 import { chatApi } from '@/api/chat'
+import { useAccountStore } from './account'
 import type { ApiError } from '@/api/http-client'
 import dayjs from 'dayjs'
 import { logger } from '@/utils/logger'
@@ -19,12 +20,14 @@ interface StreamParsedData {
   done?: boolean
   emotion?: EmotionData
   content?: string
+  conversationId?: string
 }
 
 export const useChatStore = defineStore('chat', () => {
   const messages = ref<ChatMessage[]>([])
   const isLoading = ref(false)
   const currentUserId = ref('default')
+  const currentConversationId = ref<string | null>(null)
   const conversationCount = ref(0)
   const lastError = ref<ApiError | null>(null)
   const isStreaming = ref(false)
@@ -57,11 +60,16 @@ export const useChatStore = defineStore('chat', () => {
     isLoading.value = true
 
     try {
+      const accountStore = useAccountStore()
+      const characterId = accountStore.currentConfig?.activeCharacterId ?? undefined
+
       const request: ChatRequest = {
         userId: currentUserId.value,
+        conversationId: currentConversationId.value ?? undefined,
         message: content.trim(),
         temperature: 0.85,
         deepThinking,
+        ...(characterId ? { characterId } : {}),
       }
 
       if (deepThinking) {
@@ -69,6 +77,10 @@ export const useChatStore = defineStore('chat', () => {
       }
 
       const response: ChatResponse = await chatApi.sendMessage(request)
+
+      if (response.conversationId) {
+        currentConversationId.value = response.conversationId
+      }
 
       const assistantMessage: ChatMessage = {
         id: `assistant-${Date.now()}`,
@@ -142,12 +154,23 @@ export const useChatStore = defineStore('chat', () => {
    * @param content - 用户消息内容
    * @returns ReadableStream reader 或 null
    */
-  async function fetchStreamResponse(content: string): Promise<ReadableStreamDefaultReader<Uint8Array> | null> {
+  async function fetchStreamResponse(
+    content: string
+  ): Promise<ReadableStreamDefaultReader<Uint8Array> | null> {
+    const accountStore = useAccountStore()
+    const characterId = accountStore.currentConfig?.activeCharacterId
+
     const params = new URLSearchParams({
       userId: currentUserId.value,
       message: content.trim(),
       temperature: '0.85',
     })
+    if (currentConversationId.value) {
+      params.set('conversationId', currentConversationId.value)
+    }
+    if (characterId) {
+      params.set('characterId', characterId)
+    }
 
     const response = await fetch(`/api/chat/stream?${params}`, {
       signal: abortController.value!.signal,
@@ -166,11 +189,6 @@ export const useChatStore = defineStore('chat', () => {
     return reader
   }
 
-  /**
-   * 处理解析后的流式数据
-   * @param parsed - 解析后的数据对象
-   * @returns 是否遇到错误
-   */
   function handleStreamData(parsed: StreamParsedData): boolean {
     if (parsed.error) {
       lastError.value = { code: 'STREAM_ERROR', message: parsed.error }
@@ -178,6 +196,10 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     if (parsed.done) {
+      if (parsed.conversationId) {
+        currentConversationId.value = parsed.conversationId
+      }
+      if (messages.value.length === 0) return false
       const lastMessage = messages.value[messages.value.length - 1]
       if (lastMessage.role === 'assistant' && parsed.emotion) {
         lastMessage.emotion = parsed.emotion
@@ -188,6 +210,7 @@ export const useChatStore = defineStore('chat', () => {
 
     if (parsed.content) {
       streamingContent.value += parsed.content
+      if (messages.value.length === 0) return false
       const lastMessage = messages.value[messages.value.length - 1]
       if (lastMessage.role === 'assistant') {
         lastMessage.content = streamingContent.value
@@ -217,7 +240,9 @@ export const useChatStore = defineStore('chat', () => {
    * 读取并处理流式响应
    * @param reader - ReadableStream reader
    */
-  async function processStreamReader(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<void> {
+  async function processStreamReader(
+    reader: ReadableStreamDefaultReader<Uint8Array>
+  ): Promise<void> {
     const decoder = new TextDecoder()
     let buffer = ''
 
@@ -231,7 +256,15 @@ export const useChatStore = defineStore('chat', () => {
 
       for (const line of lines) {
         parseStreamLine(line)
+        if (lastError.value) {
+          return
+        }
       }
+    }
+
+    const remaining = buffer.trim()
+    if (remaining) {
+      parseStreamLine(remaining)
     }
   }
 
@@ -245,6 +278,7 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     lastError.value = error as ApiError
+    if (messages.value.length === 0) return
     const lastMessage = messages.value[messages.value.length - 1]
     if (lastMessage.role === 'assistant' && !lastMessage.content) {
       lastMessage.content = '抱歉，我遇到了一些问题，请稍后再试。'
@@ -269,6 +303,9 @@ export const useChatStore = defineStore('chat', () => {
     } catch (error) {
       handleStreamError(error)
     } finally {
+      if (messages.value.length > 0) {
+        cacheMessages(messages.value)
+      }
       isStreaming.value = false
       abortController.value = null
     }
@@ -329,12 +366,23 @@ export const useChatStore = defineStore('chat', () => {
 
   function clearMessages(): void {
     messages.value = []
+    currentConversationId.value = null
     conversationCount.value = 0
     lastError.value = null
     streamingContent.value = ''
     historyPage.value = 0
     hasMoreHistory.value = true
     clearAllCache()
+  }
+
+  function startNewConversation(): void {
+    messages.value = []
+    currentConversationId.value = null
+    conversationCount.value = 0
+    lastError.value = null
+    streamingContent.value = ''
+    historyPage.value = 0
+    hasMoreHistory.value = true
   }
 
   function clearError(): void {
@@ -345,6 +393,7 @@ export const useChatStore = defineStore('chat', () => {
     messages,
     isLoading,
     currentUserId,
+    currentConversationId,
     conversationCount,
     lastError,
     isStreaming,
@@ -358,6 +407,7 @@ export const useChatStore = defineStore('chat', () => {
     loadHistory,
     loadMoreMessages,
     clearMessages,
+    startNewConversation,
     clearError,
   }
 })

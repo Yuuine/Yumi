@@ -2,6 +2,7 @@
 Archive Manager - 对话归档管理
 定期归档旧对话，减少活跃数据量
 """
+
 from __future__ import annotations
 
 import json
@@ -47,9 +48,7 @@ class ArchiveManager:
 
         with self._lock:
             try:
-                cutoff_date = (
-                    datetime.now() - timedelta(days=self._max_age_days)
-                ).isoformat()
+                cutoff_date = (datetime.now() - timedelta(days=self._max_age_days)).isoformat()
 
                 cursor = await self._db.execute(
                     """SELECT id, user_id, title, created_at, updated_at
@@ -100,9 +99,7 @@ class ArchiveManager:
                         "DELETE FROM conversation_logs WHERE conversation_id = ?",
                         (conv_id,),
                     )
-                    await self._db.execute(
-                        "DELETE FROM conversations WHERE id = ?", (conv_id,)
-                    )
+                    await self._db.execute("DELETE FROM conversations WHERE id = ?", (conv_id,))
 
                     archive_count += 1
 

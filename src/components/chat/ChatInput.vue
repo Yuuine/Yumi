@@ -85,7 +85,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useModelsStore } from '@/stores'
 import { PROVIDER_NAMES, supportsDeepThinking } from '@/constants'
 import { IconArrowUp, IconCheck } from '@/components/icons'
@@ -148,6 +148,7 @@ function handleSend() {
 
   inputText.value = ''
   showMenu.value = false
+  nextTick(adjustHeight)
 }
 
 function toggleMenu() {

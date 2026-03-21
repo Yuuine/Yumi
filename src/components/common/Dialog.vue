@@ -1,7 +1,7 @@
 <template>
   <Teleport to="body">
     <Transition name="dialog">
-      <div v-if="modelValue" class="dialog-overlay" @click.self="handleOverlayClick">
+      <div v-if="isVisible" class="dialog-overlay" @click.self="handleOverlayClick">
         <div class="dialog-container" :class="[`dialog-${type}`, `dialog-${size}`]">
           <div class="dialog-header">
             <div class="dialog-icon" v-if="showIcon">
@@ -23,7 +23,10 @@
             </div>
           </div>
 
-          <div class="dialog-footer">
+          <div v-if="$slots.footer" class="dialog-footer">
+            <slot name="footer"></slot>
+          </div>
+          <div v-else class="dialog-footer">
             <button v-if="showCancel" class="dialog-btn secondary" @click="handleCancel">
               {{ cancelText }}
             </button>
@@ -38,6 +41,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { IconClose, IconSuccess, IconWarning, IconError, IconInfo } from '@/components/icons'
 
 type DialogType = 'info' | 'success' | 'warning' | 'error'
@@ -46,6 +50,7 @@ type DialogSize = 'small' | 'medium' | 'large'
 const props = withDefaults(
   defineProps<{
     modelValue?: boolean
+    visible?: boolean
     title?: string
     message?: string
     type?: DialogType
@@ -74,13 +79,17 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
+  'update:visible': [value: boolean]
   confirm: []
   cancel: []
   close: []
 }>()
 
+const isVisible = computed(() => props.modelValue ?? props.visible ?? false)
+
 function handleClose() {
   emit('update:modelValue', false)
+  emit('update:visible', false)
   emit('close')
 }
 

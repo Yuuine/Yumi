@@ -1,0 +1,51 @@
+# DeepSeek Chat 模型配置
+# 通用对话模型，支持全部 API 参数
+
+model:
+  name: "deepseek-chat"
+  provider: "deepseek"
+  description: "DeepSeek 通用对话模型，支持全部 API 参数"
+
+api:
+  endpoint_suffix: "/chat/completions"
+  auth_type: "bearer"
+
+request:
+  defaults:
+    temperature: 1
+    max_tokens: 4096
+    top_p: 1
+    frequency_penalty: 0
+    presence_penalty: 0
+    response_format:
+      type: "text"
+    tool_choice: "none"
+    logprobs: false
+
+  supported_fields:
+    - temperature
+    - max_tokens
+    - top_p
+    - frequency_penalty
+    - presence_penalty
+    - response_format
+    - stop
+    - stream
+    - stream_options
+    - tools
+    - tool_choice
+    - logprobs
+    - top_logprobs
+
+  special:
+    thinking:
+      supported: false
+
+response:
+  content_field: "choices[0].message.content"
+  reasoning_field: null
+
+stream:
+  format: "sse"
+  done_signal: "[DONE]"
+  content_field: "choices[0].delta.content"

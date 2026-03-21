@@ -2,17 +2,23 @@
 Memory Engine - Long-term memory with ChromaDB
 Implements Ebbinghaus decay, semantic deduplication, and LLM summarization
 """
+
 from __future__ import annotations
 
+import time
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import chromadb
 import numpy as np
 
+if TYPE_CHECKING:
+    from chromadb.api.models.Collection import Collection
+
 from ..core import MemoryException, get_logger, settings
+from .log_service import AuditAction, log_service
 
 logger = get_logger(__name__)
 
@@ -26,7 +32,7 @@ class MemoryEngine:
             path=str(persist_dir),
             settings=chromadb.Settings(anonymized_telemetry=False),
         )
-        self.collection = None
+        self.collection: Collection | None = None
         self.turn_counts: dict[str, int] = {}
         self._embedding_cache: dict[str, list[float]] = {}
 
@@ -35,9 +41,13 @@ class MemoryEngine:
             name=settings.vector_db.collection_name,
             metadata={"description": "Yumi long-term memory storage"},
         )
-        logger.info(
-            "Memory engine initialized with %d memories", self.collection.count()
-        )
+        logger.info("Memory engine initialized with %d memories", self.collection.count())
+
+    def _ensure_collection(self) -> Collection:
+        """确保 collection 已初始化"""
+        if self.collection is None:
+            raise RuntimeError("MemoryEngine not initialized. Call initialize() first.")
+        return self.collection
 
     async def store(
         self,
@@ -46,6 +56,8 @@ class MemoryEngine:
         metadata: dict[str, Any] | None = None,
         skip_dedup: bool = False,
     ) -> str | None:
+        start_time = time.time()
+
         if not skip_dedup:
             is_duplicate = await self._check_semantic_duplicate(user_id, content)
             if is_duplicate:
@@ -67,12 +79,38 @@ class MemoryEngine:
         )
 
         try:
-            self.collection.add(
+            self._ensure_collection().add(
                 documents=[content],
                 metadatas=[metadata],
                 ids=[memory_id],
             )
+
+            latency_ms = (time.time() - start_time) * 1000
+
+            await log_service.log_audit(
+                action=AuditAction.MEMORY_STORE,
+                resource_type="memory",
+                resource_id=memory_id,
+                result="SUCCESS",
+                user_id=user_id,
+                details={
+                    "latency_ms": round(latency_ms, 2),
+                    "importance_score": metadata.get("importance_score"),
+                },
+            )
         except Exception as e:
+            latency_ms = (time.time() - start_time) * 1000
+            await log_service.log_audit(
+                action=AuditAction.MEMORY_STORE,
+                resource_type="memory",
+                resource_id=memory_id,
+                result="FAIL",
+                user_id=user_id,
+                details={
+                    "error": str(e),
+                    "latency_ms": round(latency_ms, 2),
+                },
+            )
             logger.error("Failed to store memory: %s", e)
             raise MemoryException(
                 message="存储记忆失败",
@@ -92,7 +130,7 @@ class MemoryEngine:
         threshold: float = 0.95,
     ) -> bool:
         try:
-            results = self.collection.query(
+            results = self._ensure_collection().query(
                 query_texts=[content],
                 n_results=3,
                 where={"user_id": user_id},
@@ -122,7 +160,7 @@ class MemoryEngine:
             where_filter = {"user_id": user_id}
 
         try:
-            results = self.collection.query(
+            results = self._ensure_collection().query(
                 query_texts=[query],
                 n_results=top_k,
                 where=where_filter,
@@ -163,13 +201,11 @@ class MemoryEngine:
         memories.sort(key=lambda x: x["similarity"], reverse=True)
         return memories[:top_k]
 
-    async def get_recent(
-        self, user_id: str, limit: int | None = None
-    ) -> list[dict[str, Any]]:
+    async def get_recent(self, user_id: str, limit: int | None = None) -> list[dict[str, Any]]:
         limit = limit or settings.memory.recent_context_limit
 
         try:
-            results = self.collection.query(
+            results = self._ensure_collection().query(
                 query_texts=[""],
                 n_results=limit,
                 where={"user_id": user_id},
@@ -260,7 +296,7 @@ class MemoryEngine:
 
     async def get_stats(self, user_id: str) -> dict[str, Any]:
         try:
-            results = self.collection.get(
+            results = self._ensure_collection().get(
                 where={"user_id": user_id},
                 include=["metadatas"],
             )
@@ -288,36 +324,89 @@ class MemoryEngine:
             "total_memories": total,
             "oldest_memory": min(timestamps) if timestamps else None,
             "newest_memory": max(timestamps) if timestamps else None,
-            "avg_importance": float(np.mean(importance_scores))
-            if importance_scores
-            else 0.0,
+            "avg_importance": float(np.mean(importance_scores)) if importance_scores else 0.0,
         }
 
-    async def delete_memory(self, memory_id: str) -> bool:
+    async def delete_memory(self, memory_id: str, user_id: str | None = None) -> bool:
+        start_time = time.time()
         try:
-            self.collection.delete(ids=[memory_id])
+            self._ensure_collection().delete(ids=[memory_id])
+
+            latency_ms = (time.time() - start_time) * 1000
+
+            await log_service.log_audit(
+                action=AuditAction.MEMORY_DELETE,
+                resource_type="memory",
+                resource_id=memory_id,
+                result="SUCCESS",
+                user_id=user_id,
+                details={
+                    "latency_ms": round(latency_ms, 2),
+                },
+            )
+
             logger.debug("Deleted memory %s", memory_id)
             return True
         except Exception as e:
+            latency_ms = (time.time() - start_time) * 1000
+            await log_service.log_audit(
+                action=AuditAction.MEMORY_DELETE,
+                resource_type="memory",
+                resource_id=memory_id,
+                result="FAIL",
+                user_id=user_id,
+                details={
+                    "error": str(e),
+                    "latency_ms": round(latency_ms, 2),
+                },
+            )
             logger.error("Failed to delete memory: %s", e)
             return False
 
     async def clear_user_memories(self, user_id: str) -> int:
+        start_time = time.time()
         try:
-            results = self.collection.get(
+            results = self._ensure_collection().get(
                 where={"user_id": user_id},
                 include=["ids"],
             )
 
             if results["ids"]:
-                self.collection.delete(ids=results["ids"])
+                self._ensure_collection().delete(ids=results["ids"])
                 count = len(results["ids"])
                 self.turn_counts[user_id] = 0
+
+                latency_ms = (time.time() - start_time) * 1000
+
+                await log_service.log_audit(
+                    action=AuditAction.MEMORY_CLEAR,
+                    resource_type="memory",
+                    resource_id=user_id,
+                    result="SUCCESS",
+                    user_id=user_id,
+                    details={
+                        "cleared_count": count,
+                        "latency_ms": round(latency_ms, 2),
+                    },
+                )
+
                 logger.info("Cleared %d memories for user %s", count, user_id)
                 return count
 
             return 0
         except Exception as e:
+            latency_ms = (time.time() - start_time) * 1000
+            await log_service.log_audit(
+                action=AuditAction.MEMORY_CLEAR,
+                resource_type="memory",
+                resource_id=user_id,
+                result="FAIL",
+                user_id=user_id,
+                details={
+                    "error": str(e),
+                    "latency_ms": round(latency_ms, 2),
+                },
+            )
             logger.error("Failed to clear user memories: %s", e)
             return 0
 

@@ -2,8 +2,12 @@
 Settings API Router
 """
 
+import time
+
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, ConfigDict
+
+from ..services.log_service import AuditAction, log_service
 
 router = APIRouter()
 
@@ -41,7 +45,7 @@ async def get_settings(req: Request):
             memory_enabled=settings_dict.get("memory_enabled", "true").lower() == "true",
             emotion_detection=settings_dict.get("emotion_detection", "true").lower() == "true",
             theme=settings_dict.get("theme", "light"),
-            language=settings_dict.get("language", "zh-CN")
+            language=settings_dict.get("language", "zh-CN"),
         )
 
 
@@ -49,14 +53,55 @@ async def get_settings(req: Request):
 async def update_settings(settings: AppSettings, req: Request):
     from ..database import get_db
 
-    async with get_db() as db:
-        settings_dict = settings.dict()
-        for key, value in settings_dict.items():
-            await db.execute(
-                """INSERT OR REPLACE INTO settings (key, value, updated_at)
-                   VALUES (?, ?, CURRENT_TIMESTAMP)""",
-                (key, str(value))
-            )
-        await db.commit()
+    start_time = time.time()
+
+    try:
+        async with get_db() as db:
+            cursor = await db.execute("SELECT key, value FROM settings")
+            old_rows = await cursor.fetchall()
+            old_settings = {row[0]: row[1] for row in old_rows}
+
+            settings_dict = settings.dict()
+            changed_keys = []
+
+            for key, value in settings_dict.items():
+                old_value = old_settings.get(key)
+                new_value = str(value)
+                if old_value != new_value:
+                    changed_keys.append(key)
+
+                await db.execute(
+                    """INSERT OR REPLACE INTO settings (key, value, updated_at)
+                       VALUES (?, ?, CURRENT_TIMESTAMP)""",
+                    (key, new_value),
+                )
+            await db.commit()
+
+        latency_ms = (time.time() - start_time) * 1000
+
+        await log_service.log_audit(
+            action=AuditAction.SETTINGS_UPDATE,
+            resource_type="settings",
+            resource_id="global",
+            result="SUCCESS",
+            details={
+                "changed_keys": changed_keys,
+                "latency_ms": round(latency_ms, 2),
+            },
+        )
 
         return settings
+
+    except Exception as e:
+        latency_ms = (time.time() - start_time) * 1000
+        await log_service.log_audit(
+            action=AuditAction.SETTINGS_UPDATE,
+            resource_type="settings",
+            resource_id="global",
+            result="FAIL",
+            details={
+                "error": str(e),
+                "latency_ms": round(latency_ms, 2),
+            },
+        )
+        raise

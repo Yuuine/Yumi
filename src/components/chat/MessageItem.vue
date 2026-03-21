@@ -12,6 +12,10 @@
 import type { ChatMessage } from '@/types'
 import MessageActionsFooter from './MessageActionsFooter.vue'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
+import { copyToClipboard } from '@/utils'
+import { useToast } from '@/composables/useToast'
+
+const toast = useToast()
 
 interface Props {
   message: ChatMessage
@@ -19,13 +23,17 @@ interface Props {
 
 defineProps<Props>()
 
-const emit = defineEmits<{
-  copy: [content: string]
-}>()
-
-function handleCopy(content: string) {
-  // TODO: 连接剪贴板复制逻辑
-  emit('copy', content)
+/**
+ * 处理复制操作
+ * @param content - 要复制的内容
+ */
+async function handleCopy(content: string): Promise<void> {
+  const success = await copyToClipboard(content)
+  if (success) {
+    toast.success('已复制到剪贴板')
+  } else {
+    toast.error('复制失败，请重试')
+  }
 }
 </script>
 

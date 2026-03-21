@@ -117,38 +117,56 @@ function transformToApiFormat(
 }
 
 export const modelsApi = {
-  async getModels(): Promise<ModelConfig[]> {
-    const data = await httpClient.get<ApiModelData[]>('/models')
+  async getModels(accountId: string): Promise<ModelConfig[]> {
+    const data = await httpClient.get<ApiModelData[]>('/models', {
+      params: { accountId },
+    })
     return data.map(transformToModelConfig)
   },
 
-  async createModel(config: Omit<ModelConfig, 'id'>): Promise<ModelConfig> {
-    const result = await httpClient.post<ApiModelData>('/models', transformToApiFormat(config))
+  async createModel(accountId: string, config: Omit<ModelConfig, 'id'>): Promise<ModelConfig> {
+    const result = await httpClient.post<ApiModelData>('/models', transformToApiFormat(config), {
+      params: { accountId },
+    })
     return transformToModelConfig(result)
   },
 
-  async updateModel(modelId: string, config: Partial<ModelConfig>): Promise<ModelConfig> {
+  async updateModel(
+    accountId: string,
+    modelId: string,
+    config: Partial<ModelConfig>
+  ): Promise<ModelConfig> {
     const result = await httpClient.put<ApiModelData>(
       `/models/${modelId}`,
-      transformToApiFormat(config)
+      transformToApiFormat(config),
+      { params: { accountId } }
     )
     return transformToModelConfig(result)
   },
 
-  async deleteModel(modelId: string): Promise<void> {
-    await httpClient.delete(`/models/${modelId}`)
+  async deleteModel(accountId: string, modelId: string): Promise<void> {
+    await httpClient.delete(`/models/${modelId}`, { params: { accountId } })
   },
 
-  async enableModel(modelId: string): Promise<{ success: boolean; message: string }> {
-    return httpClient.post(`/models/${modelId}/enable`)
+  async enableModel(
+    accountId: string,
+    modelId: string
+  ): Promise<{ success: boolean; message: string }> {
+    return httpClient.post(`/models/${modelId}/enable`, undefined, { params: { accountId } })
   },
 
-  async disableModel(modelId: string): Promise<{ success: boolean; message: string }> {
-    return httpClient.post(`/models/${modelId}/disable`)
+  async disableModel(
+    accountId: string,
+    modelId: string
+  ): Promise<{ success: boolean; message: string }> {
+    return httpClient.post(`/models/${modelId}/disable`, undefined, { params: { accountId } })
   },
 
-  async setActiveModel(modelId: string): Promise<{ success: boolean; message: string }> {
-    return httpClient.post(`/models/${modelId}/set_active`)
+  async setActiveModel(
+    accountId: string,
+    modelId: string
+  ): Promise<{ success: boolean; message: string }> {
+    return httpClient.post(`/models/${modelId}/set_active`, undefined, { params: { accountId } })
   },
 
   async testModel(request: ModelTestRequest): Promise<ModelTestResponse> {
@@ -161,6 +179,7 @@ export const modelsApi = {
   },
 
   async testModelById(
+    accountId: string,
     modelId: string,
     verbose = true
   ): Promise<{
@@ -170,11 +189,13 @@ export const modelsApi = {
     reasoning?: string
     latency?: number
   }> {
-    return httpClient.post(`/models/${modelId}/test`, { verbose })
+    return httpClient.post(`/models/${modelId}/test`, { verbose }, { params: { accountId } })
   },
 
-  async getActiveModel(): Promise<ModelConfig | null> {
-    const data = await httpClient.get<ApiModelData | null>('/active')
+  async getActiveModel(accountId: string): Promise<ModelConfig | null> {
+    const data = await httpClient.get<ApiModelData | null>('/active', {
+      params: { accountId },
+    })
     return data ? transformToModelConfig(data) : null
   },
 }

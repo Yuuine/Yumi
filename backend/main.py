@@ -1,6 +1,7 @@
 """
 Yumi Backend - FastAPI 服务
 """
+
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -10,8 +11,8 @@ from .core import settings, setup_exception_handlers
 from .core.lifecycle import get_lifecycle_manager
 from .core.logging import YumiLogger, get_logger
 from .core.middleware import RequestTracingMiddleware, SlowRequestMiddleware
-from .database import init_db
-from .routers import chat, logs, memory, models, proxy, storage, user
+from .database import init_db, init_log_db
+from .routers import cache, character_cards, chat, logs, memory, models, proxy, storage, user
 from .routers import settings as settings_router
 from .services.async_storage import get_async_storage_service
 from .services.emotion import EmotionEngine
@@ -46,6 +47,7 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing Yumi backend services...")
 
     await init_db()
+    await init_log_db()
 
     lifecycle_manager = get_lifecycle_manager()
     await lifecycle_manager.start()
@@ -77,10 +79,10 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("Shutting down Yumi backend services...")
-    
+
     # 关闭异步存储服务
     await async_storage.stop()
-    
+
     await lifecycle_manager.stop()
     if memory_engine:
         await memory_engine.close()
@@ -112,6 +114,7 @@ app.add_middleware(
 )
 
 app.include_router(chat.router, prefix="/api", tags=["chat"])
+app.include_router(character_cards.router, prefix="/api", tags=["character-cards"])
 app.include_router(memory.router, prefix="/api", tags=["memory"])
 app.include_router(user.router, prefix="/api", tags=["user"])
 app.include_router(settings_router.router, prefix="/api", tags=["settings"])
@@ -119,6 +122,7 @@ app.include_router(proxy.router, prefix="/api", tags=["proxy"])
 app.include_router(models.router, prefix="/api", tags=["models"])
 app.include_router(logs.router, prefix="/api", tags=["logs"])
 app.include_router(storage.router, prefix="/api", tags=["storage"])
+app.include_router(cache.router, prefix="/api", tags=["cache"])
 
 
 @app.get("/")

@@ -7,13 +7,24 @@ export {}
 
 declare module 'vue' {
   export interface GlobalComponents {
+    AccountSelector: typeof import('./components/settings/AccountSelector.vue')['default']
+    AccountSettings: typeof import('./components/settings/AccountSettings.vue')['default']
+    CharacterModal: typeof import('./components/settings/CharacterModal.vue')['default']
+    CharacterSettings: typeof import('./components/settings/CharacterSettings.vue')['default']
     ChatInput: typeof import('./components/chat/ChatInput.vue')['default']
+    DataSyncDialog: typeof import('./components/common/DataSyncDialog.vue')['default']
     DeepThinkingModal: typeof import('./components/chat/DeepThinkingModal.vue')['default']
     Dialog: typeof import('./components/common/Dialog.vue')['default']
+    ElButton: typeof import('element-plus/es')['ElButton']
     ElConfigProvider: typeof import('element-plus/es')['ElConfigProvider']
+    ElDialog: typeof import('element-plus/es')['ElDialog']
+    ElIcon: typeof import('element-plus/es')['ElIcon']
+    ElRadio: typeof import('element-plus/es')['ElRadio']
+    ElRadioGroup: typeof import('element-plus/es')['ElRadioGroup']
     IconAdd: typeof import('./components/icons/IconAdd.vue')['default']
     IconArrowUp: typeof import('./components/icons/IconArrowUp.vue')['default']
     IconBrain: typeof import('./components/icons/IconBrain.vue')['default']
+    IconCharacter: typeof import('./components/icons/IconCharacter.vue')['default']
     IconChat: typeof import('./components/icons/IconChat.vue')['default']
     IconCheck: typeof import('./components/icons/IconCheck.vue')['default']
     IconChevronDown: typeof import('./components/icons/IconChevronDown.vue')['default']
@@ -23,6 +34,7 @@ declare module 'vue' {
     IconDisable: typeof import('./components/icons/IconDisable.vue')['default']
     IconEdit: typeof import('./components/icons/IconEdit.vue')['default']
     IconError: typeof import('./components/icons/IconError.vue')['default']
+    IconExport: typeof import('./components/icons/IconExport.vue')['default']
     IconInfo: typeof import('./components/icons/IconInfo.vue')['default']
     IconLink: typeof import('./components/icons/IconLink.vue')['default']
     IconModels: typeof import('./components/icons/IconModels.vue')['default']
@@ -31,6 +43,7 @@ declare module 'vue' {
     IconSettings: typeof import('./components/icons/IconSettings.vue')['default']
     IconSpinner: typeof import('./components/icons/IconSpinner.vue')['default']
     IconSuccess: typeof import('./components/icons/IconSuccess.vue')['default']
+    IconUser: typeof import('./components/icons/IconUser.vue')['default']
     IconWarning: typeof import('./components/icons/IconWarning.vue')['default']
     LoadingOverlay: typeof import('./components/common/LoadingOverlay.vue')['default']
     MarkdownRenderer: typeof import('./components/common/MarkdownRenderer.vue')['default']
@@ -48,5 +61,6 @@ declare module 'vue' {
     SidebarNav: typeof import('./components/sidebar/SidebarNav.vue')['default']
     TestResultDialog: typeof import('./components/models/TestResultDialog.vue')['default']
     Toast: typeof import('./components/common/Toast.vue')['default']
+    ToggleSwitch: typeof import('./components/common/ToggleSwitch.vue')['default']
   }
 }

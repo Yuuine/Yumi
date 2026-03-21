@@ -2,6 +2,7 @@
 Log Lifecycle Manager
 Handles log archiving and cleanup based on retention policies
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -70,8 +71,7 @@ class LogLifecycleManager:
         try:
             async with aiosqlite.connect(self.db_path) as db:
                 cursor = await db.execute(
-                    "SELECT * FROM system_logs WHERE timestamp < ?",
-                    (cutoff.isoformat(),)
+                    "SELECT * FROM system_logs WHERE timestamp < ?", (cutoff.isoformat(),)
                 )
                 rows = await cursor.fetchall()
 
@@ -79,21 +79,21 @@ class LogLifecycleManager:
                     columns = [desc[0] for desc in cursor.description]
                     logs = [dict(zip(columns, row)) for row in rows]
 
-                    archive_file = self.archive_dir / f"system_logs_{cutoff.strftime('%Y%m%d')}.json.gz"
-                    with gzip.open(archive_file, 'wt', encoding='utf-8') as f:
+                    archive_file = (
+                        self.archive_dir / f"system_logs_{cutoff.strftime('%Y%m%d')}.json.gz"
+                    )
+                    with gzip.open(archive_file, "wt", encoding="utf-8") as f:
                         json.dump(logs, f, ensure_ascii=False)
 
                     await db.execute(
-                        "DELETE FROM system_logs WHERE timestamp < ?",
-                        (cutoff.isoformat(),)
+                        "DELETE FROM system_logs WHERE timestamp < ?", (cutoff.isoformat(),)
                     )
                     await db.commit()
 
                     logger.info("Archived %d system logs to %s", len(logs), archive_file)
 
                 cursor = await db.execute(
-                    "SELECT * FROM audit_logs WHERE timestamp < ?",
-                    (cutoff.isoformat(),)
+                    "SELECT * FROM audit_logs WHERE timestamp < ?", (cutoff.isoformat(),)
                 )
                 audit_rows = await cursor.fetchall()
 
@@ -101,13 +101,14 @@ class LogLifecycleManager:
                     columns = [desc[0] for desc in cursor.description]
                     logs = [dict(zip(columns, row)) for row in audit_rows]
 
-                    archive_file = self.archive_dir / f"audit_logs_{cutoff.strftime('%Y%m%d')}.json.gz"
-                    with gzip.open(archive_file, 'wt', encoding='utf-8') as f:
+                    archive_file = (
+                        self.archive_dir / f"audit_logs_{cutoff.strftime('%Y%m%d')}.json.gz"
+                    )
+                    with gzip.open(archive_file, "wt", encoding="utf-8") as f:
                         json.dump(logs, f, ensure_ascii=False)
 
                     await db.execute(
-                        "DELETE FROM audit_logs WHERE timestamp < ?",
-                        (cutoff.isoformat(),)
+                        "DELETE FROM audit_logs WHERE timestamp < ?", (cutoff.isoformat(),)
                     )
                     await db.commit()
 
@@ -122,8 +123,8 @@ class LogLifecycleManager:
 
         for file in self.archive_dir.glob("*.json.gz"):
             try:
-                file_date_str = file.stem.split('_')[-1]
-                file_date = datetime.strptime(file_date_str, '%Y%m%d')
+                file_date_str = file.stem.split("_")[-1]
+                file_date = datetime.strptime(file_date_str, "%Y%m%d")
 
                 if file_date < cutoff:
                     file.unlink()
@@ -131,9 +132,9 @@ class LogLifecycleManager:
             except (ValueError, IndexError):
                 continue
 
-    async def run_cleanup_once(self) -> dict:
+    async def run_cleanup_once(self) -> dict[str, int | str]:
         """执行一次清理（用于手动触发）"""
-        result = {
+        result: dict[str, int | str] = {
             "system_logs_archived": 0,
             "audit_logs_archived": 0,
             "archives_deleted": 0,
@@ -146,15 +147,13 @@ class LogLifecycleManager:
         try:
             async with aiosqlite.connect(self.db_path) as db:
                 cursor = await db.execute(
-                    "SELECT COUNT(*) FROM system_logs WHERE timestamp < ?",
-                    (cutoff.isoformat(),)
+                    "SELECT COUNT(*) FROM system_logs WHERE timestamp < ?", (cutoff.isoformat(),)
                 )
                 row = await cursor.fetchone()
                 result["system_logs_archived"] = row[0] if row else 0
 
                 cursor = await db.execute(
-                    "SELECT COUNT(*) FROM audit_logs WHERE timestamp < ?",
-                    (cutoff.isoformat(),)
+                    "SELECT COUNT(*) FROM audit_logs WHERE timestamp < ?", (cutoff.isoformat(),)
                 )
                 row = await cursor.fetchone()
                 result["audit_logs_archived"] = row[0] if row else 0
@@ -162,14 +161,16 @@ class LogLifecycleManager:
             await self._archive_old_logs()
 
             cutoff_cold = datetime.now() - timedelta(days=self.COLD_STORAGE_DAYS)
+            archives_deleted = 0
             for file in self.archive_dir.glob("*.json.gz"):
                 try:
-                    file_date_str = file.stem.split('_')[-1]
-                    file_date = datetime.strptime(file_date_str, '%Y%m%d')
+                    file_date_str = file.stem.split("_")[-1]
+                    file_date = datetime.strptime(file_date_str, "%Y%m%d")
                     if file_date < cutoff_cold:
-                        result["archives_deleted"] += 1
+                        archives_deleted += 1
                 except (ValueError, IndexError):
                     continue
+            result["archives_deleted"] = archives_deleted
 
             await self._delete_expired_archives()
 

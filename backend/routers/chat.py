@@ -1,14 +1,17 @@
 """
 Chat API Router - 支持流式响应
 """
+
 from __future__ import annotations
 
 import json
 import time
 import uuid
-from datetime import datetime
+from collections.abc import AsyncGenerator
+from datetime import datetime, timezone
+from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -24,6 +27,8 @@ from ..core import (
 from ..database import get_db
 from ..routers.models import decrypt_api_key
 from ..services.async_storage import StorageTask, get_async_storage_service
+from ..services.conversation_service import conversation_service
+from ..services.dialogue_log_service import DialogueInteraction, EndReason, dialogue_log_service
 from ..services.emotion import EmotionData
 from ..services.log_service import log_service
 
@@ -33,6 +38,8 @@ logger = get_logger(__name__)
 
 class ChatRequest(BaseModel):
     userId: str = Field(..., min_length=1, max_length=100, description="用户ID")
+    conversationId: str | None = Field(None, description="会话ID")
+    characterId: str | None = Field(None, description="当前使用的角色卡 id（与本地账号角色库一致）")
     message: str = Field(..., min_length=1, max_length=10000, description="消息内容")
     temperature: float | None = Field(0.85, ge=0.0, le=2.0, description="温度参数")
     stream: bool = False
@@ -44,6 +51,7 @@ class ChatResponse(BaseModel):
     emotion: EmotionData
     memoryUsed: int
     newSummary: str | None = None
+    conversationId: str | None = None
 
 
 class ChatMessage(BaseModel):
@@ -58,9 +66,24 @@ class ChatHistory(BaseModel):
     messages: list[ChatMessage]
 
 
-async def _get_active_model_config() -> dict | None:
+def _format_llm_response(llm_response: Any) -> str:
+    """格式化LLM响应内容，处理推理过程和回答的组合"""
+    if isinstance(llm_response, str):
+        return llm_response
+
+    reasoning = getattr(llm_response, "reasoning_content", None)
+    content = getattr(llm_response, "content", None)
+
+    if reasoning and content:
+        return f"**推理过程:**\n{reasoning}\n\n**回答:**\n{content}"
+    if reasoning:
+        return f"**推理过程:**\n{reasoning}"
+    return content or ""
+
+
+async def _get_active_model_config(account_id: str) -> dict | None:
     """获取活动模型配置（优先从全局状态获取，若为空则从数据库加载）"""
-    active_model = get_active_model()
+    active_model = get_active_model(account_id)
     if active_model:
         if settings.app.debug:
             logger.info(
@@ -76,9 +99,10 @@ async def _get_active_model_config() -> dict | None:
             cursor = await db.execute(
                 """SELECT id, provider_id, base_url, api_key, model_name, name
                    FROM model_configs
-                   WHERE is_enabled = 1
+                   WHERE account_id = ? AND is_enabled = 1
                    ORDER BY updated_at DESC
-                   LIMIT 1"""
+                   LIMIT 1""",
+                (account_id,),
             )
             row = await cursor.fetchone()
 
@@ -91,7 +115,7 @@ async def _get_active_model_config() -> dict | None:
                     "model_name": row[4],
                     "display_name": row[5],
                 }
-                set_active_model(config)
+                set_active_model(account_id, config)
                 if settings.app.debug:
                     logger.info(
                         "Active model loaded from DB: %s (provider=%s, model=%s)",
@@ -106,21 +130,181 @@ async def _get_active_model_config() -> dict | None:
         return None
 
 
+async def _build_context_and_emotion(
+    request: ChatRequest,
+    conversation_id: str,
+    req: Request,
+) -> tuple[list[dict], EmotionData, list[Any]]:
+    """构建对话上下文并分析用户情绪"""
+    memory_engine = req.app.state.memory_engine
+    emotion_engine = req.app.state.emotion_engine
+    prompt_builder = req.app.state.prompt_builder
+
+    if settings.app.debug:
+        user_emotion = EmotionData(valence=0.5, arousal=0.5, label="neutral")
+        relevant_memories: list[Any] = []
+    else:
+        user_emotion = await emotion_engine.analyze(request.message)
+        relevant_memories = await memory_engine.search(
+            query=request.message,
+            user_id=request.userId,
+        )
+
+    messages = await prompt_builder.build_context(
+        user_id=request.userId,
+        conversation_id=conversation_id,
+        current_message=request.message,
+        memories=relevant_memories,
+        user_emotion=user_emotion,
+        character_id=request.characterId,
+    )
+
+    return messages, user_emotion, relevant_memories
+
+
+async def _call_llm_service(
+    messages: list[dict],
+    request: ChatRequest,
+    active_model: dict,
+    req: Request,
+) -> tuple[Any, float]:
+    """调用LLM服务并返回响应和延迟"""
+    llm_service = req.app.state.llm_service
+    llm_start_time = time.time()
+
+    logger.info(
+        "LLM Request: model=%s, provider=%s, deepThinking=%s, temperature=%.2f, messages_count=%d",
+        active_model["model_name"],
+        active_model["provider_id"],
+        request.deepThinking,
+        request.temperature or 0.85,
+        len(messages),
+    )
+
+    llm_response = await llm_service.chat(
+        messages=messages,
+        temperature=request.temperature,
+        provider_id=active_model["provider_id"],
+        base_url=active_model["base_url"],
+        api_key=active_model["api_key"],
+        model_name=active_model["model_name"],
+        use_thinking=request.deepThinking,
+    )
+    llm_latency_ms = (time.time() - llm_start_time) * 1000
+
+    return llm_response, llm_latency_ms
+
+
+def _log_llm_request_response(llm_response: Any) -> None:
+    """记录LLM请求和响应的详细信息"""
+    request_payload = getattr(llm_response, "request_payload", {})
+    if request_payload:
+        if "messages" not in request_payload:
+            logger.warning("request_payload missing messages: %s", request_payload.keys())
+        else:
+            messages_count = len(request_payload["messages"])
+            logger.info("request_payload contains %d messages", messages_count)
+            if messages_count > 0:
+                first_msg = request_payload["messages"][0]
+                logger.info(
+                    "First message role: %s, content length: %d",
+                    first_msg.get("role"),
+                    len(first_msg.get("content", "")),
+                )
+
+
+async def _analyze_assistant_emotion(reply: str, req: Request) -> EmotionData:
+    """分析助手回复的情绪"""
+    emotion_engine = req.app.state.emotion_engine
+    if settings.app.debug:
+        return EmotionData(valence=0.5, arousal=0.5, label="neutral")
+    return await emotion_engine.analyze(reply)
+
+
+def _update_dialogue_interaction_success(
+    dialogue_interaction: DialogueInteraction,
+    user_emotion: EmotionData,
+    assistant_emotion: EmotionData,
+    llm_response: Any,
+    start_time: float,
+) -> None:
+    """更新对话交互记录（成功情况）"""
+    dialogue_interaction.user_emotion = {
+        "valence": user_emotion.valence,
+        "arousal": user_emotion.arousal,
+        "label": user_emotion.label,
+    }
+
+    request_payload = getattr(llm_response, "request_payload", {})
+    raw_response = getattr(llm_response, "raw_response", {})
+
+    dialogue_interaction.request_detail = json.dumps(request_payload or {}, ensure_ascii=False)
+    dialogue_interaction.response_detail = json.dumps(raw_response or {}, ensure_ascii=False)
+    dialogue_interaction.assistant_emotion = {
+        "valence": assistant_emotion.valence,
+        "arousal": assistant_emotion.arousal,
+        "label": assistant_emotion.label,
+    }
+
+    end_datetime = datetime.now(timezone.utc).isoformat()
+    dialogue_interaction.end_time = end_datetime
+    dialogue_interaction.duration_ms = int((time.time() - start_time) * 1000)
+    dialogue_interaction.is_normal_end = True
+    dialogue_interaction.end_reason = EndReason.NORMAL.value
+
+
+def _update_dialogue_interaction_error(
+    dialogue_interaction: DialogueInteraction,
+    start_time: float,
+    end_reason: EndReason,
+) -> None:
+    """更新对话交互记录（错误情况）"""
+    dialogue_interaction.is_normal_end = False
+    dialogue_interaction.end_reason = end_reason.value
+    dialogue_interaction.end_time = datetime.now(timezone.utc).isoformat()
+    dialogue_interaction.duration_ms = int((time.time() - start_time) * 1000)
+
+
+async def _generate_summary_if_needed(
+    user_id: str,
+    req: Request,
+) -> str | None:
+    """如果需要，生成记忆摘要"""
+    if settings.app.debug:
+        return None
+
+    memory_engine = req.app.state.memory_engine
+    turn_count = await memory_engine.get_turn_count(user_id)
+    if turn_count > 0 and turn_count % settings.memory.summary_trigger_turns == 0:
+        return await memory_engine.summarize(user_id)
+    return None
+
+
 @router.post("/chat", response_model=ChatResponse)
-async def send_message(request: ChatRequest, req: Request):
+async def send_message(request: ChatRequest, req: Request) -> ChatResponse:
+    """发送聊天消息"""
     start_time = time.time()
-    conversation_id = str(uuid.uuid4())
+    start_datetime = datetime.now(timezone.utc).isoformat()
+
+    active_model = await _get_active_model_config(request.userId)
+    if not active_model:
+        raise NoActiveModelException()
+
+    conversation_id = await conversation_service.get_or_create_conversation(
+        user_id=request.userId,
+        conversation_id=request.conversationId,
+        character_id=request.characterId,
+    )
+
     user_message_id = str(uuid.uuid4())
     assistant_message_id = str(uuid.uuid4())
 
-    memory_engine = req.app.state.memory_engine
-    emotion_engine = req.app.state.emotion_engine
-    llm_service = req.app.state.llm_service
-    prompt_builder = req.app.state.prompt_builder
-
-    active_model = await _get_active_model_config()
-    if not active_model:
-        raise NoActiveModelException()
+    dialogue_interaction = DialogueInteraction(
+        conversation_id=conversation_id,
+        user_id=request.userId,
+        character_id=request.characterId,
+        start_time=start_datetime,
+    )
 
     try:
         await log_service.log_user_action(
@@ -131,49 +315,13 @@ async def send_message(request: ChatRequest, req: Request):
             extra={"message_length": len(request.message)},
         )
 
-        if settings.app.debug:
-            messages = [{"role": "user", "content": request.message}]
-            user_emotion = EmotionData(valence=0.5, arousal=0.5, label="neutral")
-            relevant_memories = []
-        else:
-            # TODO: 后续需要优化情感分析的准确性和性能
-            user_emotion = await emotion_engine.analyze(request.message)
-
-            # TODO: 后续需要支持记忆搜索结果的排序和过滤优化
-            relevant_memories = await memory_engine.search(
-                query=request.message,
-                user_id=request.userId,
-            )
-
-            # TODO: 后续需要支持自定义提示词模板和上下文长度配置
-            messages = await prompt_builder.build_context(
-                user_id=request.userId,
-                current_message=request.message,
-                memories=relevant_memories,
-                user_emotion=user_emotion,
-            )
-
-        llm_start_time = time.time()
-
-        logger.info(
-            "LLM Request: model=%s, provider=%s, deepThinking=%s, temperature=%.2f, messages_count=%d",
-            active_model["model_name"],
-            active_model["provider_id"],
-            request.deepThinking,
-            request.temperature,
-            len(messages),
+        messages, user_emotion, relevant_memories = await _build_context_and_emotion(
+            request, conversation_id, req
         )
 
-        reply = await llm_service.chat(
-            messages=messages,
-            temperature=request.temperature,
-            provider_id=active_model["provider_id"],
-            base_url=active_model["base_url"],
-            api_key=active_model["api_key"],
-            model_name=active_model["model_name"],
-            use_thinking=request.deepThinking,
-        )
-        llm_latency_ms = (time.time() - llm_start_time) * 1000
+        llm_response, llm_latency_ms = await _call_llm_service(messages, request, active_model, req)
+
+        reply = _format_llm_response(llm_response)
 
         if settings.app.debug:
             logger.info(
@@ -182,68 +330,40 @@ async def send_message(request: ChatRequest, req: Request):
                 len(reply),
             )
 
-        if settings.app.debug:
-            assistant_emotion = EmotionData(valence=0.5, arousal=0.5, label="neutral")
-            user_emotion = EmotionData(valence=0.5, arousal=0.5, label="neutral")
-        else:
-            assistant_emotion = await emotion_engine.analyze(reply)
+        _log_llm_request_response(llm_response)
 
-        await log_service.log_ai_interaction(
-            conversation_id=conversation_id,
-            message_id=user_message_id,
-            role="user",
-            content=request.message,
-            emotion={"valence": user_emotion.valence, "arousal": user_emotion.arousal, "label": user_emotion.label},
-            user_id=request.userId,
+        assistant_emotion = await _analyze_assistant_emotion(reply, req)
+
+        _update_dialogue_interaction_success(
+            dialogue_interaction, user_emotion, assistant_emotion, llm_response, start_time
         )
 
-        await log_service.log_ai_interaction(
-            conversation_id=conversation_id,
-            message_id=assistant_message_id,
-            role="assistant",
-            content=reply,
-            emotion={"valence": assistant_emotion.valence, "arousal": assistant_emotion.arousal, "label": assistant_emotion.label},
-            model_info={
-                "provider": active_model["provider_id"],
-                "model": active_model["model_name"],
-            },
-            latency_ms=llm_latency_ms,
-            user_id=request.userId,
-        )
+        await dialogue_log_service.log_interaction(dialogue_interaction)
+        await conversation_service.update_conversation_timestamp(conversation_id)
 
-        # 使用异步存储服务存储消息
         async_storage = get_async_storage_service()
 
-        # 用户消息存储任务
         user_task = StorageTask.create(
             message_id=user_message_id,
             conversation_id=conversation_id,
             user_id=request.userId,
             role="user",
             content=request.message,
-            emotion={"valence": user_emotion.valence, "arousal": user_emotion.arousal} if user_emotion else None,
+            emotion={"valence": user_emotion.valence, "arousal": user_emotion.arousal},
         )
         await async_storage.enqueue(user_task)
 
-        # 助手消息存储任务
         assistant_task = StorageTask.create(
             message_id=assistant_message_id,
             conversation_id=conversation_id,
             user_id=request.userId,
             role="assistant",
             content=reply,
-            emotion={"valence": assistant_emotion.valence, "arousal": assistant_emotion.arousal} if assistant_emotion else None,
+            emotion={"valence": assistant_emotion.valence, "arousal": assistant_emotion.arousal},
         )
         await async_storage.enqueue(assistant_task)
 
-        new_summary = None
-        if not settings.app.debug:
-            turn_count = await memory_engine.get_turn_count(request.userId)
-            if (
-                turn_count > 0
-                and turn_count % settings.memory.summary_trigger_turns == 0
-            ):
-                new_summary = await memory_engine.summarize(request.userId)
+        new_summary = await _generate_summary_if_needed(request.userId, req)
 
         total_latency_ms = (time.time() - start_time) * 1000
         await log_service.log_user_action(
@@ -264,9 +384,15 @@ async def send_message(request: ChatRequest, req: Request):
             emotion=assistant_emotion,
             memoryUsed=len(relevant_memories),
             newSummary=new_summary,
+            conversationId=conversation_id,
         )
 
     except LLMException:
+        _update_dialogue_interaction_error(
+            dialogue_interaction, start_time, EndReason.PROVIDER_ERROR
+        )
+        await dialogue_log_service.log_interaction(dialogue_interaction)
+
         await log_service.log_user_action(
             action="RECEIVE_RESPONSE",
             resource_type="conversation",
@@ -277,6 +403,11 @@ async def send_message(request: ChatRequest, req: Request):
         )
         raise
     except MemoryException:
+        _update_dialogue_interaction_error(
+            dialogue_interaction, start_time, EndReason.INTERNAL_ERROR
+        )
+        await dialogue_log_service.log_interaction(dialogue_interaction)
+
         await log_service.log_user_action(
             action="RECEIVE_RESPONSE",
             resource_type="conversation",
@@ -288,6 +419,9 @@ async def send_message(request: ChatRequest, req: Request):
         raise
     except Exception as e:
         logger.exception("Unexpected error in chat endpoint: %s", e)
+        _update_dialogue_interaction_error(dialogue_interaction, start_time, EndReason.UNKNOWN)
+        await dialogue_log_service.log_interaction(dialogue_interaction)
+
         await log_service.log_user_action(
             action="RECEIVE_RESPONSE",
             resource_type="conversation",
@@ -300,7 +434,8 @@ async def send_message(request: ChatRequest, req: Request):
 
 
 @router.get("/chat/history", response_model=ChatHistory)
-async def get_chat_history(userId: str, limit: int = 50, offset: int = 0, req: Request = None):
+async def get_chat_history(userId: str, limit: int = 50, offset: int = 0) -> ChatHistory:
+    """获取聊天历史记录"""
     async with get_db() as db:
         cursor = await db.execute(
             """SELECT id, role, content, timestamp, emotion_valence, emotion_arousal
@@ -312,23 +447,197 @@ async def get_chat_history(userId: str, limit: int = 50, offset: int = 0, req: R
         )
         rows = await cursor.fetchall()
 
-        messages = []
-        for row in reversed(rows):
-            emotion = None
-            if row[4] is not None and row[5] is not None:
-                emotion = EmotionData(valence=row[4], arousal=row[5])
-
-            messages.append(
-                ChatMessage(
-                    id=str(row[0]),
-                    role=row[1],
-                    content=row[2],
-                    timestamp=row[3],
-                    emotion=emotion,
-                )
+        messages = [
+            ChatMessage(
+                id=str(row[0]),
+                role=row[1],
+                content=row[2],
+                timestamp=row[3],
+                emotion=(
+                    EmotionData(valence=row[4], arousal=row[5])
+                    if row[4] is not None and row[5] is not None
+                    else None
+                ),
             )
+            for row in list(reversed(list(rows)))
+        ]
 
         return ChatHistory(messages=messages)
+
+
+async def _build_stream_context(
+    userId: str,
+    message: str,
+    conversation_id: str,
+    characterId: str | None,
+    req: Request,
+) -> tuple[list[dict], EmotionData, list[Any]]:
+    """为流式响应构建上下文"""
+    memory_engine = req.app.state.memory_engine
+    emotion_engine = req.app.state.emotion_engine
+    prompt_builder = req.app.state.prompt_builder
+
+    if settings.app.debug:
+        user_emotion = EmotionData(valence=0.5, arousal=0.5, label="neutral")
+        relevant_memories: list[Any] = []
+    else:
+        user_emotion = await emotion_engine.analyze(message)
+        relevant_memories = await memory_engine.search(
+            query=message,
+            user_id=userId,
+        )
+
+    messages = await prompt_builder.build_context(
+        user_id=userId,
+        conversation_id=conversation_id,
+        current_message=message,
+        memories=relevant_memories,
+        user_emotion=user_emotion,
+        character_id=characterId,
+    )
+
+    return messages, user_emotion, relevant_memories
+
+
+async def _stream_chat_generator(
+    userId: str,
+    message: str,
+    conversationId: str | None,
+    characterId: str | None,
+    temperature: float,
+    deepThinking: bool,
+    active_model: dict,
+    start_time: float,
+    start_datetime: str,
+    req: Request,
+) -> AsyncGenerator[str, None]:
+    """流式聊天响应生成器"""
+    if not active_model:
+        yield f"data: {json.dumps({'error': '没有可用的模型，请先在模型管理中添加并启用一个模型'})}\n\n"
+        return
+
+    conversation_id = await conversation_service.get_or_create_conversation(
+        user_id=userId,
+        conversation_id=conversationId,
+        character_id=characterId,
+    )
+
+    user_message_id = str(uuid.uuid4())
+    assistant_message_id = str(uuid.uuid4())
+
+    dialogue_interaction = DialogueInteraction(
+        conversation_id=conversation_id,
+        user_id=userId,
+        character_id=characterId,
+        start_time=start_datetime,
+    )
+
+    try:
+        if settings.app.debug:
+            logger.info(
+                "Stream LLM Request: model=%s, provider=%s, deepThinking=%s, temperature=%.2f",
+                active_model["model_name"],
+                active_model["provider_id"],
+                deepThinking,
+                temperature,
+            )
+
+        messages, user_emotion, _ = await _build_stream_context(
+            userId, message, conversation_id, characterId, req
+        )
+
+        dialogue_interaction.user_emotion = {
+            "valence": user_emotion.valence,
+            "arousal": user_emotion.arousal,
+            "label": user_emotion.label,
+        }
+
+        full_reply = ""
+        stream_start_time = time.time()
+        request_payload = None
+        response_chunks = []
+
+        llm_service = req.app.state.llm_service
+        async for chunk in llm_service.stream_chat(
+            messages=messages,
+            temperature=temperature,
+            provider_id=active_model["provider_id"],
+            base_url=active_model["base_url"],
+            api_key=active_model["api_key"],
+            model_name=active_model["model_name"],
+            use_thinking=deepThinking,
+        ):
+            if isinstance(chunk, str):
+                full_reply += chunk
+                yield f"data: {json.dumps({'content': chunk})}\n\n"
+            elif hasattr(chunk, "request_payload"):
+                request_payload = chunk.request_payload
+                response_chunks = chunk.raw_response_chunks
+
+        stream_latency_ms = (time.time() - stream_start_time) * 1000
+        if settings.app.debug:
+            logger.info(
+                "Stream LLM Response: latency=%.2fms, reply_length=%d",
+                stream_latency_ms,
+                len(full_reply),
+            )
+
+        if request_payload:
+            dialogue_interaction.request_detail = json.dumps(request_payload, ensure_ascii=False)
+
+        if response_chunks:
+            dialogue_interaction.response_detail = json.dumps(response_chunks, ensure_ascii=False)
+
+        assistant_emotion = await _analyze_assistant_emotion(full_reply, req)
+
+        dialogue_interaction.assistant_emotion = {
+            "valence": assistant_emotion.valence,
+            "arousal": assistant_emotion.arousal,
+            "label": assistant_emotion.label,
+        }
+
+        dialogue_interaction.end_time = datetime.now(timezone.utc).isoformat()
+        dialogue_interaction.duration_ms = int((time.time() - start_time) * 1000)
+        dialogue_interaction.is_normal_end = True
+        dialogue_interaction.end_reason = EndReason.NORMAL.value
+
+        await dialogue_log_service.log_interaction(dialogue_interaction)
+        await conversation_service.update_conversation_timestamp(conversation_id)
+
+        async_storage = get_async_storage_service()
+
+        user_task = StorageTask.create(
+            message_id=user_message_id,
+            conversation_id=conversation_id,
+            user_id=userId,
+            role="user",
+            content=message,
+            emotion={"valence": user_emotion.valence, "arousal": user_emotion.arousal},
+        )
+        await async_storage.enqueue(user_task)
+
+        assistant_task = StorageTask.create(
+            message_id=assistant_message_id,
+            conversation_id=conversation_id,
+            user_id=userId,
+            role="assistant",
+            content=full_reply,
+            emotion={"valence": assistant_emotion.valence, "arousal": assistant_emotion.arousal},
+        )
+        await async_storage.enqueue(assistant_task)
+
+        yield f"data: {json.dumps({'done': True, 'conversationId': conversation_id, 'emotion': {'valence': assistant_emotion.valence, 'arousal': assistant_emotion.arousal}})}\n\n"
+
+    except Exception as e:
+        logger.error("Stream error: %s", e)
+
+        dialogue_interaction.is_normal_end = False
+        dialogue_interaction.end_reason = EndReason.UNKNOWN.value
+        dialogue_interaction.end_time = datetime.now(timezone.utc).isoformat()
+        dialogue_interaction.duration_ms = int((time.time() - start_time) * 1000)
+        await dialogue_log_service.log_interaction(dialogue_interaction)
+
+        yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
 
 @router.get("/chat/stream")
@@ -336,115 +645,29 @@ async def stream_chat(
     userId: str,
     message: str,
     req: Request,
+    conversationId: str | None = None,
+    characterId: str | None = None,
     temperature: float = 0.85,
     deepThinking: bool = False,
-):
-    memory_engine = req.app.state.memory_engine
-    emotion_engine = req.app.state.emotion_engine
-    llm_service = req.app.state.llm_service
-    prompt_builder = req.app.state.prompt_builder
-
-    active_model = await _get_active_model_config()
-
-    # 生成消息ID和会话ID用于异步存储
-    conversation_id = str(uuid.uuid4())
-    user_message_id = str(uuid.uuid4())
-    assistant_message_id = str(uuid.uuid4())
-
-    async def generate():
-        if not active_model:
-            yield f"data: {json.dumps({'error': '没有可用的模型，请先在模型管理中添加并启用一个模型'})}\n\n"
-            return
-
-        try:
-            if settings.app.debug:
-                logger.info(
-                    "Stream LLM Request: model=%s, provider=%s, deepThinking=%s, temperature=%.2f",
-                    active_model["model_name"],
-                    active_model["provider_id"],
-                    deepThinking,
-                    temperature,
-                )
-
-            if settings.app.debug:
-                messages = [{"role": "user", "content": message}]
-                user_emotion = EmotionData(valence=0.5, arousal=0.5, label="neutral")
-            else:
-                user_emotion = await emotion_engine.analyze(message)
-
-                relevant_memories = await memory_engine.search(
-                    query=message,
-                    user_id=userId,
-                )
-
-                messages = await prompt_builder.build_context(
-                    user_id=userId,
-                    current_message=message,
-                    memories=relevant_memories,
-                    user_emotion=user_emotion,
-                )
-
-            full_reply = ""
-            stream_start_time = time.time()
-            async for chunk in llm_service.stream_chat(
-                messages=messages,
-                temperature=temperature,
-                provider_id=active_model["provider_id"],
-                base_url=active_model["base_url"],
-                api_key=active_model["api_key"],
-                model_name=active_model["model_name"],
-                use_thinking=deepThinking,
-            ):
-                full_reply += chunk
-                yield f"data: {json.dumps({'content': chunk})}\n\n"
-
-            if settings.app.debug:
-                stream_latency_ms = (time.time() - stream_start_time) * 1000
-                logger.info(
-                    "Stream LLM Response: latency=%.2fms, reply_length=%d",
-                    stream_latency_ms,
-                    len(full_reply),
-                )
-
-            if settings.app.debug:
-                assistant_emotion = EmotionData(valence=0.5, arousal=0.5, label="neutral")
-                user_emotion = EmotionData(valence=0.5, arousal=0.5, label="neutral")
-            else:
-                assistant_emotion = await emotion_engine.analyze(full_reply)
-
-            # 使用异步存储服务存储消息
-            async_storage = get_async_storage_service()
-
-            # 用户消息存储任务
-            user_task = StorageTask.create(
-                message_id=user_message_id,
-                conversation_id=conversation_id,
-                user_id=userId,
-                role="user",
-                content=message,
-                emotion={"valence": user_emotion.valence, "arousal": user_emotion.arousal} if user_emotion else None,
-            )
-            await async_storage.enqueue(user_task)
-
-            # 助手消息存储任务
-            assistant_task = StorageTask.create(
-                message_id=assistant_message_id,
-                conversation_id=conversation_id,
-                user_id=userId,
-                role="assistant",
-                content=full_reply,
-                emotion={"valence": assistant_emotion.valence, "arousal": assistant_emotion.arousal} if assistant_emotion else None,
-            )
-            await async_storage.enqueue(assistant_task)
-
-            yield f"data: {json.dumps({'done': True, 'emotion': {'valence': assistant_emotion.valence, 'arousal': assistant_emotion.arousal}})}\n\n"
-
-        except Exception as e:
-            logger.error("Stream error: %s", e)
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+) -> StreamingResponse:
+    """流式聊天响应"""
+    active_model = await _get_active_model_config(userId)
+    start_time = time.time()
+    start_datetime = datetime.now(timezone.utc).isoformat()
 
     return StreamingResponse(
-        generate(),
+        _stream_chat_generator(
+            userId,
+            message,
+            conversationId,
+            characterId,
+            temperature,
+            deepThinking,
+            active_model,
+            start_time,
+            start_datetime,
+            req,
+        ),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -452,3 +675,82 @@ async def stream_chat(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+class DialogueLogListResponse(BaseModel):
+    logs: list[dict]
+    total: int
+
+
+@router.get("/dialogue-logs", response_model=DialogueLogListResponse)
+async def get_dialogue_logs(
+    userId: str,
+    limit: int = 50,
+    offset: int = 0,
+    includeDetails: bool = False,
+) -> DialogueLogListResponse:
+    """获取用户的对话交互日志列表"""
+    logs = await dialogue_log_service.get_interactions_by_user(
+        user_id=userId,
+        limit=limit,
+        offset=offset,
+        include_details=includeDetails,
+    )
+    return DialogueLogListResponse(logs=logs, total=len(logs))
+
+
+@router.get("/dialogue-logs/{log_id}")
+async def get_dialogue_log_detail(log_id: int) -> Any:
+    """获取单条对话交互日志详情"""
+    log = await dialogue_log_service.get_interaction_by_id(log_id)
+    if not log:
+        raise HTTPException(status_code=404, detail="Dialogue log not found")
+    return log
+
+
+@router.get("/conversations")
+async def get_conversations(
+    userId: str,
+    characterId: str | None = None,
+    limit: int = 20,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """获取用户的会话列表，可按角色卡筛选"""
+    conversations = await conversation_service.get_user_conversations(
+        user_id=userId,
+        limit=limit,
+        offset=offset,
+        character_id=characterId,
+    )
+    return {"conversations": conversations}
+
+
+@router.get("/conversations/{conversation_id}/dialogue-logs")
+async def get_conversation_dialogue_logs(
+    conversation_id: str,
+    includeDetails: bool = False,
+    limit: int = 100,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """获取特定会话的对话交互日志"""
+    logs = await dialogue_log_service.get_interactions_by_conversation(
+        conversation_id=conversation_id,
+        limit=limit,
+        offset=offset,
+        include_details=includeDetails,
+    )
+    return {"logs": logs}
+
+
+@router.delete("/dialogue-logs")
+async def clear_dialogue_logs(userId: str | None = None) -> dict[str, Any]:
+    """清除对话交互日志，不传userId则清除所有"""
+    deleted_count = await dialogue_log_service.clear_all_logs(user_id=userId)
+    return {"deleted_count": deleted_count, "user_id": userId}
+
+
+@router.get("/dialogue-logs/stats")
+async def get_dialogue_log_stats(userId: str | None = None) -> Any:
+    """获取对话交互日志统计信息"""
+    stats = await dialogue_log_service.get_log_stats(user_id=userId)
+    return stats

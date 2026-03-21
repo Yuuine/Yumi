@@ -1,34 +1,46 @@
 """
 User API Router
 """
+
 import json
+import time
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+from ..core import clear_active_model, get_conversation_cache
+from ..services.log_service import AuditAction, log_service
 
 router = APIRouter()
-
-
-class BigFiveTraits(BaseModel):
-    openness: float = 0.75
-    conscientiousness: float = 0.70
-    extraversion: float = 0.65
-    agreeableness: float = 0.80
-    neuroticism: float = 0.35
+logger = log_service.logger if hasattr(log_service, "logger") else None
 
 
 class UserPreferences(BaseModel):
-    communication_style: str = "warm"
-    topics_of_interest: list[str] = ["生活", "工作", "情感"]
-    emotional_support_level: str = "high"
-    response_length: str = "medium"
+    communication_style: str = Field("warm", alias="communicationStyle")
+    topics_of_interest: list[str] = Field(["生活", "工作", "情感"], alias="topicsOfInterest")
+    emotional_support_level: str = Field("high", alias="emotionalSupportLevel")
+    response_length: str = Field("medium", alias="responseLength")
+
+    class Config:
+        populate_by_name = True
 
 
 class UserProfile(BaseModel):
     id: str
-    role_name: str
-    big_five: BigFiveTraits
+    role_name: str = Field(..., alias="roleName")
     preferences: UserPreferences
+
+    class Config:
+        populate_by_name = True
+
+
+class PurgeUserRequest(BaseModel):
+    userId: str
+
+
+class PurgeUserResponse(BaseModel):
+    success: bool
+    cleared: dict[str, int]
 
 
 @router.get("/user/profile", response_model=UserProfile)
@@ -37,23 +49,21 @@ async def get_user_profile(userId: str, req: Request):
 
     async with get_db() as db:
         cursor = await db.execute(
-            """SELECT id, role_name, big_five_json, preferences_json
+            """SELECT id, role_name, preferences_json
                FROM users WHERE id = ?""",
-            (userId,)
+            (userId,),
         )
         row = await cursor.fetchone()
 
         if not row:
             raise HTTPException(status_code=404, detail="User not found")
 
-        big_five = json.loads(row[2]) if row[2] else {}
-        preferences = json.loads(row[3]) if row[3] else {}
+        preferences = json.loads(row[2]) if row[2] else {}
 
         return UserProfile(
             id=row[0],
             role_name=row[1],
-            big_five=BigFiveTraits(**big_five),
-            preferences=UserPreferences(**preferences)
+            preferences=UserPreferences(**preferences),
         )
 
 
@@ -61,17 +71,155 @@ async def get_user_profile(userId: str, req: Request):
 async def update_user_profile(profile: UserProfile, req: Request):
     from ..database import get_db
 
-    async with get_db() as db:
-        await db.execute(
-            """INSERT OR REPLACE INTO users (id, role_name, big_five_json, preferences_json, updated_at)
-               VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)""",
-            (
-                profile.id,
-                profile.role_name,
-                json.dumps(profile.big_five.dict()),
-                json.dumps(profile.preferences.dict())
+    start_time = time.time()
+
+    try:
+        async with get_db() as db:
+            cursor = await db.execute(
+                "SELECT preferences_json FROM users WHERE id = ?", (profile.id,)
             )
+            old_row = await cursor.fetchone()
+            old_preferences = json.loads(old_row[0]) if old_row and old_row[0] else {}
+
+            await db.execute(
+                """INSERT OR REPLACE INTO users (id, role_name, preferences_json, updated_at)
+                   VALUES (?, ?, ?, CURRENT_TIMESTAMP)""",
+                (
+                    profile.id,
+                    profile.role_name,
+                    json.dumps(profile.preferences.dict(by_alias=False)),
+                ),
+            )
+            await db.commit()
+
+        latency_ms = (time.time() - start_time) * 1000
+
+        fields_changed = []
+        if old_preferences != profile.preferences.dict():
+            fields_changed.append("preferences")
+
+        await log_service.log_audit(
+            action=AuditAction.USER_PROFILE_UPDATE,
+            resource_type="user",
+            resource_id=profile.id,
+            result="SUCCESS",
+            user_id=profile.id,
+            details={
+                "fields_changed": fields_changed,
+                "latency_ms": round(latency_ms, 2),
+            },
         )
-        await db.commit()
 
         return profile
+
+    except Exception as e:
+        latency_ms = (time.time() - start_time) * 1000
+        await log_service.log_audit(
+            action=AuditAction.USER_PROFILE_UPDATE,
+            resource_type="user",
+            resource_id=profile.id,
+            result="FAIL",
+            user_id=profile.id,
+            details={
+                "error": str(e),
+                "latency_ms": round(latency_ms, 2),
+            },
+        )
+        raise
+
+
+@router.post("/user/purge", response_model=PurgeUserResponse)
+async def purge_user_data(payload: PurgeUserRequest, req: Request):
+    from ..database import get_db
+
+    user_id = payload.userId.strip()
+    if not user_id:
+        raise HTTPException(status_code=400, detail="userId is required")
+
+    memory_engine = req.app.state.memory_engine
+    cleared_memory_count = 0
+    try:
+        cleared_memory_count = await memory_engine.clear_user_memories(user_id)
+    except Exception as e:  # noqa: BLE001
+        if logger:
+            logger.error("Failed to clear vector memories for user %s: %s", user_id, e)
+        raise HTTPException(status_code=500, detail="清理向量记忆失败") from e
+
+    try:
+        async with get_db() as db:
+            cursor = await db.execute("DELETE FROM conversation_logs WHERE user_id = ?", (user_id,))
+            cleared_logs = cursor.rowcount or 0
+
+            cursor = await db.execute("DELETE FROM conversations WHERE user_id = ?", (user_id,))
+            cleared_conversations = cursor.rowcount or 0
+
+            cursor = await db.execute("DELETE FROM memory_summaries WHERE user_id = ?", (user_id,))
+            cleared_summaries = cursor.rowcount or 0
+
+            cursor = await db.execute("DELETE FROM character_cards WHERE user_id = ?", (user_id,))
+            cleared_character_cards = cursor.rowcount or 0
+
+            cursor = await db.execute("DELETE FROM audit_logs WHERE user_id = ?", (user_id,))
+            cleared_audit_logs = cursor.rowcount or 0
+
+            cursor = await db.execute("DELETE FROM system_logs WHERE user_id = ?", (user_id,))
+            cleared_system_logs = cursor.rowcount or 0
+
+            cursor = await db.execute("DELETE FROM users WHERE id = ?", (user_id,))
+            cleared_user_profile = cursor.rowcount or 0
+
+            cursor = await db.execute("DELETE FROM model_configs WHERE account_id = ?", (user_id,))
+            cleared_model_configs = cursor.rowcount or 0
+
+            await db.commit()
+
+        clear_active_model(user_id)
+        conversation_cache = get_conversation_cache()
+        conversation_cache.clear_user(user_id)
+
+        prompt_builder = getattr(req.app.state, "prompt_builder", None)
+        if prompt_builder and hasattr(prompt_builder, "clear_character_card_cache_for_user"):
+            prompt_builder.clear_character_card_cache_for_user(user_id)
+
+        await log_service.log_audit(
+            action=AuditAction.USER_PROFILE_UPDATE,
+            resource_type="user",
+            resource_id=user_id,
+            result="SUCCESS",
+            user_id=user_id,
+            details={
+                "event": "PURGE_USER_DATA",
+                "cleared": {
+                    "memories": cleared_memory_count,
+                    "conversation_logs": cleared_logs,
+                    "conversations": cleared_conversations,
+                    "memory_summaries": cleared_summaries,
+                    "character_cards": cleared_character_cards,
+                    "audit_logs": cleared_audit_logs,
+                    "system_logs": cleared_system_logs,
+                    "user_profile": cleared_user_profile,
+                    "model_configs": cleared_model_configs,
+                },
+            },
+        )
+
+        return PurgeUserResponse(
+            success=True,
+            cleared={
+                "memories": cleared_memory_count,
+                "conversation_logs": cleared_logs,
+                "conversations": cleared_conversations,
+                "memory_summaries": cleared_summaries,
+                "character_cards": cleared_character_cards,
+                "audit_logs": cleared_audit_logs,
+                "system_logs": cleared_system_logs,
+                "user_profile": cleared_user_profile,
+                "model_configs": cleared_model_configs,
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        if logger:
+            logger.error("Failed to purge user data for %s: %s", user_id, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="清理用户数据失败") from e

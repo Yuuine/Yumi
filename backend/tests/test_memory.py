@@ -1,6 +1,7 @@
 """
 Tests for Memory Engine
 """
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -156,7 +157,10 @@ class TestMemoryEngine:
                 AsyncMock(
                     return_value=[
                         {"content": "User: Hello\nAssistant: Hi!", "timestamp": "2024-01-01"},
-                        {"content": "User: How are you?\nAssistant: I'm good!", "timestamp": "2024-01-02"},
+                        {
+                            "content": "User: How are you?\nAssistant: I'm good!",
+                            "timestamp": "2024-01-02",
+                        },
                     ]
                 ),
             ):

@@ -1,6 +1,7 @@
 """
 LLM Service - 使用配置驱动适配器支持多种模型提供商
 """
+
 from __future__ import annotations
 
 import json
@@ -8,8 +9,10 @@ from collections.abc import AsyncIterator
 
 from ..core import LLMException, get_logger, settings
 from .model_adapters import (
+    ChatResponse,
     ModelConfig,
     OpenAICompatibleAdapter,
+    StreamChatResult,
     create_adapter,
 )
 from .proxy_config import get_proxy_config
@@ -70,7 +73,7 @@ class LLMService:
         api_key: str | None = None,
         model_name: str | None = None,
         use_thinking: bool = False,
-    ) -> str:
+    ) -> ChatResponse:
         adapter = await self.get_adapter(
             provider_id=provider_id,
             base_url=base_url,
@@ -85,12 +88,7 @@ class LLMService:
                 max_tokens=max_tokens,
                 use_thinking=use_thinking,
             )
-
-            if response.reasoning_content and response.content:
-                return f"**推理过程:**\n{response.reasoning_content}\n\n**回答:**\n{response.content}"
-            elif response.reasoning_content:
-                return f"**推理过程:**\n{response.reasoning_content}"
-            return response.content
+            return response
         finally:
             await adapter.close()
 
@@ -103,7 +101,7 @@ class LLMService:
         api_key: str | None = None,
         model_name: str | None = None,
         use_thinking: bool = False,
-    ) -> AsyncIterator[str]:
+    ) -> AsyncIterator[str | StreamChatResult]:
         adapter = await self.get_adapter(
             provider_id=provider_id,
             base_url=base_url,
@@ -118,16 +116,16 @@ class LLMService:
                 temperature=temperature,
                 use_thinking=use_thinking,
             ):
-                if chunk.is_done:
+                if isinstance(chunk, StreamChatResult):
+                    yield chunk
+                elif chunk.is_done:
                     break
-
-                if chunk.reasoning_content:
+                elif chunk.reasoning_content:
                     if not in_reasoning:
                         yield "**推理过程:**\n"
                         in_reasoning = True
                     yield chunk.reasoning_content
-
-                if chunk.content:
+                elif chunk.content:
                     if in_reasoning:
                         yield "\n\n**回答:**\n"
                         in_reasoning = False
@@ -152,7 +150,9 @@ class LLMService:
 
         logger.info(
             "Test connection starting: provider=%s, base_url=%s, model=%s",
-            provider_id, base_url, model_name
+            provider_id,
+            base_url,
+            model_name,
         )
 
         try:
@@ -169,23 +169,16 @@ class LLMService:
                 "Test connection response: content_len=%d, reasoning_len=%d, raw_response_keys=%s",
                 len(response.content) if response.content else 0,
                 len(response.reasoning_content) if response.reasoning_content else 0,
-                list(response.raw_response.keys())
+                list(response.raw_response.keys()),
             )
 
             if not response.content and not response.reasoning_content:
                 logger.warning(
                     "Empty response from model. Raw response: %s",
-                    json.dumps(response.raw_response, ensure_ascii=False, default=str)
+                    json.dumps(response.raw_response, ensure_ascii=False, default=str),
                 )
 
-            if response.reasoning_content and response.content:
-                content = f"**推理过程:**\n{response.reasoning_content}\n\n**回答:**\n{response.content}"
-            elif response.reasoning_content:
-                content = f"**推理过程:**\n{response.reasoning_content}"
-            elif response.content:
-                content = response.content
-            else:
-                content = "模型返回成功，但无内容输出。请检查模型名称和 API 配置。"
+            content = self._format_response_content(response)
 
             return True, "连接成功", content, latency
         except LLMException as e:
@@ -196,6 +189,16 @@ class LLMService:
             return False, f"测试失败: {str(e)}", None, None
         finally:
             await adapter.close()
+
+    def _format_response_content(self, response: ChatResponse) -> str:
+        """格式化响应内容，处理推理过程和回答的组合"""
+        if response.reasoning_content and response.content:
+            return f"**推理过程:**\n{response.reasoning_content}\n\n**回答:**\n{response.content}"
+        if response.reasoning_content:
+            return f"**推理过程:**\n{response.reasoning_content}"
+        if response.content:
+            return response.content
+        return "模型返回成功，但无内容输出。请检查模型名称和 API 配置。"
 
     async def count_tokens(self, text: str) -> int:
         return len(text) // 4

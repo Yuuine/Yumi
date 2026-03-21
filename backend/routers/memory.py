@@ -36,16 +36,12 @@ async def search_memory(
     query: str,
     top_k: int = 6,
     decay_days: bool = True,
-    req: Request = None
+    request: Request = None,  # type: ignore[assignment]
 ):
-    memory_engine = req.app.state.memory_engine
+    memory_engine = request.app.state.memory_engine
 
     try:
-        results = await memory_engine.search(
-            query=query,
-            top_k=top_k,
-            apply_decay=decay_days
-        )
+        results = await memory_engine.search(query=query, top_k=top_k, apply_decay=decay_days)
 
         memories = [
             MemoryItem(
@@ -53,15 +49,12 @@ async def search_memory(
                 content=item["content"],
                 timestamp=item["timestamp"],
                 similarity=item["similarity"],
-                decay_factor=item.get("decay_factor", 1.0)
+                decay_factor=item.get("decay_factor", 1.0),
             )
             for item in results
         ]
 
-        return MemorySearchResult(
-            memories=memories,
-            total=len(memories)
-        )
+        return MemorySearchResult(memories=memories, total=len(memories))
 
     except Exception as e:
         logger.error("Memory search error: %s", e, exc_info=True)
