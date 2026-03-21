@@ -307,7 +307,7 @@ watch(
 
 watch(
   () => props.characterId,
-  (newId) => {
+  newId => {
     if (newId) {
       void loadCharacter(newId)
     }

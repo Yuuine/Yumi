@@ -23,11 +23,7 @@
               </div>
             </div>
             <div class="header-actions">
-              <button
-                type="button"
-                class="toolbar-btn secondary"
-                @click="handleCreateNew"
-              >
+              <button type="button" class="toolbar-btn secondary" @click="handleCreateNew">
                 新建
               </button>
               <button
@@ -46,7 +42,11 @@
             </button>
           </div>
           <div class="modal-body">
-            <CharacterSettings ref="settingsRef" :characterId="currentCharacterId" @character-loaded="onCharacterLoaded" />
+            <CharacterSettings
+              ref="settingsRef"
+              :characterId="currentCharacterId"
+              @character-loaded="onCharacterLoaded"
+            />
           </div>
         </div>
       </div>

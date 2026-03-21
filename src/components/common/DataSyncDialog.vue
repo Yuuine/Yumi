@@ -32,9 +32,7 @@
       </div>
       <template #footer>
         <div class="dialog-footer">
-          <el-button type="primary" :loading="processing" @click="handleConfirm">
-            确认
-          </el-button>
+          <el-button type="primary" :loading="processing" @click="handleConfirm">确认</el-button>
         </div>
       </template>
     </el-dialog>

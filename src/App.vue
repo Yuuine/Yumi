@@ -26,6 +26,7 @@ import { logger } from '@/utils/logger'
 const toast = useToast()
 
 const DEFAULT_ACCOUNT_CREATED_TOAST_KEY = 'yumi_show_default_account_created_toast'
+const ACCOUNTS_KEY = 'yumi_accounts'
 
 const settingsStore = useSettingsStore()
 const accountStore = useAccountStore()
@@ -36,41 +37,63 @@ const themeClass = computed(() => `theme-${settingsStore.theme}`)
 const showInitLoading = ref(true)
 const dataSyncDialogRef = ref<InstanceType<typeof DataSyncDialog>>()
 
+interface LocalAccountsData {
+  accounts: Array<{ id: string; displayName: string }>
+}
+
+function loadLocalAccounts(): LocalAccountsData | null {
+  const stored = localStorage.getItem(ACCOUNTS_KEY)
+  if (!stored) return null
+  try {
+    return JSON.parse(stored)
+  } catch {
+    return null
+  }
+}
+
+function showDefaultAccountCreatedToastIfNeeded(): void {
+  if (sessionStorage.getItem(DEFAULT_ACCOUNT_CREATED_TOAST_KEY) === '1') {
+    sessionStorage.removeItem(DEFAULT_ACCOUNT_CREATED_TOAST_KEY)
+    toast.success('已创建新默认角色')
+  }
+}
+
+async function initializeAccountAndHideLoading(): Promise<void> {
+  await accountStore.initialize()
+  showInitLoading.value = false
+  showDefaultAccountCreatedToastIfNeeded()
+}
+
 async function checkDataSync(): Promise<boolean> {
   try {
-    const accountsKey = 'yumi_accounts'
-    const storedAccounts = localStorage.getItem(accountsKey)
-    
-    if (!storedAccounts) {
+    const data = loadLocalAccounts()
+
+    if (!data) {
       logger.info('App', 'No local accounts found')
       return true
     }
 
-    try {
-      const data = JSON.parse(storedAccounts)
-      const accounts = data.accounts ?? []
-      
-      if (accounts.length === 0) {
-        logger.info('App', 'Local accounts found but empty')
-        return true
-      }
+    const accounts = data.accounts ?? []
 
-      for (const account of accounts) {
-        try {
-          await userApi.getProfile(account.id)
-          logger.info('App', 'Account exists in backend', { accountId: account.id })
-          return true
-        } catch (e) {
-          logger.info('App', 'Account not found in backend, showing sync dialog', { accountId: account.id })
-          return false
-        }
-      }
-
-      return true
-    } catch (e) {
-      logger.warn('App', 'Failed to parse local accounts', e as Record<string, unknown>)
+    if (accounts.length === 0) {
+      logger.info('App', 'Local accounts found but empty')
       return true
     }
+
+    for (const account of accounts) {
+      try {
+        await userApi.getProfile(account.id)
+        logger.info('App', 'Account exists in backend', { accountId: account.id })
+        return true
+      } catch (_e) {
+        logger.info('App', 'Account not found in backend, showing sync dialog', {
+          accountId: account.id,
+        })
+        return false
+      }
+    }
+
+    return true
   } catch (e) {
     logger.error('App', 'Failed to check data sync', e as Record<string, unknown>)
     return true
@@ -80,17 +103,15 @@ async function checkDataSync(): Promise<boolean> {
 async function handleDataSyncConfirm(option: 'restart' | 'sync') {
   if (option === 'sync') {
     try {
-      const accountsKey = 'yumi_accounts'
-      const storedAccounts = localStorage.getItem(accountsKey)
-      
-      if (storedAccounts) {
-        const data = JSON.parse(storedAccounts)
+      const data = loadLocalAccounts()
+
+      if (data) {
         const accounts = data.accounts ?? []
-        
+
         for (const account of accounts) {
           try {
             await userApi.getProfile(account.id)
-          } catch (e) {
+          } catch (_e) {
             logger.info('App', 'Creating account in backend', { accountId: account.id })
             await userApi.updateProfile({
               id: account.id,
@@ -99,54 +120,41 @@ async function handleDataSyncConfirm(option: 'restart' | 'sync') {
                 communicationStyle: 'warm',
                 topicsOfInterest: ['生活', '工作', '情感'],
                 emotionalSupportLevel: 'high',
-                responseLength: 'medium'
-              }
+                responseLength: 'medium',
+              },
             })
           }
         }
       }
-      
-      await accountStore.initialize()
-      showInitLoading.value = false
-      
-      if (sessionStorage.getItem(DEFAULT_ACCOUNT_CREATED_TOAST_KEY) === '1') {
-        sessionStorage.removeItem(DEFAULT_ACCOUNT_CREATED_TOAST_KEY)
-        toast.success('已创建新默认角色')
-      }
-      
+
+      await initializeAccountAndHideLoading()
       toast.success('数据同步成功')
     } catch (e) {
       logger.error('App', 'Failed to sync data', e as Record<string, unknown>)
       toast.error('数据同步失败')
-      await accountStore.initialize()
-      showInitLoading.value = false
+      await initializeAccountAndHideLoading()
     }
   } else if (option === 'restart') {
     try {
-      const accountsKey = 'yumi_accounts'
-      const storedAccounts = localStorage.getItem(accountsKey)
-      
-      if (storedAccounts) {
-        const data = JSON.parse(storedAccounts)
+      const data = loadLocalAccounts()
+
+      if (data) {
         const accounts = data.accounts ?? []
-        
+
         for (const account of accounts) {
           const accountStorageKey = `yumi_account_${account.id}`
           localStorage.removeItem(accountStorageKey)
         }
-        
-        localStorage.removeItem(accountsKey)
+
+        localStorage.removeItem(ACCOUNTS_KEY)
       }
-      
-      await accountStore.initialize()
-      showInitLoading.value = false
-      
+
+      await initializeAccountAndHideLoading()
       toast.success('已清除本地数据')
     } catch (e) {
       logger.error('App', 'Failed to clear local data', e as Record<string, unknown>)
       toast.error('清除数据失败')
-      await accountStore.initialize()
-      showInitLoading.value = false
+      await initializeAccountAndHideLoading()
     }
   }
 }
@@ -155,13 +163,7 @@ onMounted(async () => {
   const isSynced = await checkDataSync()
 
   if (isSynced) {
-    await accountStore.initialize()
-    showInitLoading.value = false
-    
-    if (sessionStorage.getItem(DEFAULT_ACCOUNT_CREATED_TOAST_KEY) === '1') {
-      sessionStorage.removeItem(DEFAULT_ACCOUNT_CREATED_TOAST_KEY)
-      toast.success('已创建新默认角色')
-    }
+    await initializeAccountAndHideLoading()
   } else {
     dataSyncDialogRef.value?.open()
   }

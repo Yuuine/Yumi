@@ -14,9 +14,11 @@
     "lint:check": "eslint . --ext .vue,.ts,.tsx",
     "format": "prettier --write \"src/**/*.{vue,ts,tsx,scss,json}\"",
     "format:check": "prettier --check \"src/**/*.{vue,ts,tsx,scss,json}\"",
+    "typecheck": "vue-tsc --noEmit",
     "test": "vitest",
     "test:run": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "check": "npm run lint:check && npm run format:check && npm run typecheck && npm run test:run"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.1",
