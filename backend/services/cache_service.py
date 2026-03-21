@@ -9,9 +9,8 @@ import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any
-from collections import OrderedDict
 
-from ..core import get_logger, get_lru_cache, get_ttl_cache
+from ..core import get_logger
 from ..core.cache import LRUCache, TTLCache
 
 logger = get_logger(__name__)

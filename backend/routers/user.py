@@ -20,7 +20,7 @@ class UserPreferences(BaseModel):
     topics_of_interest: list[str] = Field(["生活", "工作", "情感"], alias="topicsOfInterest")
     emotional_support_level: str = Field("high", alias="emotionalSupportLevel")
     response_length: str = Field("medium", alias="responseLength")
-    
+
     class Config:
         populate_by_name = True
 
@@ -29,7 +29,7 @@ class UserProfile(BaseModel):
     id: str
     role_name: str = Field(..., alias="roleName")
     preferences: UserPreferences
-    
+
     class Config:
         populate_by_name = True
 

@@ -9,10 +9,10 @@ from collections.abc import AsyncIterator
 
 from ..core import LLMException, get_logger, settings
 from .model_adapters import (
+    ChatResponse,
     ModelConfig,
     OpenAICompatibleAdapter,
     StreamChatResult,
-    StreamChunk,
     create_adapter,
 )
 from .proxy_config import get_proxy_config
@@ -73,7 +73,7 @@ class LLMService:
         api_key: str | None = None,
         model_name: str | None = None,
         use_thinking: bool = False,
-    ) -> "ChatResponse":
+    ) -> ChatResponse:
         adapter = await self.get_adapter(
             provider_id=provider_id,
             base_url=base_url,
@@ -101,7 +101,7 @@ class LLMService:
         api_key: str | None = None,
         model_name: str | None = None,
         use_thinking: bool = False,
-    ) -> "AsyncIterator[str | StreamChatResult]":
+    ) -> AsyncIterator[str | StreamChatResult]:
         adapter = await self.get_adapter(
             provider_id=provider_id,
             base_url=base_url,
@@ -190,7 +190,7 @@ class LLMService:
         finally:
             await adapter.close()
 
-    def _format_response_content(self, response: "ChatResponse") -> str:
+    def _format_response_content(self, response: ChatResponse) -> str:
         """格式化响应内容，处理推理过程和回答的组合"""
         if response.reasoning_content and response.content:
             return f"**推理过程:**\n{response.reasoning_content}\n\n**回答:**\n{response.content}"

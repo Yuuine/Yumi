@@ -6,8 +6,9 @@ from __future__ import annotations
 import json
 import time
 import uuid
+from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
-from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -132,7 +133,7 @@ async def _build_context_and_emotion(
     request: ChatRequest,
     conversation_id: str,
     req: Request,
-) -> Tuple[List[Dict], EmotionData, List[Any]]:
+) -> tuple[list[dict], EmotionData, list[Any]]:
     """构建对话上下文并分析用户情绪"""
     memory_engine = req.app.state.memory_engine
     emotion_engine = req.app.state.emotion_engine
@@ -140,7 +141,7 @@ async def _build_context_and_emotion(
 
     if settings.app.debug:
         user_emotion = EmotionData(valence=0.5, arousal=0.5, label="neutral")
-        relevant_memories: List[Any] = []
+        relevant_memories: list[Any] = []
     else:
         user_emotion = await emotion_engine.analyze(request.message)
         relevant_memories = await memory_engine.search(
@@ -161,11 +162,11 @@ async def _build_context_and_emotion(
 
 
 async def _call_llm_service(
-    messages: List[Dict],
+    messages: list[dict],
     request: ChatRequest,
-    active_model: Dict,
+    active_model: dict,
     req: Request,
-) -> Tuple[Any, float]:
+) -> tuple[Any, float]:
     """调用LLM服务并返回响应和延迟"""
     llm_service = req.app.state.llm_service
     llm_start_time = time.time()
@@ -467,7 +468,7 @@ async def _build_stream_context(
     conversation_id: str,
     characterId: str | None,
     req: Request,
-) -> Tuple[List[Dict], EmotionData, List[Any]]:
+) -> tuple[list[dict], EmotionData, list[Any]]:
     """为流式响应构建上下文"""
     memory_engine = req.app.state.memory_engine
     emotion_engine = req.app.state.emotion_engine
@@ -475,7 +476,7 @@ async def _build_stream_context(
 
     if settings.app.debug:
         user_emotion = EmotionData(valence=0.5, arousal=0.5, label="neutral")
-        relevant_memories: List[Any] = []
+        relevant_memories: list[Any] = []
     else:
         user_emotion = await emotion_engine.analyze(message)
         relevant_memories = await memory_engine.search(
@@ -502,7 +503,7 @@ async def _stream_chat_generator(
     characterId: str | None,
     temperature: float,
     deepThinking: bool,
-    active_model: Dict,
+    active_model: dict,
     start_time: float,
     start_datetime: str,
     req: Request,
@@ -710,7 +711,7 @@ async def get_conversations(
     characterId: str | None = None,
     limit: int = 20,
     offset: int = 0,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """获取用户的会话列表，可按角色卡筛选"""
     conversations = await conversation_service.get_user_conversations(
         user_id=userId,
@@ -727,7 +728,7 @@ async def get_conversation_dialogue_logs(
     includeDetails: bool = False,
     limit: int = 100,
     offset: int = 0,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """获取特定会话的对话交互日志"""
     logs = await dialogue_log_service.get_interactions_by_conversation(
         conversation_id=conversation_id,
@@ -739,7 +740,7 @@ async def get_conversation_dialogue_logs(
 
 
 @router.delete("/dialogue-logs")
-async def clear_dialogue_logs(userId: str | None = None) -> Dict[str, Any]:
+async def clear_dialogue_logs(userId: str | None = None) -> dict[str, Any]:
     """清除对话交互日志，不传userId则清除所有"""
     deleted_count = await dialogue_log_service.clear_all_logs(user_id=userId)
     return {"deleted_count": deleted_count, "user_id": userId}

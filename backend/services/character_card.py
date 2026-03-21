@@ -332,7 +332,7 @@ async def upsert_character_card(db: Any, card: CharacterCard) -> None:
     )
     await db.commit()
     logger.info("Upserted character card id=%s user=%s", card.id, card.user_id)
-    
+
     _cache.invalidate_character(card.user_id, card.id)
 
 
