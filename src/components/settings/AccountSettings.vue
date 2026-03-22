@@ -102,6 +102,10 @@
           <button class="action-btn" @click="handleCreateAccount">创建账号</button>
           <button class="action-btn" @click="handleSwitchAccount">切换账号</button>
         </div>
+        <button class="action-btn" :disabled="isSyncing" @click="handleSyncAccounts">
+          <span v-if="isSyncing" class="btn-loading-spinner"></span>
+          <span>{{ isSyncing ? '同步中...' : '发现并同步账号' }}</span>
+        </button>
         <button class="action-btn danger full-width" @click="handleDelete">
           <IconDelete class="btn-icon" />
           <span>删除账号</span>
@@ -252,6 +256,7 @@ const isSettingPassword = ref(false)
 const isExporting = ref(false)
 const isDeleting = ref(false)
 const isImporting = ref(false)
+const isSyncing = ref(false)
 const deleteConfirmText = ref('')
 const deleteCountdown = ref(0)
 let deleteCountdownTimer: ReturnType<typeof setInterval> | null = null
@@ -289,6 +294,7 @@ onMounted(() => {
     void loadStats()
   }, 3000)
   window.addEventListener('focus', handleWindowFocus)
+  void refreshAccountFromBackend()
 })
 
 onUnmounted(() => {
@@ -319,6 +325,15 @@ watch(
 
 function handleWindowFocus(): void {
   void loadStats()
+  void refreshAccountFromBackend()
+}
+
+async function refreshAccountFromBackend() {
+  try {
+    await accountStore.refreshCurrentAccountFromBackend?.()
+  } catch (error) {
+    logger.error('AccountSettings', 'Failed to refresh account from backend', error)
+  }
 }
 
 async function loadStats() {
@@ -475,6 +490,28 @@ async function confirmSwitchAccount(accountId: string): Promise<void> {
     const errMsg = error instanceof Error ? error.message : '切换账号失败'
     toast.error(`切换失败: ${errMsg}`)
     logger.error('AccountSettings', 'Failed to switch account from settings', error)
+  }
+}
+
+async function handleSyncAccounts(): Promise<void> {
+  isSyncing.value = true
+  try {
+    const result = await accountStore.syncAccountsFromBackend()
+    if (result.imported > 0) {
+      toast.success(`成功发现并导入 ${result.imported} 个账号`)
+    } else if (result.alreadyExisted > 0) {
+      toast.info(`没有发现新账号，已有 ${result.alreadyExisted} 个账号在本地`)
+    } else {
+      toast.info('没有发现任何账号')
+    }
+    logger.info('AccountSettings', 'Accounts synced successfully', result)
+    await loadStats()
+  } catch (error) {
+    const errMsg = error instanceof Error ? error.message : '同步账号失败'
+    toast.error(`同步失败: ${errMsg}`)
+    logger.error('AccountSettings', 'Failed to sync accounts', error)
+  } finally {
+    isSyncing.value = false
   }
 }
 
@@ -821,6 +858,11 @@ async function confirmImport(): Promise<void> {
     border-color: var(--border-color);
   }
 
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
   &.danger {
     color: var(--color-danger);
     background: var(--color-danger-light-9);
@@ -851,6 +893,22 @@ async function confirmImport(): Promise<void> {
 
 .account-manage-buttons {
   margin-top: var(--spacing-sm);
+}
+
+.btn-loading-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(48, 49, 51, 0.3);
+  border-top-color: var(--text-primary, #303133);
+  border-radius: 50%;
+  animation: btn-spin 0.8s linear infinite;
+}
+
+@keyframes btn-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .switch-account-list {

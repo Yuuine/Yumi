@@ -30,15 +30,6 @@ export class HttpClient {
   }
 
   private setupInterceptors(): void {
-    this.instance.interceptors.request.use(
-      config => {
-        return config
-      },
-      error => {
-        return Promise.reject(error)
-      }
-    )
-
     this.instance.interceptors.response.use(
       response => {
         return response

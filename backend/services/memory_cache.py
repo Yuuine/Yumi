@@ -81,12 +81,18 @@ class CachedMemoryEngine:
         self._cache.set(cache_key, count, ttl=60.0)
         return count
 
+    async def record_conversation_turn(self, user_id: str) -> int:
+        self._cache.delete(f"turn_count:{user_id}")
+        return await self._engine.record_conversation_turn(user_id)
+
     async def summarize_with_llm(
         self,
         user_id: str,
         llm_service: Any,
+        **kwargs: Any,
     ) -> str:
-        return await self._engine.summarize_with_llm(user_id, llm_service)
+        self._cache.clear()
+        return await self._engine.summarize_with_llm(user_id, llm_service, **kwargs)
 
     async def summarize(self, user_id: str) -> str:
         return await self._engine.summarize(user_id)

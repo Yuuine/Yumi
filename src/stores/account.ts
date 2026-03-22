@@ -3,10 +3,90 @@ import { ref, computed } from 'vue'
 import { generateDeviceFingerprint } from '@/utils/device-fingerprint'
 import type { DeviceFingerprint } from '@/utils/device-fingerprint'
 import { encrypt, decrypt } from '@/utils/crypto-service'
-import type { EncryptedData } from '@/utils/crypto-service'
 import { logger } from '@/utils/logger'
-import type { AccountCharacter } from '@/types/character'
-import { userApi } from '@/api/user'
+import type { AccountCharacter, CharacterCardFlat } from '@/types/character'
+import { userApi, characterCardsApi } from '@/api'
+import type { UserListItem } from '@/api/user'
+import {
+  generateAccountId,
+  generateCharacterId,
+  generateConversationId,
+  generateMessageId,
+  generateSecretId,
+  buildChecksumSource,
+  sha256Hex,
+  isEncryptedData,
+  isAccountExportData,
+  countMessages,
+  decryptModelSecrets,
+  remapImportIds,
+} from '@/utils'
+
+function convertFlatToAccount(card: CharacterCardFlat): AccountCharacter {
+  const now = new Date().toISOString()
+  return {
+    id: card.id,
+    accountId: card.userId,
+    name: card.formalName,
+    nickname: card.nickname,
+    isActive: card.isActive,
+    roleOverview: card.roleOverview,
+    appearance: {
+      race: card.raceOrForm,
+      gender: card.gender,
+      visualAge: card.visualAge,
+      actualAge: card.actualAge,
+      location: card.location,
+      description: card.appearanceDesc,
+    },
+    personality: {
+      core: card.corePersonality,
+      selfPerception: card.selfPerception,
+      attitudeToUser: card.attitudeToUser,
+      likes: card.likes,
+      dislikes: card.dislikes,
+    },
+    communication: {
+      toneBase: card.toneBase,
+      wordHabits: card.wordHabits,
+      emotionRules: card.emotionRules,
+      lengthPref: card.lengthPref,
+    },
+    specialLogic: card.specialLogicList,
+    fewShotExamples: card.fewShotExamples,
+    createdAt: now,
+    updatedAt: now,
+  }
+}
+
+function convertAccountToFlat(card: AccountCharacter, userId: string): CharacterCardFlat {
+  return {
+    id: card.id,
+    userId,
+    conversationId: null,
+    roleOverview: card.roleOverview,
+    formalName: card.name,
+    nickname: card.nickname,
+    raceOrForm: card.appearance.race,
+    gender: card.appearance.gender,
+    visualAge: card.appearance.visualAge,
+    actualAge: card.appearance.actualAge,
+    location: card.appearance.location,
+    appearanceDesc: card.appearance.description,
+    corePersonality: card.personality.core,
+    selfPerception: card.personality.selfPerception,
+    attitudeToUser: card.personality.attitudeToUser,
+    likes: card.personality.likes,
+    dislikes: card.personality.dislikes,
+    toneBase: card.communication.toneBase,
+    wordHabits: card.communication.wordHabits,
+    emotionRules: card.communication.emotionRules,
+    lengthPref: card.communication.lengthPref,
+    specialLogicList: card.specialLogic,
+    fewShotExamples: card.fewShotExamples,
+    isActive: card.isActive ?? true,
+  }
+}
 
 export interface Account {
   id: string
@@ -113,130 +193,6 @@ function createDefaultAccountConfig(): AccountConfig {
   return JSON.parse(JSON.stringify(DEFAULT_ACCOUNT_CONFIG)) as AccountConfig
 }
 
-function generateAccountId(): string {
-  return `acc_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
-}
-
-function generateCharacterId(): string {
-  return `char_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
-}
-
-function generateConversationId(): string {
-  return `conv_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
-}
-
-function generateMessageId(): string {
-  return `msg_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
-}
-
-function generateSecretId(): string {
-  return `secret_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
-}
-
-function sortObject(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(sortObject)
-  }
-
-  if (value && typeof value === 'object') {
-    const sorted: Record<string, unknown> = {}
-    Object.keys(value as Record<string, unknown>)
-      .sort()
-      .forEach(key => {
-        sorted[key] = sortObject((value as Record<string, unknown>)[key])
-      })
-    return sorted
-  }
-
-  return value
-}
-
-function buildChecksumSource(payload: Omit<AccountExportData, 'checksum'>): string {
-  return JSON.stringify(sortObject(payload))
-}
-
-async function sha256Hex(input: string): Promise<string> {
-  const data = new TextEncoder().encode(input)
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data)
-  return Array.from(new Uint8Array(hashBuffer))
-    .map(byte => byte.toString(16).padStart(2, '0'))
-    .join('')
-}
-
-function isEncryptedData(value: unknown): value is EncryptedData {
-  if (!value || typeof value !== 'object') {
-    return false
-  }
-  const candidate = value as Record<string, unknown>
-  return (
-    typeof candidate.ciphertext === 'string' &&
-    typeof candidate.iv === 'string' &&
-    typeof candidate.salt === 'string'
-  )
-}
-
-function isAccountExportData(value: unknown): value is AccountExportData {
-  if (!value || typeof value !== 'object') {
-    return false
-  }
-
-  const candidate = value as Record<string, unknown>
-  const manifest = candidate.manifest as Record<string, unknown> | undefined
-  return (
-    typeof candidate.version === 'string' &&
-    typeof candidate.exportedAt === 'string' &&
-    !!manifest &&
-    manifest.format === 'yumi-account-backup' &&
-    manifest.schemaVersion === '1.0.0' &&
-    manifest.checksumAlgorithm === 'sha256'
-  )
-}
-
-function countMessages(conversations: Record<string, AccountConversation>): number {
-  return Object.values(conversations).reduce((total, conversation) => {
-    return total + (conversation.messages?.length ?? 0)
-  }, 0)
-}
-
-/**
- * 解密模型密钥
- * @param models - 模型列表
- * @param password - 解密密钥
- * @returns 解密后的模型列表
- */
-async function decryptModelSecrets(
-  models: SecretEntry[],
-  password: string
-): Promise<SecretEntry[]> {
-  const decryptedModels: SecretEntry[] = []
-
-  for (const model of models) {
-    try {
-      if (model.apiSecret) {
-        const secretData = JSON.parse(model.apiSecret)
-        const encryptedData: EncryptedData = {
-          ciphertext: model.apiKey,
-          iv: secretData.iv,
-          salt: secretData.salt,
-        }
-        const decrypted = await decrypt(encryptedData, password)
-        const creds = JSON.parse(decrypted)
-        decryptedModels.push({
-          ...model,
-          apiKey: creds.apiKey,
-          apiSecret: creds.apiSecret,
-        })
-      } else {
-        decryptedModels.push(model)
-      }
-    } catch {
-      // 解密失败时跳过该项，不返回加密数据
-    }
-  }
-
-  return decryptedModels
-}
-
 /**
  * 处理导入数据，验证清单和解密
  * @param importData - 导入的数据
@@ -281,71 +237,6 @@ async function processImportData(
     conversations,
     importedConfig: importData.config ?? createDefaultAccountConfig(),
   }
-}
-
-/**
- * 重新映射导入数据的ID
- * @param characters - 角色数据
- * @param conversations - 对话数据
- * @param config - 配置数据
- * @param accountId - 新账号ID
- * @returns 重新映射后的数据
- */
-function remapImportIds(
-  characters: Record<string, AccountCharacter>,
-  conversations: Record<string, AccountConversation>,
-  config: AccountConfig,
-  accountId: string
-): {
-  mappedCharacters: Record<string, AccountCharacter>
-  mappedConversations: Record<string, AccountConversation>
-  finalConfig: AccountConfig
-} {
-  const oldToNewCharIds: Record<string, string> = {}
-
-  // 重新映射角色ID
-  Object.values(characters).forEach(charValue => {
-    const char = charValue as AccountCharacter
-    const oldId = char.id
-    const newId = generateCharacterId()
-    oldToNewCharIds[oldId] = newId
-    char.id = newId
-    char.accountId = accountId
-  })
-
-  // 重新映射对话ID和消息ID
-  Object.values(conversations).forEach(convValue => {
-    const conv = convValue as AccountConversation
-    conv.id = generateConversationId()
-    conv.accountId = accountId
-
-    if (conv.characterId && oldToNewCharIds[conv.characterId]) {
-      conv.characterId = oldToNewCharIds[conv.characterId]
-    }
-
-    conv.messages?.forEach(msg => {
-      if (!msg.id) {
-        msg.id = generateMessageId()
-      }
-    })
-  })
-
-  // 更新配置中的活跃角色ID
-  let finalConfig = config
-  if (config.activeCharacterId && oldToNewCharIds[config.activeCharacterId]) {
-    finalConfig = {
-      ...config,
-      activeCharacterId: oldToNewCharIds[config.activeCharacterId],
-    }
-  } else if (
-    (!config.activeCharacterId || !characters[config.activeCharacterId]) &&
-    Object.keys(characters).length > 0
-  ) {
-    const first = Object.values(characters)[0] as AccountCharacter
-    finalConfig = { ...config, activeCharacterId: first.id }
-  }
-
-  return { mappedCharacters: characters, mappedConversations: conversations, finalConfig }
 }
 
 export const useAccountStore = defineStore('account', () => {
@@ -581,6 +472,20 @@ export const useAccountStore = defineStore('account', () => {
       logger.warn('AccountStore', 'Failed to sync account to backend', e as Record<string, unknown>)
     }
 
+    if (defaultCharacter) {
+      try {
+        const char = defaultCharacter as AccountCharacter
+        await saveCharacter(char)
+        logger.info('AccountStore', 'Default character synced to backend', { characterId: char.id })
+      } catch (e) {
+        logger.warn(
+          'AccountStore',
+          'Failed to sync default character to backend',
+          e as Record<string, unknown>
+        )
+      }
+    }
+
     logger.info('AccountStore', 'Created account', { accountId, displayName })
 
     return account
@@ -589,17 +494,28 @@ export const useAccountStore = defineStore('account', () => {
   async function loadCurrentAccountData(): Promise<void> {
     if (!currentAccount.value) return
 
-    const stored = localStorage.getItem(getAccountStorageKey(currentAccount.value.id))
-    if (!stored) {
-      logger.warn('AccountStore', 'Account data not found', { id: currentAccount.value.id })
-      return
-    }
+    const accountId = currentAccount.value.id
+    const storageKey = getAccountStorageKey(accountId)
+    const stored = localStorage.getItem(storageKey)
+    const localData = stored ? JSON.parse(stored) : null
 
     try {
-      const data = JSON.parse(stored)
-      const cfg = data.config ?? createDefaultAccountConfig()
-      const chars = data.characters as Record<string, AccountCharacter> | undefined
-      const ids = chars ? Object.keys(chars) : []
+      logger.info('AccountStore', 'Loading data from backend', { accountId })
+
+      const [userProfile, characterCards] = await Promise.all([
+        userApi.getProfile(accountId),
+        characterCardsApi.list(accountId),
+      ])
+
+      logger.info('AccountStore', 'Received data from backend', { accountId, characterCards })
+
+      const cfg = localData?.config ?? createDefaultAccountConfig()
+      const chars: Record<string, AccountCharacter> = {}
+      characterCards.forEach(card => {
+        chars[card.id] = convertFlatToAccount(card)
+      })
+
+      const ids = Object.keys(chars)
       if (
         (cfg.activeCharacterId === undefined || cfg.activeCharacterId === null) &&
         ids.length > 0
@@ -613,19 +529,49 @@ export const useAccountStore = defineStore('account', () => {
 
       currentAccount.value = {
         ...currentAccount.value,
-        ...data.profile,
+        displayName: userProfile.roleName ?? currentAccount.value.displayName,
       }
 
-      localStorage.setItem(
-        getAccountStorageKey(currentAccount.value!.id),
-        JSON.stringify({ ...data, config: cfg })
+      const accountData = {
+        ...(localData ?? {}),
+        profile: currentAccount.value,
+        config: cfg,
+        characters: chars,
+      }
+      localStorage.setItem(storageKey, JSON.stringify(accountData))
+
+      logger.info('AccountStore', 'Loaded account data from backend', { accountId })
+    } catch (error) {
+      logger.warn(
+        'AccountStore',
+        'Failed to load from backend, falling back to localStorage',
+        error as Record<string, unknown>
       )
 
-      if (currentAccount.value) {
-        logger.info('AccountStore', 'Loaded account data', { id: currentAccount.value.id })
+      if (localData) {
+        const cfg = localData.config ?? createDefaultAccountConfig()
+        const chars = localData.characters as Record<string, AccountCharacter> | undefined
+        const ids = chars ? Object.keys(chars) : []
+        if (
+          (cfg.activeCharacterId === undefined || cfg.activeCharacterId === null) &&
+          ids.length > 0
+        ) {
+          cfg.activeCharacterId = ids[0]
+        }
+        if (cfg.activeCharacterId && ids.length > 0 && !ids.includes(cfg.activeCharacterId)) {
+          cfg.activeCharacterId = ids[0]
+        }
+        currentConfig.value = cfg
+
+        currentAccount.value = {
+          ...currentAccount.value,
+          ...localData.profile,
+        }
+
+        logger.info('AccountStore', 'Loaded account data from localStorage', { accountId })
+      } else {
+        logger.warn('AccountStore', 'No local data available', { accountId })
       }
-    } catch (error) {
-      logger.error('AccountStore', 'Failed to load account data', error)
     }
   }
 
@@ -647,18 +593,61 @@ export const useAccountStore = defineStore('account', () => {
   async function updateAccountProfile(updates: Partial<Account>): Promise<void> {
     if (!currentAccount.value) return
 
-    Object.assign(currentAccount.value, updates)
-    await saveAccountsIndex()
+    try {
+      const oldProfile = await userApi.getProfile(currentAccount.value.id)
+      const newProfile = {
+        ...oldProfile,
+        id: currentAccount.value.id,
+        roleName: updates.displayName ?? oldProfile.roleName,
+      }
 
-    const accountId = currentAccount.value.id
-    const stored = localStorage.getItem(getAccountStorageKey(accountId))
-    if (stored) {
-      const data = JSON.parse(stored)
-      data.profile = { ...data.profile, ...updates }
-      localStorage.setItem(getAccountStorageKey(accountId), JSON.stringify(data))
+      await userApi.updateProfile(newProfile)
+
+      Object.assign(currentAccount.value, updates)
+
+      const index = accounts.value.findIndex(a => a.id === currentAccount.value!.id)
+      if (index !== -1) {
+        accounts.value[index] = { ...currentAccount.value }
+      }
+
+      await saveAccountsIndex()
+
+      const accountId = currentAccount.value.id
+      const stored = localStorage.getItem(getAccountStorageKey(accountId))
+      if (stored) {
+        const data = JSON.parse(stored)
+        data.profile = { ...data.profile, ...updates }
+        localStorage.setItem(getAccountStorageKey(accountId), JSON.stringify(data))
+      }
+
+      logger.info('AccountStore', 'Updated account profile', { updates })
+    } catch (error) {
+      logger.error('AccountStore', 'Failed to update profile in backend', error)
+      throw error
     }
+  }
 
-    logger.info('AccountStore', 'Updated account profile', { updates })
+  async function refreshCurrentAccountFromBackend(): Promise<void> {
+    if (!currentAccount.value) return
+
+    try {
+      const backendProfile = await userApi.getProfile(currentAccount.value.id)
+      if (backendProfile) {
+        Object.assign(currentAccount.value, {
+          displayName: backendProfile.roleName,
+        })
+
+        const index = accounts.value.findIndex(a => a.id === currentAccount.value!.id)
+        if (index !== -1) {
+          accounts.value[index] = { ...currentAccount.value }
+        }
+
+        await saveAccountsIndex()
+        logger.info('AccountStore', 'Refreshed current account from backend')
+      }
+    } catch (error) {
+      logger.error('AccountStore', 'Failed to refresh account from backend', error)
+    }
   }
 
   async function setActiveCharacterId(characterId: string | null): Promise<void> {
@@ -732,15 +721,31 @@ export const useAccountStore = defineStore('account', () => {
 
     if (!data.characters) data.characters = {}
 
-    const char = character as { id?: string; accountId?: string } & Partial<AccountCharacter>
+    const char = character as {
+      id?: string
+      accountId?: string
+      isNew?: boolean
+    } & Partial<AccountCharacter>
     if (!char.id) {
       char.id = generateCharacterId()
     }
     char.accountId = accountId
 
     data.characters[char.id] = char
-
     localStorage.setItem(`yumi_account_${accountId}`, JSON.stringify(data))
+
+    try {
+      const fullChar = char as AccountCharacter
+      const flatChar = convertAccountToFlat(fullChar, accountId)
+      await characterCardsApi.upsert(accountId, char.id, flatChar)
+      logger.info('AccountStore', 'Upserted character in backend', { characterId: char.id })
+    } catch (error) {
+      logger.warn(
+        'AccountStore',
+        'Failed to sync character to backend',
+        error as Record<string, unknown>
+      )
+    }
 
     return char.id
   }
@@ -778,6 +783,17 @@ export const useAccountStore = defineStore('account', () => {
     if (data.characters) {
       delete data.characters[characterId]
       localStorage.setItem(`yumi_account_${accountId}`, JSON.stringify(data))
+    }
+
+    try {
+      await characterCardsApi.remove(accountId, characterId)
+      logger.info('AccountStore', 'Deleted character from backend', { characterId })
+    } catch (error) {
+      logger.warn(
+        'AccountStore',
+        'Failed to delete character from backend',
+        error as Record<string, unknown>
+      )
     }
   }
 
@@ -1030,8 +1046,10 @@ export const useAccountStore = defineStore('account', () => {
       throw new Error('Invalid backup format or missing manifest')
     }
 
-    if (importData.checksum) {
-      const { checksum, ...rest } = importData
+    const fullImportData = importData as AccountExportData
+
+    if (fullImportData.checksum) {
+      const { checksum, ...rest } = fullImportData
       const expected = `sha256:${await sha256Hex(buildChecksumSource(rest))}`
       if (checksum !== expected) {
         throw new Error('Backup checksum verification failed')
@@ -1039,7 +1057,7 @@ export const useAccountStore = defineStore('account', () => {
     }
 
     const { characters, conversations, importedConfig } = await processImportData(
-      importData,
+      fullImportData,
       password
     )
 
@@ -1048,7 +1066,7 @@ export const useAccountStore = defineStore('account', () => {
 
     const account: Account = {
       id: accountId,
-      displayName: importData.profile?.displayName ?? '导入账号',
+      displayName: fullImportData.profile?.displayName ?? '导入账号',
       deviceFingerprint: deviceFingerprint.value?.fingerprint ?? '',
       createdAt: now,
       lastActiveAt: now,
@@ -1066,7 +1084,7 @@ export const useAccountStore = defineStore('account', () => {
       config: finalConfig,
       characters: mappedCharacters,
       conversations: mappedConversations,
-      secrets: importData.secrets ?? { models: [], version: '1.0.0', encryptedAt: now },
+      secrets: fullImportData.secrets ?? { models: [], version: '1.0.0', encryptedAt: now },
     }
 
     localStorage.setItem(`yumi_account_${accountId}`, JSON.stringify(accountData))
@@ -1083,9 +1101,19 @@ export const useAccountStore = defineStore('account', () => {
     const index = accounts.value.findIndex(a => a.id === accountId)
     if (index === -1) return
 
+    try {
+      await userApi.purgeUserData(accountId)
+      logger.info('AccountStore', 'Purged user data from backend', { accountId })
+    } catch (error) {
+      logger.warn(
+        'AccountStore',
+        'Failed to purge user data from backend, continuing with local deletion',
+        error as Record<string, unknown>
+      )
+    }
+
     localStorage.removeItem(`${ACCOUNT_DATA_KEY_PREFIX}${accountId}`)
 
-    // Extra safety cleanup: remove any key that still contains the deleted account id.
     const keysToRemove: string[] = []
     for (let i = 0; i < localStorage.length; i += 1) {
       const key = localStorage.key(i)
@@ -1140,6 +1168,177 @@ export const useAccountStore = defineStore('account', () => {
     }
   }
 
+  async function clearLocalCache(): Promise<void> {
+    logger.info('AccountStore', 'Clearing local cache')
+
+    const keysToRemove: string[] = []
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i)
+      if (key && (key.startsWith('yumi_account_') || RELATED_CACHE_KEYS.includes(key))) {
+        keysToRemove.push(key)
+      }
+    }
+
+    logger.info('AccountStore', 'Removing local storage keys', { count: keysToRemove.length })
+    keysToRemove.forEach(key => localStorage.removeItem(key))
+
+    currentConfig.value = null
+    currentAccount.value = null
+    accounts.value = []
+
+    try {
+      logger.info('AccountStore', 'Checking for accounts in backend after cache clear')
+      const backendAccounts = await discoverAccountsFromBackend()
+
+      if (backendAccounts.length > 0) {
+        logger.info('AccountStore', 'Found accounts in backend, importing...', {
+          count: backendAccounts.length,
+        })
+
+        for (const account of backendAccounts) {
+          try {
+            await importAccountFromBackend(account.id)
+            logger.info('AccountStore', 'Imported account from backend', { accountId: account.id })
+          } catch (error) {
+            logger.error('AccountStore', 'Failed to import account during cache clear', {
+              accountId: account.id,
+              error,
+            })
+          }
+        }
+
+        if (accounts.value.length > 0) {
+          logger.info('AccountStore', 'Switching to first imported account', {
+            accountId: accounts.value[0].id,
+          })
+          await switchAccount(accounts.value[0].id)
+        }
+      } else {
+        logger.info('AccountStore', 'No accounts found in backend, creating default account')
+        await createDefaultAccount()
+      }
+    } catch (error) {
+      logger.error(
+        'AccountStore',
+        'Failed to restore from backend, creating default account',
+        error
+      )
+      await createDefaultAccount()
+    }
+  }
+
+  async function discoverAccountsFromBackend(): Promise<UserListItem[]> {
+    try {
+      const response = await userApi.listUsers()
+      logger.info('AccountStore', 'Discovered accounts from backend', {
+        count: response.users.length,
+      })
+      return response.users
+    } catch (error) {
+      logger.warn(
+        'AccountStore',
+        'Failed to discover accounts from backend',
+        error as Record<string, unknown>
+      )
+      return []
+    }
+  }
+
+  function getUndiscoveredAccounts(backendAccounts: UserListItem[]): UserListItem[] {
+    const localAccountIds = new Set(accounts.value.map(a => a.id))
+    return backendAccounts.filter(acc => !localAccountIds.has(acc.id))
+  }
+
+  async function importAccountFromBackend(accountId: string): Promise<Account> {
+    try {
+      logger.info('AccountStore', 'Importing account from backend', { accountId })
+
+      const fullData = await userApi.getFullAccountData(accountId)
+
+      const account: Account = {
+        id: fullData.id,
+        displayName: fullData.roleName,
+        deviceFingerprint: deviceFingerprint.value?.fingerprint ?? '',
+        createdAt: fullData.createdAt,
+        lastActiveAt: fullData.updatedAt,
+      }
+
+      const baseConfig = createDefaultAccountConfig()
+
+      const accountData: Record<string, unknown> = {
+        profile: account,
+        config: baseConfig,
+      }
+
+      const chars: Record<string, AccountCharacter> = {}
+      fullData.characterCards.forEach(card => {
+        chars[card.id] = convertFlatToAccount(card)
+      })
+
+      if (Object.keys(chars).length > 0) {
+        accountData.characters = chars
+        ;(accountData.config as AccountConfig).activeCharacterId = Object.keys(chars)[0]
+      }
+
+      accountData.secrets = { models: [], version: '1.0.0', encryptedAt: new Date().toISOString() }
+
+      localStorage.setItem(getAccountStorageKey(accountId), JSON.stringify(accountData))
+
+      accounts.value.push(account)
+      await saveAccountsIndex()
+
+      currentAccount.value = account
+      currentConfig.value = accountData.config as AccountConfig
+
+      await loadCurrentAccountData()
+
+      logger.info('AccountStore', 'Successfully imported account from backend', { accountId })
+
+      return account
+    } catch (error) {
+      logger.error('AccountStore', 'Failed to import account from backend', error)
+      throw error
+    }
+  }
+
+  async function syncAccountsFromBackend(): Promise<{ imported: number; alreadyExisted: number }> {
+    try {
+      logger.info('AccountStore', 'Starting account sync from backend')
+
+      const backendAccounts = await discoverAccountsFromBackend()
+      const undiscovered = getUndiscoveredAccounts(backendAccounts)
+
+      const alreadyExisted = backendAccounts.length - undiscovered.length
+      let imported = 0
+
+      logger.info('AccountStore', 'Account sync status', {
+        total: backendAccounts.length,
+        alreadyExisted,
+        toImport: undiscovered.length,
+      })
+
+      for (const account of undiscovered) {
+        try {
+          await importAccountFromBackend(account.id)
+          imported += 1
+          logger.info('AccountStore', 'Imported account during sync', { accountId: account.id })
+        } catch (error) {
+          logger.error('AccountStore', 'Failed to import account during sync', {
+            accountId: account.id,
+            error,
+          })
+        }
+      }
+
+      logger.info('AccountStore', 'Account sync completed', { imported, alreadyExisted })
+
+      return { imported, alreadyExisted }
+    } catch (error) {
+      logger.error('AccountStore', 'Failed to sync accounts from backend', error)
+      throw error
+    }
+  }
+
   return {
     accounts,
     currentAccount,
@@ -1176,5 +1375,11 @@ export const useAccountStore = defineStore('account', () => {
     importAccount,
     deleteAccount,
     getAccountStats,
+    clearLocalCache,
+    discoverAccountsFromBackend,
+    getUndiscoveredAccounts,
+    importAccountFromBackend,
+    syncAccountsFromBackend,
+    refreshCurrentAccountFromBackend,
   }
 })

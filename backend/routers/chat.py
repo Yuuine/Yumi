@@ -268,16 +268,26 @@ def _update_dialogue_interaction_error(
 async def _generate_summary_if_needed(
     user_id: str,
     req: Request,
+    active_model: dict | None,
 ) -> str | None:
-    """如果需要，生成记忆摘要"""
-    if settings.app.debug:
+    """达阈值时用当前对话模型生成 LLM 摘要并写入 `[摘要]` 向量；每轮对话只计一次 turn。"""
+    if settings.app.debug or not active_model:
         return None
 
     memory_engine = req.app.state.memory_engine
     turn_count = await memory_engine.get_turn_count(user_id)
-    if turn_count > 0 and turn_count % settings.memory.summary_trigger_turns == 0:
-        return await memory_engine.summarize(user_id)
-    return None
+    if turn_count <= 0 or turn_count % settings.memory.summary_trigger_turns != 0:
+        return None
+
+    llm_service = req.app.state.llm_service
+    return await memory_engine.summarize_with_llm(
+        user_id,
+        llm_service,
+        provider_id=active_model["provider_id"],
+        base_url=active_model["base_url"],
+        api_key=active_model["api_key"],
+        model_name=active_model["model_name"],
+    )
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -363,7 +373,10 @@ async def send_message(request: ChatRequest, req: Request) -> ChatResponse:
         )
         await async_storage.enqueue(assistant_task)
 
-        new_summary = await _generate_summary_if_needed(request.userId, req)
+        await req.app.state.memory_engine.record_conversation_turn(request.userId)
+        new_summary = await _generate_summary_if_needed(
+            request.userId, req, active_model
+        )
 
         total_latency_ms = (time.time() - start_time) * 1000
         await log_service.log_user_action(
@@ -626,7 +639,20 @@ async def _stream_chat_generator(
         )
         await async_storage.enqueue(assistant_task)
 
-        yield f"data: {json.dumps({'done': True, 'conversationId': conversation_id, 'emotion': {'valence': assistant_emotion.valence, 'arousal': assistant_emotion.arousal}})}\n\n"
+        await req.app.state.memory_engine.record_conversation_turn(userId)
+        new_summary = await _generate_summary_if_needed(userId, req, active_model)
+
+        done_payload: dict[str, Any] = {
+            "done": True,
+            "conversationId": conversation_id,
+            "emotion": {
+                "valence": assistant_emotion.valence,
+                "arousal": assistant_emotion.arousal,
+            },
+        }
+        if new_summary:
+            done_payload["newSummary"] = new_summary
+        yield f"data: {json.dumps(done_payload)}\n\n"
 
     except Exception as e:
         logger.error("Stream error: %s", e)

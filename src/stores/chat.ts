@@ -6,15 +6,17 @@ import { useAccountStore } from './account'
 import type { ApiError } from '@/api/http-client'
 import dayjs from 'dayjs'
 import { logger } from '@/utils/logger'
-import { cacheMessages, getCachedMessages, clearAllCache } from '@/utils/local-storage'
+import { clearAllCache, saveToStorage, loadFromStorage } from '@/utils/local-storage'
 import { sortMessages } from '@/utils/message'
+import { generateConversationId } from '@/utils'
 
 const INITIAL_LOAD_LIMIT = 10
 const LOAD_MORE_LIMIT = 20
 
-/**
- * 流式响应解析结果
- */
+const KEYS = {
+  MESSAGES_PREFIX: 'yumi_conversation_messages_',
+} as const
+
 interface StreamParsedData {
   error?: string
   done?: boolean
@@ -44,10 +46,92 @@ export const useChatStore = defineStore('chat', () => {
     return messages.value.filter(m => m.role === 'user')
   })
 
+  function getConversationStorageKey(conversationId: string): string {
+    return `${KEYS.MESSAGES_PREFIX}${conversationId}`
+  }
+
+  function saveCurrentConversationMessages(): void {
+    if (currentConversationId.value) {
+      saveToStorage(getConversationStorageKey(currentConversationId.value), messages.value)
+    }
+  }
+
+  function loadConversationMessages(conversationId: string): ChatMessage[] {
+    return loadFromStorage<ChatMessage[]>(getConversationStorageKey(conversationId), [])
+  }
+
+  async function switchConversation(conversationId: string): Promise<void> {
+    if (currentConversationId.value) {
+      saveCurrentConversationMessages()
+    }
+
+    currentConversationId.value = conversationId
+    messages.value = loadConversationMessages(conversationId)
+
+    if (messages.value.length === 0) {
+      try {
+        const history = await chatApi.getHistory(
+          currentUserId.value,
+          INITIAL_LOAD_LIMIT,
+          0,
+          conversationId
+        )
+        messages.value = sortMessages(history.messages)
+        saveCurrentConversationMessages()
+      } catch (error) {
+        logger.error('ChatStore', 'Failed to load conversation history', error)
+      }
+    }
+
+    historyPage.value = 0
+    hasMoreHistory.value = true
+
+    logger.info('ChatStore', 'Switched to conversation', { conversationId })
+  }
+
+  async function startNewConversation(characterId?: string): Promise<string> {
+    if (currentConversationId.value) {
+      saveCurrentConversationMessages()
+    }
+
+    const newId = generateConversationId()
+    currentConversationId.value = newId
+    messages.value = []
+    conversationCount.value = 0
+    lastError.value = null
+    streamingContent.value = ''
+    historyPage.value = 0
+    hasMoreHistory.value = true
+
+    const accountStore = useAccountStore()
+    const targetCharacterId = characterId ?? accountStore.currentConfig?.activeCharacterId ?? undefined
+
+    if (characterId) {
+      await accountStore.setActiveCharacterId(characterId)
+    }
+
+    await accountStore.saveConversation({
+      id: newId,
+      characterId: targetCharacterId,
+      title: '新对话',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    })
+
+    logger.info('ChatStore', 'Started new conversation', { conversationId: newId, characterId: targetCharacterId })
+    return newId
+  }
+
   async function sendMessage(content: string, deepThinking = false): Promise<ChatResponse | null> {
     if (!content.trim() || isLoading.value) return null
 
     lastError.value = null
+
+    const accountStore = useAccountStore()
+
+    if (!currentConversationId.value) {
+      await startNewConversation()
+    }
 
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}`,
@@ -60,7 +144,6 @@ export const useChatStore = defineStore('chat', () => {
     isLoading.value = true
 
     try {
-      const accountStore = useAccountStore()
       const characterId = accountStore.currentConfig?.activeCharacterId ?? undefined
 
       const request: ChatRequest = {
@@ -92,7 +175,25 @@ export const useChatStore = defineStore('chat', () => {
 
       messages.value.push(assistantMessage)
       conversationCount.value++
-      cacheMessages(messages.value)
+      saveCurrentConversationMessages()
+
+      const conv = await accountStore.getConversation(currentConversationId.value!)
+      if (!conv) {
+        await accountStore.saveConversation({
+          id: currentConversationId.value!,
+          characterId,
+          title: content.slice(0, 30) + (content.length > 30 ? '...' : ''),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        })
+      } else {
+        const convData = conv as any
+        convData.updatedAt = new Date().toISOString()
+        if (!convData.title) {
+          convData.title = content.slice(0, 30) + (content.length > 30 ? '...' : '')
+        }
+        await accountStore.saveConversation(convData)
+      }
 
       if (response.newSummary) {
         logger.info('ChatStore', 'Memory summary updated', { summary: response.newSummary })
@@ -117,9 +218,6 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  /**
-   * 初始化流式传输状态
-   */
   function initializeStreamState(): void {
     lastError.value = null
     streamingContent.value = ''
@@ -127,10 +225,6 @@ export const useChatStore = defineStore('chat', () => {
     abortController.value = new AbortController()
   }
 
-  /**
-   * 创建用户消息和助手消息并添加到消息列表
-   * @param content - 用户消息内容
-   */
   function createUserAndAssistantMessages(content: string): void {
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}`,
@@ -149,11 +243,6 @@ export const useChatStore = defineStore('chat', () => {
     messages.value.push(assistantMessage)
   }
 
-  /**
-   * 发起流式请求并返回 ReadableStream reader
-   * @param content - 用户消息内容
-   * @returns ReadableStream reader 或 null
-   */
   async function fetchStreamResponse(
     content: string
   ): Promise<ReadableStreamDefaultReader<Uint8Array> | null> {
@@ -205,6 +294,7 @@ export const useChatStore = defineStore('chat', () => {
         lastMessage.emotion = parsed.emotion
       }
       conversationCount.value++
+      saveCurrentConversationMessages()
       return false
     }
 
@@ -220,10 +310,6 @@ export const useChatStore = defineStore('chat', () => {
     return false
   }
 
-  /**
-   * 解析单行流式数据
-   * @param line - SSE 数据行
-   */
   function parseStreamLine(line: string): void {
     if (!line.startsWith('data: ')) return
 
@@ -231,15 +317,11 @@ export const useChatStore = defineStore('chat', () => {
     try {
       const parsed = JSON.parse(data) as StreamParsedData
       handleStreamData(parsed)
-    } catch {
-      // 忽略不完整 JSON 的解析错误
+    } catch (error) {
+      logger.debug('ChatStore', 'Failed to parse stream line', { error })
     }
   }
 
-  /**
-   * 读取并处理流式响应
-   * @param reader - ReadableStream reader
-   */
   async function processStreamReader(
     reader: ReadableStreamDefaultReader<Uint8Array>
   ): Promise<void> {
@@ -268,10 +350,6 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  /**
-   * 处理流式传输错误
-   * @param error - 错误对象
-   */
   function handleStreamError(error: unknown): void {
     if ((error as Error).name === 'AbortError') {
       return
@@ -285,10 +363,6 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  /**
-   * 发送流式消息
-   * @param content - 用户消息内容
-   */
   async function sendMessageStream(content: string): Promise<void> {
     if (!content.trim() || isLoading.value || isStreaming.value) return
 
@@ -303,9 +377,7 @@ export const useChatStore = defineStore('chat', () => {
     } catch (error) {
       handleStreamError(error)
     } finally {
-      if (messages.value.length > 0) {
-        cacheMessages(messages.value)
-      }
+      saveCurrentConversationMessages()
       isStreaming.value = false
       abortController.value = null
     }
@@ -318,16 +390,29 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function loadHistory(limit = INITIAL_LOAD_LIMIT): Promise<void> {
-    const cachedMessages = getCachedMessages<ChatMessage>()
+    if (!currentConversationId.value) {
+      return
+    }
+
+    const cachedMessages = loadConversationMessages(currentConversationId.value)
     if (cachedMessages.length > 0) {
       messages.value = sortMessages(cachedMessages)
-      logger.info('ChatStore', 'Loaded cached messages', { count: cachedMessages.length })
+      logger.info('ChatStore', 'Loaded cached messages for conversation', {
+        conversationId: currentConversationId.value,
+        count: cachedMessages.length,
+      })
+      return
     }
 
     try {
-      const history = await chatApi.getHistory(currentUserId.value, limit)
+      const history = await chatApi.getHistory(
+        currentUserId.value,
+        limit,
+        0,
+        currentConversationId.value
+      )
       messages.value = sortMessages(history.messages)
-      cacheMessages(messages.value)
+      saveCurrentConversationMessages()
 
       hasMoreHistory.value = history.messages.length >= limit
     } catch (error) {
@@ -336,13 +421,17 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function loadMoreMessages(): Promise<boolean> {
-    if (!hasMoreHistory.value) return false
+    if (!hasMoreHistory.value || !currentConversationId.value) return false
 
     try {
       historyPage.value++
-      // 计算偏移量：初始加载的消息数 + 已加载的页数 * 每页消息数
       const offset = INITIAL_LOAD_LIMIT + (historyPage.value - 1) * LOAD_MORE_LIMIT
-      const history = await chatApi.getHistory(currentUserId.value, LOAD_MORE_LIMIT, offset)
+      const history = await chatApi.getHistory(
+        currentUserId.value,
+        LOAD_MORE_LIMIT,
+        offset,
+        currentConversationId.value
+      )
 
       if (history.messages.length === 0) {
         hasMoreHistory.value = false
@@ -351,11 +440,11 @@ export const useChatStore = defineStore('chat', () => {
 
       messages.value = sortMessages([...history.messages, ...messages.value])
 
-      // 如果返回的消息数少于请求的数量，说明没有更多历史消息
       if (history.messages.length < LOAD_MORE_LIMIT) {
         hasMoreHistory.value = false
       }
 
+      saveCurrentConversationMessages()
       return hasMoreHistory.value
     } catch (error) {
       logger.error('ChatStore', 'Failed to load more messages', error)
@@ -364,7 +453,7 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  function clearMessages(): void {
+  function resetConversationState(): void {
     messages.value = []
     currentConversationId.value = null
     conversationCount.value = 0
@@ -372,17 +461,11 @@ export const useChatStore = defineStore('chat', () => {
     streamingContent.value = ''
     historyPage.value = 0
     hasMoreHistory.value = true
-    clearAllCache()
   }
 
-  function startNewConversation(): void {
-    messages.value = []
-    currentConversationId.value = null
-    conversationCount.value = 0
-    lastError.value = null
-    streamingContent.value = ''
-    historyPage.value = 0
-    hasMoreHistory.value = true
+  function clearMessages(): void {
+    resetConversationState()
+    clearAllCache()
   }
 
   function clearError(): void {
@@ -408,6 +491,7 @@ export const useChatStore = defineStore('chat', () => {
     loadMoreMessages,
     clearMessages,
     startNewConversation,
+    switchConversation,
     clearError,
   }
 })

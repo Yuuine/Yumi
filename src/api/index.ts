@@ -1,4 +1,7 @@
 export { chatApi } from './chat'
 export { userApi } from './user'
+export { characterCardsApi } from './character-cards'
+export { modelsApi } from './models'
+export { conversationsApi } from './conversations'
 export { httpClient } from './http-client'
 export type { ApiError } from './http-client'

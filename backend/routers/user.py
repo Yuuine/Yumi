@@ -128,6 +128,114 @@ async def update_user_profile(profile: UserProfile, req: Request):
         raise
 
 
+class UserListItem(BaseModel):
+    id: str
+    role_name: str = Field(..., alias="roleName")
+    created_at: str = Field(..., alias="createdAt")
+    updated_at: str = Field(..., alias="updatedAt")
+
+    class Config:
+        populate_by_name = True
+
+
+class ListUsersResponse(BaseModel):
+    users: list[UserListItem]
+
+
+class FullAccountDataResponse(BaseModel):
+    id: str
+    role_name: str = Field(..., alias="roleName")
+    preferences: UserPreferences
+    created_at: str = Field(..., alias="createdAt")
+    updated_at: str = Field(..., alias="updatedAt")
+
+    class Config:
+        populate_by_name = True
+
+
+@router.get("/user/list", response_model=ListUsersResponse)
+async def list_users(req: Request):
+    from ..database import get_db
+
+    async with get_db() as db:
+        cursor = await db.execute(
+            """SELECT id, role_name, created_at, updated_at
+               FROM users ORDER BY updated_at DESC""",
+        )
+        rows = await cursor.fetchall()
+
+        users = []
+        for row in rows:
+            users.append(
+                UserListItem(
+                    id=row[0],
+                    role_name=row[1],
+                    created_at=row[2],
+                    updated_at=row[3],
+                )
+            )
+
+        return ListUsersResponse(users=users)
+
+
+@router.get("/user/full/{user_id}")
+async def get_full_account_data(user_id: str, req: Request):
+    from ..database import get_db
+    from ..services.character_card import list_character_cards_for_user
+
+    async with get_db() as db:
+        cursor = await db.execute(
+            """SELECT id, role_name, preferences_json, created_at, updated_at
+               FROM users WHERE id = ?""",
+            (user_id,),
+        )
+        row = await cursor.fetchone()
+
+        if not row:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        preferences = json.loads(row[2]) if row[2] else {}
+
+        character_cards = await list_character_cards_for_user(db, user_id)
+
+        return {
+            "id": row[0],
+            "roleName": row[1],
+            "preferences": preferences,
+            "createdAt": row[3],
+            "updatedAt": row[4],
+            "characterCards": [
+                {
+                    "id": card.id,
+                    "userId": card.user_id,
+                    "conversationId": card.conversation_id,
+                    "roleOverview": card.role_overview,
+                    "formalName": card.formal_name,
+                    "nickname": card.nickname,
+                    "raceOrForm": card.race_or_form,
+                    "gender": card.gender,
+                    "visualAge": card.visual_age,
+                    "actualAge": card.actual_age,
+                    "location": card.location,
+                    "appearanceDesc": card.appearance_desc,
+                    "corePersonality": card.core_personality,
+                    "selfPerception": card.self_perception,
+                    "attitudeToUser": card.attitude_to_user,
+                    "likes": card.likes,
+                    "dislikes": card.dislikes,
+                    "toneBase": card.tone_base,
+                    "wordHabits": card.word_habits,
+                    "emotionRules": card.emotion_rules,
+                    "lengthPref": card.length_pref,
+                    "specialLogicList": card.special_logic_list,
+                    "fewShotExamples": card.few_shot_examples,
+                    "isActive": card.is_active,
+                }
+                for card in character_cards
+            ],
+        }
+
+
 @router.post("/user/purge", response_model=PurgeUserResponse)
 async def purge_user_data(payload: PurgeUserRequest, req: Request):
     from ..database import get_db

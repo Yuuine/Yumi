@@ -4,6 +4,7 @@
       @open-models="openModelsModal"
       @open-character="openCharacterModal"
       @open-settings="openSettingsModal"
+      @open-conversations="openConversationManager"
     />
 
     <div class="chat-main">
@@ -23,26 +24,46 @@
     <ModelsModal :visible="showModelsModal" @close="closeModelsModal" />
     <CharacterModal :visible="showCharacterModal" @close="closeCharacterModal" />
     <SettingsModal :visible="showSettingsModal" @close="closeSettingsModal" />
+    <ConversationManagerModal
+      v-model="showConversationManager"
+      @select="selectConversation"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, nextTick, onMounted } from 'vue'
-import { useChatStore } from '@/stores'
+import { useChatStore, useAccountStore } from '@/stores'
 import { SidebarNav } from '@/components/sidebar'
 import { MessageList, ChatInput } from '@/components/chat'
 import ModelsModal from '@/components/models/ModelsModal.vue'
 import CharacterModal from '@/components/settings/CharacterModal.vue'
 import SettingsModal from '@/components/settings/SettingsModal.vue'
+import ConversationManagerModal from '@/components/chat/ConversationManagerModal.vue'
+import { useToast } from '@/composables/useToast'
 
 const chatStore = useChatStore()
+const accountStore = useAccountStore()
+const toast = useToast()
 const messageListRef = ref<InstanceType<typeof MessageList> | null>(null)
 const showModelsModal = ref(false)
 const showCharacterModal = ref(false)
 const showSettingsModal = ref(false)
+const showConversationManager = ref(false)
 const isDeepThinking = ref(false)
+const hasConversations = ref(false)
+
+async function checkConversations() {
+  try {
+    const convs = await accountStore.loadConversations()
+    hasConversations.value = convs.length > 0
+  } catch {
+    hasConversations.value = false
+  }
+}
 
 onMounted(async () => {
+  await checkConversations()
   await chatStore.loadHistory()
   nextTick(() => {
     messageListRef.value?.scrollToBottom()
@@ -50,8 +71,15 @@ onMounted(async () => {
 })
 
 async function handleSend(content: string) {
+  await checkConversations()
+  if (!hasConversations.value && !chatStore.currentConversationId) {
+    toast.warning('请先创建一个对话')
+    showConversationManager.value = true
+    return
+  }
   messageListRef.value?.forceScrollToBottom()
   await chatStore.sendMessage(content, isDeepThinking.value)
+  await checkConversations()
 }
 
 function handleCopy(content: string) {
@@ -88,6 +116,24 @@ function openSettingsModal() {
 
 function closeSettingsModal() {
   showSettingsModal.value = false
+}
+
+function openConversationManager() {
+  console.log('openConversationManager called, setting showConversationManager to true')
+  showConversationManager.value = true
+  console.log('showConversationManager.value is now:', showConversationManager.value)
+}
+
+async function selectConversation(conversationId: string) {
+  try {
+    await chatStore.switchConversation(conversationId)
+    await checkConversations()
+    nextTick(() => {
+      messageListRef.value?.scrollToBottom()
+    })
+  } catch (error) {
+    console.error('Failed to switch conversation', error)
+  }
 }
 </script>
 

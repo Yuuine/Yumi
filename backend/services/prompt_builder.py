@@ -17,7 +17,7 @@ from .character_card import (
     CharacterCard,
     get_character_card_for_chat,
 )
-from .emotion import EmotionData, EmotionEngine
+from .emotion import EmotionData, EmotionEngine, emotion_label_from_va
 from .memory import MemoryEngine
 
 logger = get_logger(__name__)
@@ -55,7 +55,22 @@ SYSTEM_PROMPT_TEMPLATE = """# role identity
 {special_logic_list}
 
 ## 【当前情境与记忆】
-- 用户情绪状态：{current_emotion}
+
+【AI 当前情绪】
+- 情绪状态：{ai_emotion_label}
+- 愉悦度：{ai_valence:.2f} (-1.0=消极 ~ 1.0=积极)
+- 激动度：{ai_arousal:.2f} (0.0=平静 ~ 1.0=激动)
+
+【用户情绪】
+- 情绪状态：{user_emotion_label}
+- 愉悦度：{user_valence:.2f}
+- 激动度：{user_arousal:.2f}
+
+【回复要求】
+1. 保持你当前的情绪状态进行回复
+2. 对用户的情绪给予适当的共情回应
+3. 不要暴露你在分析情绪
+
 - 关键记忆摘要：
 {memory_summary_bullets}
 
@@ -89,6 +104,7 @@ class PromptBuilder:
             current_message=current_message,
             user_emotion=user_emotion,
             character_id=character_id,
+            memories=memories,
         )
 
         messages: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
@@ -207,37 +223,13 @@ class PromptBuilder:
         emotion_label = await self.emotion_engine.get_emotion_label(user_emotion)
         return emotion_label
 
-    async def _get_memory_summary_bullets(
-        self,
-        user_id: str,
-        current_message: str,
-    ) -> str:
-        """
-        实时获取关键记忆摘要
-
-        Args:
-            user_id: 用户ID
-            current_message: 当前用户消息
-
-        Returns:
-            格式化的记忆摘要（项目符号列表）
-        """
-        # TODO: 实现完整的记忆摘要获取逻辑
-        # 1. 调用 self.memory_engine.search(current_message, top_k=6)
-        # 2. 格式化为项目符号列表
-        # 3. 返回格式化字符串
-
-        memories = await self.memory_engine.search(
-            query=current_message,
-            top_k=6,
-            user_id=user_id,
-        )
-
+    def _format_memory_summary_bullets(self, memories: list[dict[str, Any]]) -> str:
+        """由已检索的 RAG 结果格式化关键记忆摘要，避免重复 search。"""
         if not memories:
             return "- 暂无相关记忆"
 
         bullets = []
-        for mem in memories:
+        for mem in memories[: settings.memory.rag_top_k]:
             content = mem.get("content", "")
             if content:
                 bullets.append(f"- {content[:100]}")
@@ -250,6 +242,7 @@ class PromptBuilder:
         conversation_id: str | None,
         current_message: str,
         user_emotion: EmotionData,
+        memories: list[dict[str, Any]],
         character_id: str | None = None,
     ) -> str:
         """
@@ -259,8 +252,28 @@ class PromptBuilder:
         """
         card = await self._load_character_card(user_id, conversation_id, character_id)
 
-        current_emotion = await self._get_current_emotion(current_message, user_emotion)
-        memory_bullets = await self._get_memory_summary_bullets(user_id, current_message)
+        if settings.app.debug:
+            ai_emotion = EmotionData(valence=0.0, arousal=0.3, label="中性")
+        elif not settings.emotion.ai_emotion_enabled:
+            bv, ba = (
+                settings.emotion.default_base_valence,
+                settings.emotion.default_base_arousal,
+            )
+            ai_emotion = EmotionData(
+                valence=bv,
+                arousal=ba,
+                label=emotion_label_from_va(bv, ba),
+            )
+        else:
+            ai_emotion = await self.emotion_engine.step_ai_emotion(
+                user_id, character_id, current_message, user_emotion
+            )
+
+        user_emotion_label = await self._get_current_emotion(current_message, user_emotion)
+        ai_emotion_label = ai_emotion.label or emotion_label_from_va(
+            ai_emotion.valence, ai_emotion.arousal
+        )
+        memory_bullets = self._format_memory_summary_bullets(memories)
 
         return SYSTEM_PROMPT_TEMPLATE.format(
             role_overview=card.role_overview,
@@ -282,7 +295,12 @@ class PromptBuilder:
             emotion_rules=card.emotion_rules,
             length_pref=card.length_pref,
             special_logic_list=card.special_logic_list,
-            current_emotion=current_emotion,
+            ai_emotion_label=ai_emotion_label,
+            ai_valence=ai_emotion.valence,
+            ai_arousal=ai_emotion.arousal,
+            user_emotion_label=user_emotion_label,
+            user_valence=user_emotion.valence,
+            user_arousal=user_emotion.arousal,
             memory_summary_bullets=memory_bullets,
             few_shot_examples=card.few_shot_examples,
         )

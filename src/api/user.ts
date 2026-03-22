@@ -1,5 +1,31 @@
 import type { UserProfile } from '@/types'
+import type { CharacterCardFlat } from '@/types/character'
 import { httpClient } from './http-client'
+
+export interface UserListItem {
+  id: string
+  roleName: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ListUsersResponse {
+  users: UserListItem[]
+}
+
+export interface FullAccountData {
+  id: string
+  roleName: string
+  preferences: {
+    communicationStyle: string
+    topicsOfInterest: string[]
+    emotionalSupportLevel: string
+    responseLength: string
+  }
+  createdAt: string
+  updatedAt: string
+  characterCards: CharacterCardFlat[]
+}
 
 interface PurgeUserResponse {
   success: boolean
@@ -7,6 +33,14 @@ interface PurgeUserResponse {
 }
 
 export const userApi = {
+  async listUsers(): Promise<ListUsersResponse> {
+    return httpClient.get<ListUsersResponse>('/user/list')
+  },
+
+  async getFullAccountData(userId: string): Promise<FullAccountData> {
+    return httpClient.get<FullAccountData>(`/user/full/${encodeURIComponent(userId)}`)
+  },
+
   async getProfile(userId: string): Promise<UserProfile> {
     return httpClient.get<UserProfile>('/user/profile', {
       params: { userId },

@@ -162,11 +162,12 @@ async function handleDataSyncConfirm(option: 'restart' | 'sync') {
 onMounted(async () => {
   const isSynced = await checkDataSync()
 
-  if (isSynced) {
-    await initializeAccountAndHideLoading()
-  } else {
+  if (!isSynced) {
     dataSyncDialogRef.value?.open()
+    return
   }
+
+  await initializeAccountAndHideLoading()
 })
 
 watch(

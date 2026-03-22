@@ -82,11 +82,14 @@ class LLMConfig(BaseSettings):
 class MemoryConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="YUMI_MEMORY_")
 
-    recent_context_limit: int = 8
+    recent_context_limit: int = 20
     rag_top_k: int = 6
     summary_trigger_turns: int = 70
-    decay_rate: float = 0.003
+    summary_context_size: int = 35
+    decay_rate: float = 0.03
     min_decay_factor: float = 0.1
+    deduplication_threshold: float = 0.85
+    consolidation_boost: float = 0.1
 
 
 class EmotionConfig(BaseSettings):
@@ -94,6 +97,12 @@ class EmotionConfig(BaseSettings):
 
     detection_enabled: bool = True
     model: str = "keyword"
+    ai_emotion_enabled: bool = True
+    empathy_factor: float = Field(default=0.3, ge=0.0, le=1.0)
+    emotion_half_life: int = Field(default=1800, ge=1, description="AI 情绪半衰期（秒）")
+    default_base_valence: float = Field(default=0.3, ge=-1.0, le=1.0)
+    default_base_arousal: float = Field(default=0.4, ge=0.0, le=1.0)
+    default_sensitivity: float = Field(default=0.7, ge=0.0, le=1.0)
 
 
 class LoggingConfig(BaseSettings):

@@ -22,7 +22,6 @@
 
 <script setup lang="ts">
 import { ref, markRaw } from 'vue'
-import { useRouter } from 'vue-router'
 import { IconChat, IconModels, IconCharacter } from '@/components/icons'
 import IconSettings from '@/components/icons/IconSettings.vue'
 
@@ -36,9 +35,9 @@ const emit = defineEmits<{
   openModels: []
   openCharacter: []
   openSettings: []
+  openConversations: []
 }>()
 
-const router = useRouter()
 const isExpanded = ref(false)
 
 const menuItems: MenuItem[] = [
@@ -73,6 +72,13 @@ function collapseSidebar() {
 }
 
 function handleMenuClick(menuId: string) {
+  console.log('handleMenuClick called with menuId:', menuId)
+  if (menuId === 'chat') {
+    console.log('Emitting openConversations event')
+    emit('openConversations')
+    return
+  }
+
   if (menuId === 'models') {
     emit('openModels')
     return
@@ -86,15 +92,6 @@ function handleMenuClick(menuId: string) {
   if (menuId === 'settings') {
     emit('openSettings')
     return
-  }
-
-  const routeMap: Record<string, string> = {
-    chat: '/',
-  }
-
-  const path = routeMap[menuId]
-  if (path) {
-    router.push(path)
   }
 }
 </script>

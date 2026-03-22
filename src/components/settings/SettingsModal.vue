@@ -98,6 +98,21 @@
                         </div>
                         <IconChevronDown class="setting-arrow" />
                       </div>
+
+                      <div
+                        class="setting-item setting-item-clickable setting-item-danger clear-cache-item"
+                        @click="handleClearCache"
+                      >
+                        <div class="setting-info">
+                          <div class="setting-label setting-label-danger">
+                            <IconWarning class="setting-icon-warning" />
+                            清除缓存
+                          </div>
+                          <div class="setting-description">
+                            清除浏览器本地缓存数据，未保存的数据将被清空。此操作不可恢复。
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
@@ -112,13 +127,26 @@
       </Transition>
 
       <ProxySettingsModal :visible="showProxyModal" @close="showProxyModal = false" />
+
+      <Dialog
+        v-model="showClearCacheDialog"
+        type="warning"
+        title="确认清除缓存"
+        message="是否确认清除浏览器缓存数据？未保存的数据将被清空。此操作不可恢复。"
+        :showCancel="true"
+        confirmText="确认清除"
+        cancelText="取消"
+        :loading="isClearingCache"
+        @confirm="confirmClearCache"
+      />
     </template>
   </Teleport>
 </template>
 
 <script setup lang="ts">
 import { ref, markRaw } from 'vue'
-import { useSettingsStore } from '@/stores'
+import { useSettingsStore, useAccountStore } from '@/stores'
+import { useToast } from '@/composables/useToast'
 import {
   IconClose,
   IconInfo,
@@ -127,9 +155,11 @@ import {
   IconSettings,
   IconChevronDown,
   IconUser,
+  IconWarning,
 } from '@/components/icons'
 import ProxySettingsModal from './ProxySettingsModal.vue'
 import AccountSettings from './AccountSettings.vue'
+import Dialog from '@/components/common/Dialog.vue'
 
 defineProps<{
   visible: boolean
@@ -140,7 +170,11 @@ const emit = defineEmits<{
 }>()
 
 const settingsStore = useSettingsStore()
+const accountStore = useAccountStore()
+const toast = useToast()
 const showProxyModal = ref(false)
+const showClearCacheDialog = ref(false)
+const isClearingCache = ref(false)
 
 const activeTab = ref('appearance')
 
@@ -178,6 +212,26 @@ function handleToggleReasoning() {
 
 function handleToggleVerboseTest() {
   settingsStore.setVerboseTest(!settingsStore.verboseTest)
+}
+
+async function handleClearCache() {
+  showClearCacheDialog.value = true
+}
+
+async function confirmClearCache() {
+  isClearingCache.value = true
+  try {
+    await accountStore.clearLocalCache()
+    toast.success('数据已清除，正在重新初始化...')
+    emit('close')
+    setTimeout(() => {
+      window.location.reload()
+    }, 500)
+  } catch (_error) {
+    toast.error('清除缓存失败')
+  } finally {
+    isClearingCache.value = false
+  }
 }
 
 function handleClose() {
@@ -364,6 +418,30 @@ function handleClose() {
   transform: rotate(-90deg);
 }
 
+.setting-item-danger {
+  background: #fef2f2;
+  border-color: #fecaca;
+  transition: all 0.2s;
+
+  &:hover {
+    background: #fee2e2;
+    border-color: #fca5a5;
+  }
+}
+
+.setting-label-danger {
+  color: #dc2626;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.setting-icon-warning {
+  width: 16px;
+  height: 16px;
+  color: #f59e0b;
+}
+
 .setting-info {
   flex: 1;
   min-width: 0;
@@ -394,6 +472,11 @@ function handleClose() {
 .setting-control {
   margin-left: 16px;
   flex-shrink: 0;
+}
+
+.clear-cache-item {
+  margin-top: 12px;
+  padding: 12px 16px;
 }
 
 .toggle-switch {

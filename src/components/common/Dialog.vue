@@ -27,11 +27,22 @@
             <slot name="footer"></slot>
           </div>
           <div v-else class="dialog-footer">
-            <button v-if="showCancel" class="dialog-btn secondary" @click="handleCancel">
+            <button
+              v-if="showCancel"
+              class="dialog-btn secondary"
+              @click="handleCancel"
+              :disabled="loading"
+            >
               {{ cancelText }}
             </button>
-            <button class="dialog-btn primary" :class="`btn-${type}`" @click="handleConfirm">
-              {{ confirmText }}
+            <button
+              class="dialog-btn primary"
+              :class="`btn-${type}`"
+              @click="handleConfirm"
+              :disabled="loading"
+            >
+              <span v-if="loading" class="btn-loading-spinner"></span>
+              <span v-else>{{ confirmText }}</span>
             </button>
           </div>
         </div>
@@ -61,6 +72,7 @@ const props = withDefaults(
     closeOnClickOverlay?: boolean
     confirmText?: string
     cancelText?: string
+    loading?: boolean
   }>(),
   {
     modelValue: false,
@@ -74,6 +86,7 @@ const props = withDefaults(
     closeOnClickOverlay: true,
     confirmText: '确定',
     cancelText: '取消',
+    loading: false,
   }
 )
 
@@ -287,6 +300,27 @@ function handleOverlayClick() {
     &:hover {
       background: #dc2626;
     }
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+}
+
+.btn-loading-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: btn-spin 0.8s linear infinite;
+}
+
+@keyframes btn-spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 

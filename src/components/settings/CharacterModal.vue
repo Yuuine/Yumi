@@ -36,6 +36,14 @@
               </button>
               <button type="button" class="toolbar-btn" @click="handleReset">重置</button>
               <button type="button" class="toolbar-btn" @click="handleExport">导出</button>
+              <button 
+                type="button" 
+                class="toolbar-btn delete-btn" 
+                @click="handleDelete"
+                :disabled="allCharacters.length <= 1"
+              >
+                删除
+              </button>
             </div>
             <button class="close-btn" type="button" aria-label="关闭" @click="handleClose">
               <IconClose />
@@ -51,6 +59,22 @@
         </div>
       </div>
     </Transition>
+    <Transition name="modal">
+      <div v-if="showDeleteConfirm" class="character-modal-overlay" @click.self="showDeleteConfirm = false">
+        <div class="character-modal confirm-modal">
+          <div class="modal-header">
+            <h2 class="modal-title">确认删除</h2>
+          </div>
+          <div class="modal-body">
+            <p class="confirm-message">确定要删除该角色吗？该操作不可逆。</p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="toolbar-btn" @click="showDeleteConfirm = false">取消</button>
+            <button type="button" class="toolbar-btn delete-btn" @click="confirmDelete">确认删除</button>
+          </div>
+        </div>
+      </div>
+    </Transition>
   </Teleport>
 </template>
 
@@ -60,6 +84,8 @@ import { IconClose } from '@/components/icons'
 import CharacterSettings from './CharacterSettings.vue'
 import { useAccountStore } from '@/stores'
 import type { AccountCharacter } from '@/types/character'
+import { logger } from '@/utils/logger'
+import { useToast } from '@/composables/useToast'
 
 const props = defineProps<{
   visible: boolean
@@ -70,10 +96,12 @@ const emit = defineEmits<{
 }>()
 
 const accountStore = useAccountStore()
+const toast = useToast()
 const settingsRef = ref<InstanceType<typeof CharacterSettings> | null>(null)
 const isDropdownOpen = ref(false)
 const allCharacters = ref<AccountCharacter[]>([])
 const currentCharacterId = ref<string | null>(null)
+const showDeleteConfirm = ref(false)
 
 const currentCharacterName = computed(() => {
   const char = allCharacters.value.find(c => c.id === currentCharacterId.value)
@@ -96,6 +124,35 @@ function handleReset(): void {
 
 function handleExport(): void {
   settingsRef.value?.exportJson()
+}
+
+function handleDelete(): void {
+  showDeleteConfirm.value = true
+}
+
+async function confirmDelete(): Promise<void> {
+  try {
+    if (!currentCharacterId.value) return
+
+    const charName = currentCharacterName.value
+    await accountStore.deleteCharacter(currentCharacterId.value)
+    await loadCharacters()
+
+    if (allCharacters.value.length > 0) {
+      const newCharacterId = allCharacters.value[0].id
+      currentCharacterId.value = newCharacterId
+      await accountStore.setActiveCharacterId(newCharacterId)
+      await nextTick()
+      await settingsRef.value?.loadCharacter(newCharacterId)
+    }
+
+    showDeleteConfirm.value = false
+    toast.success(`已删除角色「${charName}」`)
+    logger.info('CharacterModal', 'Deleted character', { characterId: currentCharacterId.value })
+  } catch (error) {
+    logger.error('CharacterModal', 'Failed to delete character', error)
+    toast.error('删除角色失败')
+  }
 }
 
 async function handleCreateNew(): Promise<void> {
@@ -181,6 +238,10 @@ watch(
     font-weight: 600;
     color: #333333;
     min-width: 0;
+  }
+
+  .header-actions {
+    margin-left: auto;
   }
 }
 
@@ -348,5 +409,44 @@ watch(
     transform: scale(0.97) translateY(-12px);
     opacity: 0;
   }
+}
+
+.toolbar-btn.delete-btn {
+  background: #fef2f2;
+  color: #dc2626;
+  border-color: #fecaca;
+
+  &:hover:not(:disabled) {
+    background: #fee2e2;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.confirm-modal {
+  width: min(95vw, 450px);
+}
+
+.confirm-modal .modal-body {
+  padding: 24px 20px;
+  text-align: center;
+}
+
+.confirm-message {
+  margin: 0;
+  font-size: 15px;
+  color: #374151;
+  line-height: 1.6;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px 20px;
+  border-top: 1px solid #e5e7eb;
 }
 </style>
