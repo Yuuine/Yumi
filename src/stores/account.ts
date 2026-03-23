@@ -305,7 +305,11 @@ export const useAccountStore = defineStore('account', () => {
         await saveAccountsIndex()
       }
     } catch (error) {
-      logger.warn('AccountStore', 'Failed to sync with backend, continuing with local data', error as Record<string, unknown>)
+      logger.warn(
+        'AccountStore',
+        'Failed to sync with backend, continuing with local data',
+        error as Record<string, unknown>
+      )
     }
   }
 
@@ -685,7 +689,10 @@ export const useAccountStore = defineStore('account', () => {
     } catch (error: unknown) {
       const errorObj = error as { response?: { status?: number }; message?: string }
       if (errorObj?.response?.status === 404) {
-        logger.debug('AccountStore', 'Account not found in backend, may have been deleted elsewhere')
+        logger.debug(
+          'AccountStore',
+          'Account not found in backend, may have been deleted elsewhere'
+        )
       } else {
         logger.error('AccountStore', 'Failed to refresh account from backend', error)
       }

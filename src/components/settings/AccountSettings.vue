@@ -899,7 +899,7 @@ async function confirmImport(): Promise<void> {
 
 .account-sync-button {
   margin-top: var(--spacing-sm);
-  
+
   .action-btn {
     flex: 0 0 calc(50% - var(--spacing-sm) / 2);
   }

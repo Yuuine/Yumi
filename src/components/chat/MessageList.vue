@@ -186,10 +186,13 @@ function scheduleFollowScroll(options: { preferInstant?: boolean } = {}): void {
   if (streaming && !options.preferInstant) {
     if (now - lastFollowScrollTs < STREAM_SCROLL_MIN_INTERVAL_MS) {
       if (streamThrottleTimer) return
-      streamThrottleTimer = setTimeout(() => {
-        streamThrottleTimer = null
-        runFollowScrollFrame({ preferInstant: false })
-      }, STREAM_SCROLL_MIN_INTERVAL_MS - (now - lastFollowScrollTs))
+      streamThrottleTimer = setTimeout(
+        () => {
+          streamThrottleTimer = null
+          runFollowScrollFrame({ preferInstant: false })
+        },
+        STREAM_SCROLL_MIN_INTERVAL_MS - (now - lastFollowScrollTs)
+      )
       return
     }
   }
@@ -312,7 +315,8 @@ watch(
       const isUpdatingLastMessage =
         newLength > 0 &&
         oldMessages[newMessages.length - 1]?.id === newMessages[newMessages.length - 1]?.id &&
-        oldMessages[newMessages.length - 1]?.content !== newMessages[newMessages.length - 1]?.content
+        oldMessages[newMessages.length - 1]?.content !==
+          newMessages[newMessages.length - 1]?.content
 
       displayMessages.value = [...newMessages]
 

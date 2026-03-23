@@ -41,13 +41,13 @@ export const useChatStore = defineStore('chat', () => {
   async function initializeConversation(): Promise<void> {
     const accountStore = useAccountStore()
     const conversations = await accountStore.loadConversations()
-    
+
     if (conversations.length > 0) {
       const typedConversations = conversations as Array<{ id: string; updatedAt?: string }>
-      const latestConv = typedConversations.sort((a, b) => 
-        new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()
+      const latestConv = typedConversations.sort(
+        (a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()
       )[0]
-      
+
       await switchConversation(latestConv.id)
     }
   }

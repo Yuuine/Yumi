@@ -46,6 +46,9 @@ export function dedupeMessagesById(msgs: ChatMessage[]): ChatMessage[] {
 /**
  * 合并两段消息历史（如加载更早一页时与当前列表合并），去重后按时间排序
  */
-export function mergeMessageHistory(olderWindow: ChatMessage[], newerWindow: ChatMessage[]): ChatMessage[] {
+export function mergeMessageHistory(
+  olderWindow: ChatMessage[],
+  newerWindow: ChatMessage[]
+): ChatMessage[] {
   return dedupeMessagesById([...olderWindow, ...newerWindow])
 }
