@@ -207,5 +207,35 @@ class ConversationService:
             )
             await db.commit()
 
+    @staticmethod
+    async def get_conversation_history(
+        conversation_id: str,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        """
+        获取会话的历史对话记录
+
+        Args:
+            conversation_id: 会话ID
+            limit: 返回数量限制（默认20条）
+
+        Returns:
+            对话记录列表，每条包含 role 和 content，按时间正序排列
+        """
+        async with get_db() as db:
+            cursor = await db.execute(
+                """SELECT role, content, timestamp 
+                   FROM conversation_logs 
+                   WHERE conversation_id = ? 
+                   ORDER BY timestamp DESC 
+                   LIMIT ?""",
+                (conversation_id, limit),
+            )
+            rows = await cursor.fetchall()
+            columns = [desc[0] for desc in cursor.description]
+            messages = [dict(zip(columns, row)) for row in rows]
+            messages.reverse()
+            return messages
+
 
 conversation_service = ConversationService()

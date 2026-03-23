@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { ChatMessage, ChatRequest, ChatResponse, EmotionData } from '@/types'
 import { chatApi } from '@/api/chat'
-import { useAccountStore } from './account'
+import { useAccountStore, type AccountConversation } from './account'
 import type { ApiError } from '@/api/http-client'
 import dayjs from 'dayjs'
 import { logger } from '@/utils/logger'
@@ -37,6 +37,20 @@ export const useChatStore = defineStore('chat', () => {
   const abortController = ref<AbortController | null>(null)
   const historyPage = ref(0)
   const hasMoreHistory = ref(true)
+
+  async function initializeConversation(): Promise<void> {
+    const accountStore = useAccountStore()
+    const conversations = await accountStore.loadConversations()
+    
+    if (conversations.length > 0) {
+      const typedConversations = conversations as Array<{ id: string; updatedAt?: string }>
+      const latestConv = typedConversations.sort((a, b) => 
+        new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()
+      )[0]
+      
+      await switchConversation(latestConv.id)
+    }
+  }
 
   const recentMessages = computed(() => {
     return messages.value.slice(-20)
@@ -104,7 +118,8 @@ export const useChatStore = defineStore('chat', () => {
     hasMoreHistory.value = true
 
     const accountStore = useAccountStore()
-    const targetCharacterId = characterId ?? accountStore.currentConfig?.activeCharacterId ?? undefined
+    const targetCharacterId =
+      characterId ?? accountStore.currentConfig?.activeCharacterId ?? undefined
 
     if (characterId) {
       await accountStore.setActiveCharacterId(characterId)
@@ -118,7 +133,10 @@ export const useChatStore = defineStore('chat', () => {
       updatedAt: new Date().toISOString(),
     })
 
-    logger.info('ChatStore', 'Started new conversation', { conversationId: newId, characterId: targetCharacterId })
+    logger.info('ChatStore', 'Started new conversation', {
+      conversationId: newId,
+      characterId: targetCharacterId,
+    })
     return newId
   }
 
@@ -187,7 +205,7 @@ export const useChatStore = defineStore('chat', () => {
           updatedAt: new Date().toISOString(),
         })
       } else {
-        const convData = conv as any
+        const convData = conv as AccountConversation
         convData.updatedAt = new Date().toISOString()
         if (!convData.title) {
           convData.title = content.slice(0, 30) + (content.length > 30 ? '...' : '')
@@ -493,5 +511,6 @@ export const useChatStore = defineStore('chat', () => {
     startNewConversation,
     switchConversation,
     clearError,
+    initializeConversation,
   }
 })

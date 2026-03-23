@@ -25,6 +25,17 @@ export interface FullAccountData {
   createdAt: string
   updatedAt: string
   characterCards: CharacterCardFlat[]
+  conversations: Array<{
+    id: string
+    user_id: string
+    character_id: string | null
+    title: string | null
+    created_at: string
+    updated_at: string
+    is_active: number
+    character_name?: string
+    formal_name?: string
+  }>
 }
 
 interface PurgeUserResponse {

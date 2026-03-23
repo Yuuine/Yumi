@@ -102,10 +102,12 @@
           <button class="action-btn" @click="handleCreateAccount">创建账号</button>
           <button class="action-btn" @click="handleSwitchAccount">切换账号</button>
         </div>
-        <button class="action-btn" :disabled="isSyncing" @click="handleSyncAccounts">
-          <span v-if="isSyncing" class="btn-loading-spinner"></span>
-          <span>{{ isSyncing ? '同步中...' : '发现并同步账号' }}</span>
-        </button>
+        <div class="action-buttons account-sync-button">
+          <button class="action-btn" :disabled="isSyncing" @click="handleSyncAccounts">
+            <span v-if="isSyncing" class="btn-loading-spinner"></span>
+            <span>{{ isSyncing ? '同步中...' : '发现并同步账号' }}</span>
+          </button>
+        </div>
         <button class="action-btn danger full-width" @click="handleDelete">
           <IconDelete class="btn-icon" />
           <span>删除账号</span>
@@ -331,8 +333,8 @@ function handleWindowFocus(): void {
 async function refreshAccountFromBackend() {
   try {
     await accountStore.refreshCurrentAccountFromBackend?.()
-  } catch (error) {
-    logger.error('AccountSettings', 'Failed to refresh account from backend', error)
+  } catch {
+    // 404 错误已在 store 层处理，此处静默忽略
   }
 }
 
@@ -893,6 +895,14 @@ async function confirmImport(): Promise<void> {
 
 .account-manage-buttons {
   margin-top: var(--spacing-sm);
+}
+
+.account-sync-button {
+  margin-top: var(--spacing-sm);
+  
+  .action-btn {
+    flex: 0 0 calc(50% - var(--spacing-sm) / 2);
+  }
 }
 
 .btn-loading-spinner {

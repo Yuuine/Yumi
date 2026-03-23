@@ -11,7 +11,7 @@
       <MessageList
         ref="messageListRef"
         :messages="chatStore.messages"
-        @copy="handleCopy"
+        @copy-content="handleCopy"
         @load-more="handleLoadMore"
       />
     </div>
@@ -24,10 +24,7 @@
     <ModelsModal :visible="showModelsModal" @close="closeModelsModal" />
     <CharacterModal :visible="showCharacterModal" @close="closeCharacterModal" />
     <SettingsModal :visible="showSettingsModal" @close="closeSettingsModal" />
-    <ConversationManagerModal
-      v-model="showConversationManager"
-      @select="selectConversation"
-    />
+    <ConversationManagerModal v-model="showConversationManager" @select="selectConversation" />
   </div>
 </template>
 
@@ -64,7 +61,6 @@ async function checkConversations() {
 
 onMounted(async () => {
   await checkConversations()
-  await chatStore.loadHistory()
   nextTick(() => {
     messageListRef.value?.scrollToBottom()
   })

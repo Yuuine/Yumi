@@ -36,11 +36,11 @@
               </button>
               <button type="button" class="toolbar-btn" @click="handleReset">重置</button>
               <button type="button" class="toolbar-btn" @click="handleExport">导出</button>
-              <button 
-                type="button" 
-                class="toolbar-btn delete-btn" 
+              <button
+                type="button"
+                class="toolbar-btn delete-btn"
                 @click="handleDelete"
-                :disabled="allCharacters.length <= 1"
+                :disabled="allCharacters.length <= 1 || hasConversationsForCharacter"
               >
                 删除
               </button>
@@ -60,7 +60,11 @@
       </div>
     </Transition>
     <Transition name="modal">
-      <div v-if="showDeleteConfirm" class="character-modal-overlay" @click.self="showDeleteConfirm = false">
+      <div
+        v-if="showDeleteConfirm"
+        class="character-modal-overlay"
+        @click.self="showDeleteConfirm = false"
+      >
         <div class="character-modal confirm-modal">
           <div class="modal-header">
             <h2 class="modal-title">确认删除</h2>
@@ -69,8 +73,12 @@
             <p class="confirm-message">确定要删除该角色吗？该操作不可逆。</p>
           </div>
           <div class="modal-footer">
-            <button type="button" class="toolbar-btn" @click="showDeleteConfirm = false">取消</button>
-            <button type="button" class="toolbar-btn delete-btn" @click="confirmDelete">确认删除</button>
+            <button type="button" class="toolbar-btn" @click="showDeleteConfirm = false">
+              取消
+            </button>
+            <button type="button" class="toolbar-btn delete-btn" @click="confirmDelete">
+              确认删除
+            </button>
           </div>
         </div>
       </div>
@@ -102,11 +110,27 @@ const isDropdownOpen = ref(false)
 const allCharacters = ref<AccountCharacter[]>([])
 const currentCharacterId = ref<string | null>(null)
 const showDeleteConfirm = ref(false)
+const hasConversationsForCharacter = ref(false)
 
 const currentCharacterName = computed(() => {
   const char = allCharacters.value.find(c => c.id === currentCharacterId.value)
   return char?.name || '未命名角色'
 })
+
+async function checkConversationsForCharacter(): Promise<void> {
+  if (!currentCharacterId.value) {
+    hasConversationsForCharacter.value = false
+    return
+  }
+  try {
+    const conversations = await accountStore.loadConversations()
+    hasConversationsForCharacter.value = conversations.some(
+      (conv: any) => conv.characterId === currentCharacterId.value
+    )
+  } catch {
+    hasConversationsForCharacter.value = false
+  }
+}
 
 function handleClose(): void {
   emit('close')
@@ -127,6 +151,10 @@ function handleExport(): void {
 }
 
 function handleDelete(): void {
+  if (hasConversationsForCharacter.value) {
+    toast.warning('该角色存在对话实例，无法删除')
+    return
+  }
   showDeleteConfirm.value = true
 }
 
@@ -186,12 +214,20 @@ function onCharacterLoaded(charId: string): void {
 }
 
 watch(
+  () => currentCharacterId.value,
+  () => {
+    void checkConversationsForCharacter()
+  }
+)
+
+watch(
   () => props.visible,
   async v => {
     if (v) {
       await loadCharacters()
       await nextTick()
       await settingsRef.value?.loadCharacter()
+      await checkConversationsForCharacter()
     }
   }
 )

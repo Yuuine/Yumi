@@ -4,7 +4,7 @@
       <MarkdownRenderer v-if="message.role === 'assistant'" :content="message.content" />
       <div v-else class="message-text">{{ message.content }}</div>
     </div>
-    <MessageActionsFooter :message="message" @copy="handleCopy" />
+    <MessageActionsFooter :message="message" @copy-content="handleCopy" />
   </div>
 </template>
 
@@ -21,16 +21,17 @@ interface Props {
   message: ChatMessage
 }
 
-defineProps<Props>()
+const props = defineProps<Props>()
 
-/**
- * 处理复制操作
- * @param content - 要复制的内容
- */
+const emit = defineEmits<{
+  'copy-content': [content: string]
+}>()
+
 async function handleCopy(content: string): Promise<void> {
   const success = await copyToClipboard(content)
   if (success) {
     toast.success('已复制到剪贴板')
+    emit('copy-content', props.message.content)
   } else {
     toast.error('复制失败，请重试')
   }

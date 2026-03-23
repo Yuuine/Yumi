@@ -17,6 +17,7 @@ from .character_card import (
     CharacterCard,
     get_character_card_for_chat,
 )
+from .conversation_service import conversation_service
 from .emotion import EmotionData, EmotionEngine, emotion_label_from_va
 from .memory import MemoryEngine
 
@@ -109,18 +110,18 @@ class PromptBuilder:
 
         messages: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
 
-        recent_memories = await self.memory_engine.get_recent(
-            user_id, limit=settings.memory.recent_context_limit
-        )
-        for mem in reversed(recent_memories):
-            content = mem["content"]
-            if "用户:" in content and "助手:" in content:
-                parts = content.split("\n助手:")
-                if len(parts) == 2:
-                    user_content = parts[0].replace("用户:", "").strip()
-                    assistant_content = parts[1].strip()
-                    messages.append({"role": "user", "content": user_content})
-                    messages.append({"role": "assistant", "content": assistant_content})
+        if conversation_id:
+            history = await conversation_service.get_conversation_history(conversation_id)
+            logger.debug(
+                "Loaded %d history messages for conversation=%s",
+                len(history),
+                conversation_id,
+            )
+            for msg in history:
+                messages.append({
+                    "role": msg["role"],
+                    "content": msg["content"],
+                })
 
         if memories:
             context_text = "相关记忆：\n"
@@ -134,6 +135,13 @@ class PromptBuilder:
             )
 
         messages.append({"role": "user", "content": current_message})
+
+        logger.info(
+            "Built context: total_messages=%d, history=%d, rag_memories=%d",
+            len(messages),
+            len(history) if conversation_id else 0,
+            len(memories) if memories else 0,
+        )
 
         return messages
 

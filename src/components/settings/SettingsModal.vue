@@ -259,7 +259,7 @@ function handleClose() {
   border-radius: 12px;
   width: 600px;
   max-width: 80vw;
-  height: min(48vh, 680px);
+  height: min(70vh, 680px);
   display: flex;
   flex-direction: column;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);

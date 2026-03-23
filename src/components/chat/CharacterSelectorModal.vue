@@ -25,7 +25,10 @@
           <div class="character-avatar">{{ (char.name || '未命名')[0] }}</div>
           <div class="character-info">
             <div class="character-name">{{ char.name || '未命名角色' }}</div>
-            <div class="character-desc">{{ char.roleOverview?.slice(0, 50) || '暂无描述' }}{{ char.roleOverview?.length > 50 ? '...' : '' }}</div>
+            <div class="character-desc">
+              {{ char.roleOverview?.slice(0, 50) || '暂无描述'
+              }}{{ char.roleOverview?.length > 50 ? '...' : '' }}
+            </div>
           </div>
         </div>
       </div>
@@ -89,7 +92,7 @@ function handleClose() {
 
 watch(
   () => props.modelValue,
-  async (newVal) => {
+  async newVal => {
     localVisible.value = newVal
     if (newVal) {
       await loadCharacters()
@@ -97,7 +100,7 @@ watch(
   }
 )
 
-watch(localVisible, (newVal) => {
+watch(localVisible, newVal => {
   emit('update:modelValue', newVal)
 })
 </script>

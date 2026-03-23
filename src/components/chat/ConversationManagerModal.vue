@@ -10,10 +10,7 @@
     :showCancel="false"
     :showClose="true"
   >
-    <CharacterSelectorModal
-      v-model="showCharacterSelector"
-      @confirm="handleCharacterSelected"
-    />
+    <CharacterSelectorModal v-model="showCharacterSelector" @confirm="handleCharacterSelected" />
     <div class="conversation-manager">
       <div class="conversation-list">
         <div v-if="conversations.length === 0" class="empty-state">
@@ -28,13 +25,28 @@
           @click="selectConversation(conversation.id)"
         >
           <div class="conversation-info">
-            <div class="conversation-title">{{ conversation.title || '新对话' }}</div>
+            <input
+              v-if="editingConversationId === conversation.id"
+              ref="editTitleInputRef"
+              v-model="editTitleInput"
+              type="text"
+              class="form-input conversation-title-input"
+              placeholder="请输入对话标题"
+              @blur="saveEditConversation"
+              @keyup.enter="saveEditConversation"
+              @keyup.esc="cancelEditConversation"
+              @click.stop
+            />
+            <div v-else class="conversation-title">{{ conversation.title || '新对话' }}</div>
             <div class="conversation-meta">
               <span class="character-name">{{ getCharacterName(conversation.characterId) }}</span>
               <span class="conversation-date">{{ formatDate(conversation.updatedAt) }}</span>
             </div>
           </div>
           <div class="conversation-actions">
+            <button class="action-btn edit-btn" @click.stop="startEditConversation(conversation)">
+              <IconEdit class="btn-icon" />
+            </button>
             <button class="action-btn delete-btn" @click.stop="deleteConversation(conversation.id)">
               <IconDelete class="btn-icon" />
             </button>
@@ -51,7 +63,11 @@
   </Dialog>
   <Teleport to="body">
     <Transition name="modal">
-      <div v-if="showDeleteConfirm" class="character-modal-overlay" @click.self="showDeleteConfirm = false">
+      <div
+        v-if="showDeleteConfirm"
+        class="character-modal-overlay"
+        @click.self="showDeleteConfirm = false"
+      >
         <div class="character-modal confirm-modal">
           <div class="modal-header">
             <h2 class="modal-title">确认删除</h2>
@@ -60,8 +76,12 @@
             <p class="confirm-message">此操作不可逆，将永久删除此对话的所有历史记录。</p>
           </div>
           <div class="modal-footer">
-            <button type="button" class="toolbar-btn" @click="showDeleteConfirm = false">取消</button>
-            <button type="button" class="toolbar-btn delete-btn" @click="confirmDelete">确认删除</button>
+            <button type="button" class="toolbar-btn" @click="showDeleteConfirm = false">
+              取消
+            </button>
+            <button type="button" class="toolbar-btn delete-btn" @click="confirmDelete">
+              确认删除
+            </button>
           </div>
         </div>
       </div>
@@ -70,11 +90,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { useAccountStore, useChatStore } from '@/stores'
 import Dialog from '@/components/common/Dialog.vue'
 import CharacterSelectorModal from './CharacterSelectorModal.vue'
-import { IconAdd, IconDelete } from '@/components/icons'
+import { IconAdd, IconDelete, IconEdit } from '@/components/icons'
 import { logger } from '@/utils/logger'
 import { useToast } from '@/composables/useToast'
 
@@ -98,6 +118,9 @@ const localVisible = ref(props.modelValue)
 const showCharacterSelector = ref(false)
 const showDeleteConfirm = ref(false)
 const deletingConversationId = ref<string | null>(null)
+const editingConversationId = ref<string | null>(null)
+const editTitleInput = ref('')
+const editTitleInputRef = ref<HTMLInputElement | null>(null)
 
 const activeConversationId = computed(() => chatStore.currentConversationId)
 const conversations = ref<
@@ -127,7 +150,7 @@ async function loadConversations() {
 
 watch(
   () => props.modelValue,
-  async (newVal) => {
+  async newVal => {
     console.log('ConversationManagerModal: modelValue prop changed to:', newVal)
     localVisible.value = newVal
     if (newVal) {
@@ -137,7 +160,7 @@ watch(
   { immediate: true }
 )
 
-watch(localVisible, (newVal) => {
+watch(localVisible, newVal => {
   emit('update:modelValue', newVal)
 })
 
@@ -187,13 +210,13 @@ async function selectConversation(conversationId: string) {
 async function createNewConversation() {
   try {
     const characters = await accountStore.loadCharacters()
-    
+
     if (characters.length === 0) {
       return
     }
-    
+
     const hasExistingConversations = conversations.value.length > 0
-    
+
     if (hasExistingConversations || characters.length > 1) {
       showCharacterSelector.value = true
     } else {
@@ -226,7 +249,7 @@ async function deleteConversation(conversationId: string) {
       toast.warning('当前正在使用的对话无法删除')
       return
     }
-    
+
     deletingConversationId.value = conversationId
     showDeleteConfirm.value = true
   } catch (error) {
@@ -237,7 +260,7 @@ async function deleteConversation(conversationId: string) {
 async function confirmDelete() {
   try {
     if (!deletingConversationId.value) return
-    
+
     await accountStore.deleteConversation(deletingConversationId.value)
     await loadConversations()
     toast.success('已删除对话')
@@ -247,6 +270,39 @@ async function confirmDelete() {
     logger.error('ConversationManager', 'Failed to delete conversation', error)
     toast.error('删除对话失败')
   }
+}
+
+function startEditConversation(conversation: { id: string; title?: string }) {
+  editingConversationId.value = conversation.id
+  editTitleInput.value = conversation.title || ''
+  nextTick(() => {
+    editTitleInputRef.value?.focus()
+    editTitleInputRef.value?.select()
+  })
+}
+
+async function saveEditConversation() {
+  try {
+    if (!editingConversationId.value) return
+
+    const currentConv = await accountStore.getConversation(editingConversationId.value)
+    if (currentConv) {
+      const convData = { ...currentConv, title: editTitleInput.value.trim() || '新对话' }
+      await accountStore.saveConversation(convData)
+    }
+
+    await loadConversations()
+    toast.success('已更新对话标题')
+    cancelEditConversation()
+  } catch (error) {
+    logger.error('ConversationManager', 'Failed to update conversation title', error)
+    toast.error('更新失败')
+  }
+}
+
+function cancelEditConversation() {
+  editingConversationId.value = null
+  editTitleInput.value = ''
 }
 </script>
 
@@ -305,6 +361,19 @@ async function confirmDelete() {
   white-space: nowrap;
 }
 
+.conversation-title-input {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+  padding: 2px 4px;
+  border: 1px solid var(--color-primary);
+  border-radius: 4px;
+  background: var(--bg-primary);
+  outline: none;
+  width: 100%;
+}
+
 .conversation-meta {
   display: flex;
   gap: 12px;
@@ -314,6 +383,8 @@ async function confirmDelete() {
 
 .conversation-actions {
   margin-left: 12px;
+  display: flex;
+  gap: 8px;
 }
 
 .action-btn {
@@ -332,6 +403,11 @@ async function confirmDelete() {
   &.delete-btn:hover {
     color: var(--color-danger);
     background: var(--color-danger-light-9);
+  }
+
+  &.edit-btn:hover {
+    color: var(--color-primary);
+    background: var(--color-primary-light-9);
   }
 }
 
@@ -422,6 +498,26 @@ async function confirmDelete() {
   font-size: 15px;
   color: #374151;
   line-height: 1.6;
+}
+
+.form-input {
+  width: 100%;
+  padding: 10px 14px;
+  font-size: 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #374151;
+  transition: border-color 0.2s ease;
+
+  &:focus {
+    outline: none;
+    border-color: #3b82f6;
+  }
+
+  &::placeholder {
+    color: #9ca3af;
+  }
 }
 
 .confirm-modal .modal-footer {

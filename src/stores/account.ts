@@ -129,10 +129,14 @@ interface ConversationMessage {
   id?: string
 }
 
-interface AccountConversation {
+export interface AccountConversation {
   id: string
   accountId?: string
   characterId?: string
+  title?: string
+  createdAt?: string
+  updatedAt?: string
+  messageCount?: number
   messages?: ConversationMessage[]
 }
 
@@ -257,6 +261,7 @@ export const useAccountStore = defineStore('account', () => {
     try {
       deviceFingerprint.value = await generateDeviceFingerprint()
       await loadAccountsIndex()
+      await syncLocalAccountsWithBackend()
       await ensureCurrentAccountAvailable()
 
       isInitialized.value = true
@@ -269,6 +274,38 @@ export const useAccountStore = defineStore('account', () => {
       throw error
     } finally {
       isLoading.value = false
+    }
+  }
+
+  async function syncLocalAccountsWithBackend(): Promise<void> {
+    if (accounts.value.length === 0) return
+
+    try {
+      const backendAccounts = await userApi.listUsers()
+      const backendAccountIds = new Set(backendAccounts.users.map(u => u.id))
+
+      const localAccountIds = accounts.value.map(a => a.id)
+      const removedIds = localAccountIds.filter(id => !backendAccountIds.has(id))
+
+      if (removedIds.length > 0) {
+        logger.info('AccountStore', 'Removing local accounts that no longer exist in backend', {
+          removedIds,
+        })
+
+        accounts.value = accounts.value.filter(a => backendAccountIds.has(a.id))
+
+        for (const removedId of removedIds) {
+          localStorage.removeItem(getAccountStorageKey(removedId))
+        }
+
+        if (currentAccount.value && removedIds.includes(currentAccount.value.id)) {
+          currentAccount.value = null
+        }
+
+        await saveAccountsIndex()
+      }
+    } catch (error) {
+      logger.warn('AccountStore', 'Failed to sync with backend, continuing with local data', error as Record<string, unknown>)
     }
   }
 
@@ -645,8 +682,13 @@ export const useAccountStore = defineStore('account', () => {
         await saveAccountsIndex()
         logger.info('AccountStore', 'Refreshed current account from backend')
       }
-    } catch (error) {
-      logger.error('AccountStore', 'Failed to refresh account from backend', error)
+    } catch (error: unknown) {
+      const errorObj = error as { response?: { status?: number }; message?: string }
+      if (errorObj?.response?.status === 404) {
+        logger.debug('AccountStore', 'Account not found in backend, may have been deleted elsewhere')
+      } else {
+        logger.error('AccountStore', 'Failed to refresh account from backend', error)
+      }
     }
   }
 
@@ -1281,6 +1323,23 @@ export const useAccountStore = defineStore('account', () => {
       }
 
       accountData.secrets = { models: [], version: '1.0.0', encryptedAt: new Date().toISOString() }
+
+      const conversations: Record<string, AccountConversation> = {}
+      if (fullData.conversations) {
+        fullData.conversations.forEach(conv => {
+          conversations[conv.id] = {
+            id: conv.id,
+            accountId: conv.user_id,
+            characterId: conv.character_id || undefined,
+            title: conv.title || '新对话',
+            createdAt: conv.created_at,
+            updatedAt: conv.updated_at,
+            messageCount: 0,
+            messages: [],
+          }
+        })
+        accountData.conversations = conversations
+      }
 
       localStorage.setItem(getAccountStorageKey(accountId), JSON.stringify(accountData))
 

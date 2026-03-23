@@ -17,11 +17,11 @@ interface Props {
 const props = defineProps<Props>()
 
 const emit = defineEmits<{
-  copy: [content: string]
+  'copy-content': [content: string]
 }>()
 
 function handleCopy() {
-  emit('copy', props.message.content)
+  emit('copy-content', props.message.content)
 }
 </script>
 

@@ -182,6 +182,7 @@ async def list_users(req: Request):
 async def get_full_account_data(user_id: str, req: Request):
     from ..database import get_db
     from ..services.character_card import list_character_cards_for_user
+    from ..services.conversation_service import conversation_service
 
     async with get_db() as db:
         cursor = await db.execute(
@@ -197,6 +198,12 @@ async def get_full_account_data(user_id: str, req: Request):
         preferences = json.loads(row[2]) if row[2] else {}
 
         character_cards = await list_character_cards_for_user(db, user_id)
+        
+        conversations = await conversation_service.get_user_conversations(
+            user_id=user_id,
+            limit=1000,
+            offset=0
+        )
 
         return {
             "id": row[0],
@@ -233,6 +240,7 @@ async def get_full_account_data(user_id: str, req: Request):
                 }
                 for card in character_cards
             ],
+            "conversations": conversations,
         }
 
 

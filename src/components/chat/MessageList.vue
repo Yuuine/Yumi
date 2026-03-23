@@ -16,7 +16,7 @@
         :message="message"
         :data-message-id="message.id"
         class="message-item"
-        @copy="handleCopy"
+        @copy-content="handleCopy"
       />
 
       <div v-if="displayMessages.length === 0 && !isLoadingMore" class="empty-state">
@@ -44,7 +44,7 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const emit = defineEmits<{
-  copy: [content: string]
+  'copy-content': [content: string]
   loadMore: []
   scrollStateChange: [isAtBottom: boolean]
 }>()
@@ -250,7 +250,7 @@ function waitForDomUpdate(): Promise<void> {
 }
 
 function handleCopy(content: string) {
-  emit('copy', content)
+  emit('copy-content', content)
 }
 
 function setHasMoreHistory(value: boolean) {

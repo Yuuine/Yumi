@@ -218,16 +218,17 @@ async function loadCharacter(targetCharacterId?: string): Promise<void> {
     char = list[0]
     await accountStore.setActiveCharacterId(char.id)
   }
+  if (!char && list.length === 0) {
+    logger.warn(
+      'CharacterSettings',
+      'No characters found, this should not happen - account should have at least one character'
+    )
+    return
+  }
+
   if (!char) {
-    const t = accountStore.createNewCharacterTemplate()
-    await accountStore.saveCharacter(t)
-    await accountStore.setActiveCharacterId(t.id)
-    char = t
-    try {
-      await syncToServer(t)
-    } catch (e) {
-      logger.warn('CharacterSettings', 'Initial sync failed', { error: String(e) })
-    }
+    draft.value = null
+    return
   }
 
   draft.value = cloneChar(char)
