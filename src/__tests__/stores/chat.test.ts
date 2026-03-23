@@ -22,6 +22,18 @@ vi.mock('@/api/http-client', () => ({
   },
 }))
 
+vi.mock('@/stores/account', () => ({
+  useAccountStore: () => ({
+    currentAccountId: 'test-account',
+    currentAccount: { id: 'test-account' },
+    currentConfig: { activeCharacterId: undefined },
+    loadConversations: vi.fn().mockResolvedValue([]),
+    getConversation: vi.fn().mockResolvedValue(null),
+    saveConversation: vi.fn(),
+    setActiveCharacterId: vi.fn(),
+  }),
+}))
+
 describe('useChatStore', () => {
   beforeEach(() => {
     setActivePinia(createPinia())

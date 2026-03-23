@@ -19,7 +19,7 @@
     <ChatInput
       v-model:deepThinking="isDeepThinking"
       @send="handleSend"
-      :disabled="chatStore.isLoading"
+      :disabled="chatStore.isLoading || chatStore.isStreaming"
     />
     <ModelsModal :visible="showModelsModal" @close="closeModelsModal" />
     <CharacterModal :visible="showCharacterModal" @close="closeCharacterModal" />
@@ -50,6 +50,9 @@ const showConversationManager = ref(false)
 const isDeepThinking = ref(false)
 const hasConversations = ref(false)
 
+/** 设为 true 时使用 SSE 流式接口（与 MessageList 粘性滚动/节流配合） */
+const useChatStream = import.meta.env.VITE_CHAT_USE_STREAM === 'true'
+
 async function checkConversations() {
   try {
     const convs = await accountStore.loadConversations()
@@ -73,8 +76,18 @@ async function handleSend(content: string) {
     showConversationManager.value = true
     return
   }
-  messageListRef.value?.forceScrollToBottom()
-  await chatStore.sendMessage(content, isDeepThinking.value)
+
+  messageListRef.value?.beginStickyFollow()
+  try {
+    if (useChatStream) {
+      await chatStore.sendMessageStream(content)
+    } else {
+      await chatStore.sendMessage(content, isDeepThinking.value)
+    }
+  } finally {
+    await messageListRef.value?.completeStickyFollowSession()
+  }
+
   await checkConversations()
 }
 

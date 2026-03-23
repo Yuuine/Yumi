@@ -133,8 +133,9 @@ GET /api/chat/history
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | userId | string | 是 | 用户 ID |
+| conversationId | string | 是 | 会话 ID；仅返回该会话下的消息（缺省时返回空列表） |
 | limit | int | 否 | 返回数量 (默认 50) |
-| offset | int | 否 | 偏移量 (默认 0) |
+| offset | int | 否 | 偏移量 (默认 0)，与 `timestamp DESC` 分页配合加载更早消息 |
 
 **响应**：
 

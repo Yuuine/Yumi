@@ -202,7 +202,7 @@ class TestChatRouter:
 
                 response = await client.get(
                     "/api/chat/history",
-                    params={"userId": test_user_id, "limit": 50},
+                    params={"userId": test_user_id, "limit": 50, "conversationId": "conv-test-1"},
                 )
 
                 assert response.status_code == 200

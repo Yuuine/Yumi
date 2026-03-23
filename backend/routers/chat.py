@@ -447,16 +447,24 @@ async def send_message(request: ChatRequest, req: Request) -> ChatResponse:
 
 
 @router.get("/chat/history", response_model=ChatHistory)
-async def get_chat_history(userId: str, limit: int = 50, offset: int = 0) -> ChatHistory:
-    """获取聊天历史记录"""
+async def get_chat_history(
+    userId: str,
+    limit: int = 50,
+    offset: int = 0,
+    conversationId: str | None = None,
+) -> ChatHistory:
+    """获取指定会话的聊天历史（按时间正序返回当前窗口内的消息）。"""
+    if not conversationId:
+        return ChatHistory(messages=[])
+
     async with get_db() as db:
         cursor = await db.execute(
             """SELECT id, role, content, timestamp, emotion_valence, emotion_arousal
                FROM conversation_logs
-               WHERE user_id = ?
-               ORDER BY timestamp DESC
+               WHERE user_id = ? AND conversation_id = ?
+               ORDER BY timestamp DESC, id DESC
                LIMIT ? OFFSET ?""",
-            (userId, limit, offset),
+            (userId, conversationId, limit, offset),
         )
         rows = await cursor.fetchall()
 

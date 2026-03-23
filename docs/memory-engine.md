@@ -19,6 +19,7 @@
 | [架构设计](./architecture.md) | 系统整体架构、模块划分 |
 | [API 文档](./api.md) | 完整的 RESTful API 接口 |
 | [情绪引擎](./emotion-engine.md) | 情绪引擎详细设计 |
+| [RAG 技术说明](./rag-technical.md) | 检索增强生成：向量检索、相似度与 LLM 集成 |
 
 ---
 
