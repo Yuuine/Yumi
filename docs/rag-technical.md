@@ -6,7 +6,7 @@
 
 ## 1. 概念界定
 
-在本项目中，**RAG** 指：以用户当前输入为 **查询（Query）**，从 **向量库（ChromaDB）** 中检索与历史对话相关的 **记忆片段**，再将检索结果以 **系统提示词 / 附加 system 消息** 的形式注入 **大语言模型（LLM）** 的上下文，与 **会话历史（SQLite `conversation_logs`）**、**角色卡** 等共同构成完整 `messages[]`，最后调用统一 LLM 接口生成回复。
+在本项目中，**RAG** 指：以用户当前输入为 **查询（Query）**，从 **向量库（ChromaDB）** 中检索与历史对话相关的 **记忆片段**，再将检索结果以 **唯一一条 system 提示词**（角色卡 + 情绪 + 记忆摘要 + RAG 详情附录）注入 **大语言模型（LLM）** 的上下文，与 **会话历史（SQLite `conversation_logs`）** 等共同构成完整 `messages[]`，最后调用统一 LLM 接口生成回复。
 
 > **注意**：检索对象主要是「异步写入向量库的对话记忆」，与「当前会话的逐条聊天记录」来源不同；二者在 `PromptBuilder.build_context` 中分层组装。
 
@@ -40,7 +40,7 @@ flowchart LR
 |------|------|------|
 | 索引 | `MemoryEngine.store` | 文本入库；可选语义去重；写入元数据（`user_id`、`timestamp`、`importance_score` 等） |
 | 检索 | `MemoryEngine.search` | 以当前消息为 query 做 Top-K 相似检索；时间衰减；记忆巩固 |
-| 组装 | `PromptBuilder.build_context` | System（角色卡 + 情绪 + **记忆摘要条**）+ 可选会话历史 + **「相关记忆」system 块** + user |
+| 组装 | `PromptBuilder.build_context` | **单条** System（角色卡 + 情绪 + **记忆摘要条** + **RAG 检索附录**）+ 规范化 **user/assistant 交替** 的历史 + **末条 user**（当前问题） |
 | 生成 | `LLMService.chat` | OpenAI 兼容 API，多轮 `messages` 一次请求 |
 
 ---
@@ -134,24 +134,17 @@ effective_similarity = similarity × decay_factor
 
 ### 6.1 上下文组装顺序（`PromptBuilder.build_context`）
 
-最终发给 LLM 的 `messages` 大致为：
+最终发给 LLM 的 `messages` 满足：**仅一条 system（索引 0）**；其后 **user/assistant 严格交替**；**最后一条必须是 user**（当前问题）。
 
-1. **`role: system`**  
-   大段 **角色身份模板**（`SYSTEM_PROMPT_TEMPLATE`），其中 **「关键记忆摘要」** 来自 **同一次检索结果** `_format_memory_summary_bullets(memories)`：对 `memories[:rag_top_k]` 每条取前 **100 字符** 做成 bullet 列表，**不再二次调用** `memory_engine.search`（避免重复检索）。
+1. **`role: system`（唯一）**  
+   - **角色身份模板**（`SYSTEM_PROMPT_TEMPLATE`），其中 **「关键记忆摘要」** 来自 **同一次检索结果** `_format_memory_summary_bullets(memories)`：对 `memories[:rag_top_k]` 每条取前 **100 字符** 做成 bullet 列表，**不再二次调用** `memory_engine.search`（避免重复检索）。  
+   - 若有可展示的检索条，在同一 system 正文末尾追加 **`## 【RAG 检索相关记忆】`** 与条目列表（`_format_rag_detail_appendix`），**不再**使用第二条 `role: system`。
 
 2. **会话历史**（若存在 `conversation_id`）  
-   通过 `conversation_service.get_conversation_history` 从数据库拉取近期对话轮次，按 `role`/`content` 追加为多条 **user/assistant** 消息（具体条数由该服务 SQL 限制）。
+   通过 `conversation_service.get_conversation_history` 拉取近期对话，经 `finalize_history_and_current_message`：**仅保留 user/assistant**、**合并连续同角色**、**去掉开头孤立 assistant**；若历史以 **未回复的 user** 结尾，则与本轮输入合并为 **一条** 最终 user。
 
-3. **额外 `role: system`：「相关记忆」块**  
-   再次使用同一批 `memories[:rag_top_k]`，格式化为：
-
-   ```text
-   相关记忆：
-   - {content 前 100 字}...
-   ```
-
-4. **当前轮 `role: user`**  
-   用户本轮输入 `current_message`。
+3. **当前轮 `role: user`**  
+   经规范化后的 **最终用户正文**（可能与 `current_message` 合并）。
 
 ### 6.2 LLM 调用
 
@@ -199,7 +192,7 @@ effective_similarity = similarity × decay_factor
 | 检索 | Chroma 文本 query + `user_id` 过滤 + Top-K + 时间衰减排序 |
 | 向量化 | 依赖 Chroma 默认嵌入，业务不显式管理向量 |
 | 相似度 | `1 - distance` + 衰减因子得到有效相似度 |
-| 生成 | 单路 OpenAI 兼容 `chat`；RAG 结果进入 system 与附加 system 两段 |
+| 生成 | 单路 OpenAI 兼容 `chat`；RAG 结果全部并入 **唯一** system 正文 |
 
 **可选扩展**：自定义 Embedding、重排序（Cross-Encoder）、混合检索（关键词 + 向量）、按 `conversation_id` 元数据过滤记忆等，均可在 `MemoryEngine` 与 `PromptBuilder` 层扩展，而不改变「检索 → 拼 prompt → LLM」的总体形态。
 
