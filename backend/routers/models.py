@@ -19,7 +19,6 @@ from pydantic import BaseModel
 from ..core import clear_active_model, get_logger, set_active_model
 from ..core.model_state import get_active_model as get_active_model_state
 from ..services.log_service import AuditAction, log_service
-from ..services.proxy_config import get_proxy_config
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -700,14 +699,9 @@ async def _perform_test(base_url: str, api_key: str, model_name: str, verbose: b
             "max_tokens": 5,
         }
 
-    proxy_config = await get_proxy_config()
-    proxy = None
-    if proxy_config.enabled and proxy_config.mode == "normal":
-        proxy = proxy_config.get_normal_proxy()
-    trust_env = proxy is not None
     try:
         start_time = time.time()
-        async with httpx.AsyncClient(timeout=60.0, proxy=proxy, trust_env=trust_env) as client:
+        async with httpx.AsyncClient(timeout=60.0, trust_env=False) as client:
             response = await client.post(url, json=payload, headers=headers)
             latency = time.time() - start_time
 

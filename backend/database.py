@@ -30,6 +30,8 @@ async def init_db() -> None:
         await db.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id TEXT PRIMARY KEY,
+                nickname TEXT UNIQUE,
+                password_hash TEXT,
                 role_name TEXT DEFAULT 'Yumi',
                 preferences_json TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -75,6 +77,18 @@ async def init_db() -> None:
                 summary TEXT NOT NULL,
                 turn_count INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id),
+                FOREIGN KEY (conversation_id) REFERENCES conversations(id)
+            )
+        """)
+
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS conversation_states (
+                conversation_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                state_json TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users(id),
                 FOREIGN KEY (conversation_id) REFERENCES conversations(id)
             )
@@ -222,14 +236,25 @@ async def init_db() -> None:
             await db.execute(
                 "ALTER TABLE model_configs ADD COLUMN account_id TEXT NOT NULL DEFAULT ''"
             )
-            await db.execute("DELETE FROM model_configs")
-            logger.info("Added account_id column to model_configs and cleared legacy model records")
+            await db.execute(
+                "UPDATE model_configs SET account_id = 'default' WHERE account_id = ''"
+            )
+            logger.info("Added account_id column to model_configs and migrated existing records")
 
         conv_cursor = await db.execute("PRAGMA table_info(conversations)")
         conv_columns = [row[1] for row in await conv_cursor.fetchall()]
         if "character_id" not in conv_columns:
             await db.execute("ALTER TABLE conversations ADD COLUMN character_id TEXT")
             logger.info("Added character_id column to conversations")
+
+        user_cursor = await db.execute("PRAGMA table_info(users)")
+        user_columns = [row[1] for row in await user_cursor.fetchall()]
+        if "nickname" not in user_columns:
+            await db.execute("ALTER TABLE users ADD COLUMN nickname TEXT")
+            logger.info("Added nickname column to users")
+        if "password_hash" not in user_columns:
+            await db.execute("ALTER TABLE users ADD COLUMN password_hash TEXT")
+            logger.info("Added password_hash column to users")
 
         await _create_indexes(db)
 
@@ -318,6 +343,9 @@ async def _create_indexes(db: aiosqlite.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action)",
         "CREATE INDEX IF NOT EXISTS idx_character_cards_user ON character_cards(user_id)",
         "CREATE INDEX IF NOT EXISTS idx_character_cards_conversation ON character_cards(conversation_id)",
+        "CREATE INDEX IF NOT EXISTS idx_conversation_states_user ON conversation_states(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_conversation_states_updated ON conversation_states(updated_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_users_nickname ON users(nickname)",
     ]
 
     for index_sql in indexes:

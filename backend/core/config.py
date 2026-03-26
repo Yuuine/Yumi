@@ -105,6 +105,33 @@ class EmotionConfig(BaseSettings):
     default_sensitivity: float = Field(default=0.7, ge=0.0, le=1.0)
 
 
+class ConversationStateConfig(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="YUMI_CONVERSATION_STATE_")
+
+    max_cache_size: int = Field(default=100, ge=1, description="内存缓存最大对话状态数量")
+    default_max_history: int = Field(default=50, ge=1, description="默认保留的最大历史消息数")
+
+
+class JWTConfig(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="YUMI_JWT_")
+
+    secret_key: str = Field(
+        default="change-this-in-production-please-use-a-strong-secret-key",
+        description="JWT 签名密钥（生产环境请使用强密钥）"
+    )
+    algorithm: str = Field(default="HS256", description="JWT 签名算法")
+    access_token_expire_minutes: int = Field(
+        default=1440,  # 24 小时
+        ge=1,
+        description="访问 Token 过期时间（分钟）"
+    )
+    refresh_token_expire_days: int = Field(
+        default=30,
+        ge=1,
+        description="刷新 Token 过期时间（天）"
+    )
+
+
 class LoggingConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="YUMI_LOG_")
 
@@ -128,6 +155,8 @@ class Settings(BaseSettings):
     llm: LLMConfig = Field(default_factory=LLMConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     emotion: EmotionConfig = Field(default_factory=EmotionConfig)
+    conversation_state: ConversationStateConfig = Field(default_factory=ConversationStateConfig)
+    jwt: JWTConfig = Field(default_factory=JWTConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
 
     @classmethod

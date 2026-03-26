@@ -9,7 +9,6 @@ use tauri::Manager;
 
 use crate::backend::BackendProcess;
 use crate::commands::backend::{get_backend_status, start_backend, stop_backend};
-use crate::commands::proxy::proxy_request;
 
 /// # Panics
 /// This function will panic if the Tauri application fails to run.
@@ -27,7 +26,6 @@ pub fn run() {
             start_backend,
             stop_backend,
             get_backend_status,
-            proxy_request,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

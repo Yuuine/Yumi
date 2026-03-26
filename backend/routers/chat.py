@@ -9,9 +9,9 @@ import time
 import uuid
 from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Annotated
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -23,6 +23,8 @@ from ..core import (
     get_logger,
     set_active_model,
     settings,
+    require_current_user,
+    validate_user_access,
 )
 from ..database import get_db
 from ..routers.models import decrypt_api_key
@@ -291,10 +293,16 @@ async def _generate_summary_if_needed(
 
 
 @router.post("/chat", response_model=ChatResponse)
-async def send_message(request: ChatRequest, req: Request) -> ChatResponse:
+async def send_message(
+    request: ChatRequest, 
+    req: Request,
+    current_user_id: Annotated[str, Depends(require_current_user)]
+) -> ChatResponse:
     """发送聊天消息"""
     start_time = time.time()
     start_datetime = datetime.now(timezone.utc).isoformat()
+
+    validate_user_access(request.userId, current_user_id)
 
     active_model = await _get_active_model_config(request.userId)
     if not active_model:
@@ -452,8 +460,12 @@ async def get_chat_history(
     limit: int = 50,
     offset: int = 0,
     conversationId: str | None = None,
+    current_user_id: Annotated[str, Depends(require_current_user)] = "",
 ) -> ChatHistory:
     """获取指定会话的聊天历史（按时间正序返回当前窗口内的消息）。"""
+    
+    validate_user_access(userId, current_user_id)
+    
     if not conversationId:
         return ChatHistory(messages=[])
 

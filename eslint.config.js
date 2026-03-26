@@ -12,6 +12,7 @@ export default [
       'dist/',
       'target/',
       'demo/',
+      'e.g/',
       'src/auto-imports.d.ts',
       'src/components.d.ts',
       '*.local',

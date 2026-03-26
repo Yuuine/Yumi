@@ -125,7 +125,7 @@ async function checkConversationsForCharacter(): Promise<void> {
   try {
     const conversations = await accountStore.loadConversations()
     hasConversationsForCharacter.value = conversations.some(
-      (conv: any) => conv.characterId === currentCharacterId.value
+      conv => conv.characterId === currentCharacterId.value
     )
   } catch {
     hasConversationsForCharacter.value = false

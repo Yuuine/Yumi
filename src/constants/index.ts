@@ -78,20 +78,20 @@ export const MODEL_CAPABILITIES: Record<string, ModelCapabilities> = {
   'kimi-k2-turbo-preview': {
     toolCall: true,
     reasoning: false,
-    webSearch: true, // Kimi 系列支持联网搜索
+    webSearch: true,
     multimodal: false,
   },
   'kimi-k2.5': {
     toolCall: true,
-    reasoning: true, // 支持 thinking 参数
-    webSearch: true, // Kimi 系列支持联网搜索
-    multimodal: true, // 原生多模态架构，支持视觉输入
+    reasoning: true,
+    webSearch: true,
+    multimodal: true,
   },
   'gpt-5.4': {
     toolCall: true,
-    reasoning: true, // 支持 reasoning.effort 参数
-    webSearch: true, // 支持 web_search 工具
-    multimodal: true, // 支持图像感知
+    reasoning: true,
+    webSearch: true,
+    multimodal: true,
   },
 }
 
@@ -107,21 +107,59 @@ export function getModelCapabilities(modelName: string): ModelCapabilities {
 }
 
 /** 支持深度思考开关的模型（通过 thinking 参数控制） */
-const DEEP_THINKING_MODELS = new Set([
-  'kimi-k2.5', // 支持 enabled/disabled
-  'gpt-5.4', // 支持 reasoning.effort
-])
+const DEEP_THINKING_MODELS = new Set(['kimi-k2.5', 'gpt-5.4'])
 
 /** reasoner 类模型自带推理能力，不显示深度思考按钮 */
 const REASONER_MODELS = new Set(['deepseek-reasoner'])
 
 /**
  * 判断当前模型是否支持深度思考开关
- * - deepseek-reasoner: 不支持（自带推理，按钮禁用）
+ * - deepseek-reasoner: 不支持（自带推理，按钮隐藏）
  * - deepseek-chat, kimi-k2.5: 支持
  */
 export function supportsDeepThinking(_providerId: string, modelName?: string): boolean {
   const name = (modelName || '').toLowerCase()
   if (REASONER_MODELS.has(name)) return false
   return DEEP_THINKING_MODELS.has(name)
+}
+
+export const ANIMATION_DURATION = {
+  FAST: 150,
+  NORMAL: 200,
+  SLOW: 300,
+}
+
+export const MODAL_SIZES = {
+  SMALL: 'small',
+  MEDIUM: 'medium',
+  LARGE: 'large',
+  XLARGE: 'xlarge',
+} as const
+
+export const TOAST_DURATION = {
+  SHORT: 2000,
+  NORMAL: 2500,
+  LONG: 5000,
+}
+
+export const DATE_FORMATS = {
+  SHORT: 'YYYY-MM-DD',
+  LONG: 'YYYY年MM月DD日',
+  DATETIME: 'YYYY-MM-DD HH:mm:ss',
+  RELATIVE: 'relative',
+}
+
+export const STORAGE_KEYS = {
+  ACCOUNT: 'yumi_account',
+  SETTINGS: 'yumi_settings',
+  THEME: 'yumi_theme',
+}
+
+export const API_ENDPOINTS = {
+  CHAT: '/chat',
+  CHAT_HISTORY: '/chat/history',
+  USER: '/user',
+  CONVERSATIONS: '/conversations',
+  CHARACTER_CARDS: '/character-cards',
+  MODELS: '/models',
 }

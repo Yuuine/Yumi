@@ -117,18 +117,13 @@ export interface ModelTestResponse {
   latency?: number
 }
 
-/** 代理模式类型 */
-export type ProxyMode = 'smart' | 'normal'
-
-/** 智能代理子模式 */
-export type SmartProxySubMode = 'auto' | 'manual'
-
-export interface ProxySettings {
-  enabled: boolean
-  mode: ProxyMode
-  smartSubMode: SmartProxySubMode
-  manualProxyHost: string
-  manualProxyPort: number
-  scannedProxies: string[]
-  normalProxyUrl: string
+export interface Conversation {
+  id: string
+  accountId?: string
+  characterId?: string
+  title?: string
+  messages: ChatMessage[]
+  createdAt: string
+  updatedAt: string
+  isActive?: boolean
 }

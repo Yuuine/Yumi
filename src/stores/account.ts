@@ -5,6 +5,7 @@ import type { DeviceFingerprint } from '@/utils/device-fingerprint'
 import { encrypt, decrypt } from '@/utils/crypto-service'
 import { logger } from '@/utils/logger'
 import type { AccountCharacter, CharacterCardFlat } from '@/types/character'
+import type { Conversation } from '@/types'
 import { userApi, characterCardsApi } from '@/api'
 import type { UserListItem } from '@/api/user'
 import {
@@ -868,7 +869,7 @@ export const useAccountStore = defineStore('account', () => {
     return conv.id
   }
 
-  async function loadConversations(): Promise<object[]> {
+  async function loadConversations(): Promise<Conversation[]> {
     if (!currentAccount.value) return []
 
     const accountId = currentAccount.value.id
@@ -876,7 +877,7 @@ export const useAccountStore = defineStore('account', () => {
     if (!stored) return []
 
     const data = JSON.parse(stored)
-    return Object.values(data.conversations ?? {})
+    return Object.values(data.conversations ?? {}) as Conversation[]
   }
 
   async function getConversation(conversationId: string): Promise<object | null> {

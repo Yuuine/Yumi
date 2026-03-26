@@ -5,7 +5,7 @@
         <div class="settings-modal-overlay" @click.self="handleClose">
           <div class="settings-modal">
             <div class="modal-header">
-              <h2 class="modal-title">设置</h2>
+              <h2 class="modal-title">系统设置</h2>
               <button class="close-btn" @click="handleClose" aria-label="关闭">
                 <IconClose />
               </button>
@@ -27,15 +27,7 @@
                 </div>
 
                 <div class="settings-content">
-                  <div v-if="activeTab === 'appearance'" class="settings-panel">
-                    <div class="panel-title">外观设置</div>
-                    <div class="settings-placeholder">
-                      <IconInfo class="placeholder-icon" />
-                      <span>外观设置功能开发中...</span>
-                    </div>
-                  </div>
-
-                  <div v-else-if="activeTab === 'general'" class="settings-panel">
+                  <div v-if="activeTab === 'general'" class="settings-panel">
                     <div class="panel-title">通用设置</div>
 
                     <div class="settings-section">
@@ -56,13 +48,7 @@
                           </button>
                         </div>
                       </div>
-                    </div>
-                  </div>
 
-                  <div v-else-if="activeTab === 'chat'" class="settings-panel">
-                    <div class="panel-title">聊天设置</div>
-
-                    <div class="settings-section">
                       <div class="setting-item">
                         <div class="setting-info">
                           <div class="setting-label">详细测试信息</div>
@@ -83,40 +69,8 @@
                     </div>
                   </div>
 
-                  <div v-else-if="activeTab === 'other'" class="settings-panel">
-                    <div class="panel-title">其他设置</div>
-                    <div class="settings-section">
-                      <div
-                        class="setting-item setting-item-clickable"
-                        @click="showProxyModal = true"
-                      >
-                        <div class="setting-info">
-                          <div class="setting-label">代理设置</div>
-                          <div class="setting-description">
-                            配置网络代理，支持智能代理与普通代理模式
-                          </div>
-                        </div>
-                        <IconChevronDown class="setting-arrow" />
-                      </div>
-
-                      <div
-                        class="setting-item setting-item-clickable setting-item-danger clear-cache-item"
-                        @click="handleClearCache"
-                      >
-                        <div class="setting-info">
-                          <div class="setting-label setting-label-danger">
-                            <IconWarning class="setting-icon-warning" />
-                            清除缓存
-                          </div>
-                          <div class="setting-description">
-                            清除浏览器本地缓存数据，未保存的数据将被清空。此操作不可恢复。
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
                   <div v-else-if="activeTab === 'account'" class="settings-panel">
+                    <div class="panel-title">账号管理</div>
                     <AccountSettings />
                   </div>
                 </div>
@@ -125,41 +79,15 @@
           </div>
         </div>
       </Transition>
-
-      <ProxySettingsModal :visible="showProxyModal" @close="showProxyModal = false" />
-
-      <Dialog
-        v-model="showClearCacheDialog"
-        type="warning"
-        title="确认清除缓存"
-        message="是否确认清除浏览器缓存数据？未保存的数据将被清空。此操作不可恢复。"
-        :showCancel="true"
-        confirmText="确认清除"
-        cancelText="取消"
-        :loading="isClearingCache"
-        @confirm="confirmClearCache"
-      />
     </template>
   </Teleport>
 </template>
 
 <script setup lang="ts">
 import { ref, markRaw } from 'vue'
-import { useSettingsStore, useAccountStore } from '@/stores'
-import { useToast } from '@/composables/useToast'
-import {
-  IconClose,
-  IconInfo,
-  IconChat,
-  IconModels,
-  IconSettings,
-  IconChevronDown,
-  IconUser,
-  IconWarning,
-} from '@/components/icons'
-import ProxySettingsModal from './ProxySettingsModal.vue'
+import { useSettingsStore } from '@/stores'
+import { IconClose, IconSettings, IconUser } from '@/components/icons'
 import AccountSettings from './AccountSettings.vue'
-import Dialog from '@/components/common/Dialog.vue'
 
 defineProps<{
   visible: boolean
@@ -170,38 +98,17 @@ const emit = defineEmits<{
 }>()
 
 const settingsStore = useSettingsStore()
-const accountStore = useAccountStore()
-const toast = useToast()
-const showProxyModal = ref(false)
-const showClearCacheDialog = ref(false)
-const isClearingCache = ref(false)
-
-const activeTab = ref('appearance')
+const activeTab = ref('general')
 
 const tabs = [
   {
-    id: 'appearance',
-    label: '外观设置',
-    icon: markRaw(IconInfo),
-  },
-  {
     id: 'general',
     label: '通用设置',
-    icon: markRaw(IconModels),
-  },
-  {
-    id: 'chat',
-    label: '聊天设置',
-    icon: markRaw(IconChat),
-  },
-  {
-    id: 'other',
-    label: '其他设置',
     icon: markRaw(IconSettings),
   },
   {
     id: 'account',
-    label: '账号设置',
+    label: '账号管理',
     icon: markRaw(IconUser),
   },
 ]
@@ -212,26 +119,6 @@ function handleToggleReasoning() {
 
 function handleToggleVerboseTest() {
   settingsStore.setVerboseTest(!settingsStore.verboseTest)
-}
-
-async function handleClearCache() {
-  showClearCacheDialog.value = true
-}
-
-async function confirmClearCache() {
-  isClearingCache.value = true
-  try {
-    await accountStore.clearLocalCache()
-    toast.success('数据已清除，正在重新初始化...')
-    emit('close')
-    setTimeout(() => {
-      window.location.reload()
-    }, 500)
-  } catch (_error) {
-    toast.error('清除缓存失败')
-  } finally {
-    isClearingCache.value = false
-  }
 }
 
 function handleClose() {
@@ -259,7 +146,7 @@ function handleClose() {
   border-radius: 12px;
   width: 600px;
   max-width: 80vw;
-  height: min(70vh, 680px);
+  height: min(70vh, 520px);
   display: flex;
   flex-direction: column;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
@@ -274,9 +161,9 @@ function handleClose() {
 
   .modal-title {
     margin: 0;
-    font-size: var(--font-size-xl);
+    font-size: 18px;
     font-weight: 600;
-    color: #333333;
+    color: #1f2937;
   }
 }
 
@@ -295,7 +182,7 @@ function handleClose() {
 
   &:hover {
     background: #f3f4f6;
-    color: #333333;
+    color: #1f2937;
   }
 
   svg {
@@ -338,11 +225,11 @@ function handleClose() {
   cursor: pointer;
   text-align: left;
   transition: all 0.2s ease;
-  color: #666666;
+  color: #6b7280;
 
   &:hover {
     background: #f3f4f6;
-    color: #333333;
+    color: #374151;
   }
 
   &.active {
@@ -372,23 +259,23 @@ function handleClose() {
 
 .settings-panel {
   .panel-title {
-    font-size: var(--font-size-lg);
+    font-size: 16px;
     font-weight: 600;
-    color: #333333;
+    color: #1f2937;
     margin-bottom: 20px;
   }
 }
 
+.settings-description {
+  padding: 20px;
+  background: #f3f4f6;
+  border-radius: 8px;
+  color: #6b7280;
+  font-size: 14px;
+}
+
 .settings-section {
   margin-bottom: 24px;
-
-  .section-title {
-    font-size: 13px;
-    font-weight: 600;
-    color: #333333;
-    margin-bottom: 12px;
-    line-height: 20px;
-  }
 }
 
 .setting-item {
@@ -399,47 +286,11 @@ function handleClose() {
   background: #f9fafb;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
-}
+  margin-bottom: 12px;
 
-.setting-item-clickable {
-  cursor: pointer;
-
-  &:hover {
-    background: #f3f4f6;
-    border-color: #d1d5db;
+  &:last-child {
+    margin-bottom: 0;
   }
-}
-
-.setting-arrow {
-  width: 18px;
-  height: 18px;
-  color: #9ca3af;
-  flex-shrink: 0;
-  transform: rotate(-90deg);
-}
-
-.setting-item-danger {
-  background: #fef2f2;
-  border-color: #fecaca;
-  transition: all 0.2s;
-
-  &:hover {
-    background: #fee2e2;
-    border-color: #fca5a5;
-  }
-}
-
-.setting-label-danger {
-  color: #dc2626;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.setting-icon-warning {
-  width: 16px;
-  height: 16px;
-  color: #f59e0b;
 }
 
 .setting-info {
@@ -450,33 +301,19 @@ function handleClose() {
 .setting-label {
   font-size: 14px;
   font-weight: 500;
-  color: #333333;
+  color: #1f2937;
   margin-bottom: 4px;
 }
 
 .setting-description {
   font-size: 12px;
-  color: #666666;
+  color: #6b7280;
   line-height: 1.5;
-}
-
-.setting-warning {
-  margin-top: 8px;
-  font-size: 12px;
-  color: #f59e0b;
-  display: flex;
-  align-items: center;
-  gap: 4px;
 }
 
 .setting-control {
   margin-left: 16px;
   flex-shrink: 0;
-}
-
-.clear-cache-item {
-  margin-top: 12px;
-  padding: 12px 16px;
 }
 
 .toggle-switch {
@@ -491,11 +328,6 @@ function handleClose() {
 
   &.active {
     background: #10b981;
-  }
-
-  &.disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
   }
 }
 
@@ -513,25 +345,6 @@ function handleClose() {
 
 .toggle-switch.active .toggle-knob {
   transform: translateX(20px);
-}
-
-.settings-placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 48px;
-  color: #9ca3af;
-
-  .placeholder-icon {
-    width: 32px;
-    height: 32px;
-    margin-bottom: 12px;
-  }
-
-  span {
-    font-size: 14px;
-  }
 }
 
 .modal-enter-active,

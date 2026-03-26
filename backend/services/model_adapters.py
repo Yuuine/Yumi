@@ -16,7 +16,6 @@ import httpx
 from ..core import LLMException, get_logger
 from .providers import load_model_config
 from .providers.base import ProviderModelConfig
-from .proxy_config import ProxyConfig
 
 logger = get_logger(__name__)
 
@@ -32,7 +31,6 @@ class ModelConfig:
     max_tokens: int = 4096
     temperature: float = 0.85
     timeout: float = 60.0
-    proxy_config: ProxyConfig | None = None
 
 
 @dataclass
@@ -73,13 +71,9 @@ class OpenAICompatibleAdapter:
     ):
         self.config = config
         self.provider_config = provider_config or load_model_config(config.model_name)
-        proxy_url = None
-        if config.proxy_config and config.proxy_config.enabled:
-            proxy_url = config.proxy_config.get_normal_proxy()
         self.client = httpx.AsyncClient(
             timeout=config.timeout,
-            proxy=proxy_url,
-            trust_env=proxy_url is not None,
+            trust_env=False,
         )
 
     def get_endpoint(self) -> str:

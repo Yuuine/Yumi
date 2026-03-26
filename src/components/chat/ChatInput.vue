@@ -1,5 +1,5 @@
 <template>
-  <div class="chat-input-wrapper">
+  <div :class="['chat-input-wrapper', { 'sidebar-collapsed': sidebarCollapsed }]">
     <div class="chat-input-container">
       <div class="input-field">
         <textarea
@@ -94,10 +94,12 @@ import type { ModelConfig } from '@/types'
 
 interface Props {
   disabled?: boolean
+  sidebarCollapsed?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   disabled: false,
+  sidebarCollapsed: false,
 })
 
 const emit = defineEmits<{
@@ -211,24 +213,29 @@ onUnmounted(() => {
 <style lang="scss" scoped>
 .chat-input-wrapper {
   position: fixed;
-  bottom: 0;
-  left: 64px;
+  bottom: 24px;
+  left: 280px;
   right: 0;
   display: flex;
   justify-content: center;
-  padding: 16px 24px 60px;
-  background: linear-gradient(to top, #ffffff 80%, transparent);
+  padding: 0 24px;
   pointer-events: none;
+  z-index: 50;
+  transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+  &.sidebar-collapsed {
+    left: 72px;
+  }
 }
 
 .chat-input-container {
   position: relative;
   width: 100%;
   max-width: 816px;
-  background: rgba(255, 255, 255, 0.95);
-  border: 1px solid #d0d0d0;
-  border-radius: 28px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 24px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.1);
   pointer-events: auto;
 }
 

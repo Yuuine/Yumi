@@ -7,7 +7,7 @@ import type { ApiError } from '@/api/http-client'
 import dayjs from 'dayjs'
 import { logger } from '@/utils/logger'
 import { clearAllCache, saveToStorage, loadFromStorage } from '@/utils/local-storage'
-import { sortMessages } from '@/utils/message'
+import { sortMessages, mergeMessageHistory, dedupeMessagesById } from '@/utils/message'
 import { generateConversationId } from '@/utils'
 
 const INITIAL_LOAD_LIMIT = 10
@@ -90,11 +90,13 @@ export const useChatStore = defineStore('chat', () => {
           0,
           conversationId
         )
-        messages.value = sortMessages(history.messages)
+        messages.value = dedupeMessagesById(history.messages)
         saveCurrentConversationMessages()
       } catch (error) {
         logger.error('ChatStore', 'Failed to load conversation history', error)
       }
+    } else {
+      messages.value = dedupeMessagesById(messages.value)
     }
 
     historyPage.value = 0
@@ -429,7 +431,7 @@ export const useChatStore = defineStore('chat', () => {
         0,
         currentConversationId.value
       )
-      messages.value = sortMessages(history.messages)
+      messages.value = dedupeMessagesById(history.messages)
       saveCurrentConversationMessages()
 
       hasMoreHistory.value = history.messages.length >= limit
@@ -456,7 +458,7 @@ export const useChatStore = defineStore('chat', () => {
         return false
       }
 
-      messages.value = sortMessages([...history.messages, ...messages.value])
+      messages.value = mergeMessageHistory(history.messages, messages.value)
 
       if (history.messages.length < LOAD_MORE_LIMIT) {
         hasMoreHistory.value = false

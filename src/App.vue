@@ -8,6 +8,7 @@
       <router-view v-else />
       <Toast />
       <DataSyncDialog ref="dataSyncDialogRef" @confirm="handleDataSyncConfirm" />
+      <ConfirmDialog />
     </el-config-provider>
   </div>
 </template>
@@ -19,6 +20,7 @@ import { useAccountStore, useChatStore, useModelsStore } from '@/stores'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import Toast from '@/components/common/Toast.vue'
 import DataSyncDialog from '@/components/common/DataSyncDialog.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { useToast } from '@/composables/useToast'
 import { userApi } from '@/api/user'
 import { logger } from '@/utils/logger'

@@ -1,2 +1,3 @@
 export { useToast } from './useToast'
-export { useConfirmDialog } from './useModal'
+export { useModal, useConfirmDialog } from './useModal'
+export { useAsync } from './useAsync'

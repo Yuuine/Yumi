@@ -11,7 +11,11 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
+from sqlmodel import select
+
 from ..core import get_logger
+from ..database_sqlmodel import get_session
+from ..models import CharacterCard as CharacterCardModel
 from .cache_service import get_cache_service
 
 logger = get_logger(__name__)
@@ -20,14 +24,11 @@ _cache = get_cache_service()
 
 @dataclass
 class CharacterCard:
-    """角色卡数据结构"""
-
+    """角色卡数据类（向后兼容）"""
     id: str
     user_id: str
     conversation_id: str | None = None
-
     role_overview: str = ""
-
     formal_name: str = ""
     nickname: str = ""
     race_or_form: str = "人类"
@@ -36,22 +37,17 @@ class CharacterCard:
     actual_age: str = ""
     location: str = ""
     appearance_desc: str = ""
-
     core_personality: str = ""
     self_perception: str = ""
     attitude_to_user: str = ""
     likes: str = ""
     dislikes: str = ""
-
     tone_base: str = ""
     word_habits: str = ""
     emotion_rules: str = ""
     length_pref: str = ""
-
     special_logic_list: str = ""
-
     few_shot_examples: str = ""
-
     is_active: bool = True
 
 
@@ -79,72 +75,38 @@ DEFAULT_CHARACTER_CARD_DATA: dict[str, Any] = {
 }
 
 
-_SELECT_FIELDS = """
-    id, user_id, conversation_id, role_overview, formal_name, nickname,
-    race_or_form, gender, visual_age, actual_age, location, appearance_desc,
-    core_personality, self_perception, attitude_to_user, likes, dislikes,
-    tone_base, word_habits, emotion_rules, length_pref,
-    special_logic_list, few_shot_examples, is_active
-"""
-
-
-def _row_to_character_card(row: tuple[Any, ...]) -> CharacterCard:
+def _model_to_dataclass(model: CharacterCardModel) -> CharacterCard:
+    """将 SQLModel 转换为数据类（保持向后兼容）"""
     return CharacterCard(
-        id=str(row[0]),
-        user_id=str(row[1]),
-        conversation_id=row[2],
-        role_overview=row[3] or "",
-        formal_name=row[4] or "",
-        nickname=row[5] or "",
-        race_or_form=row[6] or "人类",
-        gender=row[7] or "中性",
-        visual_age=row[8] or "",
-        actual_age=row[9] or "",
-        location=row[10] or "",
-        appearance_desc=row[11] or "",
-        core_personality=row[12] or "",
-        self_perception=row[13] or "",
-        attitude_to_user=row[14] or "",
-        likes=row[15] or "",
-        dislikes=row[16] or "",
-        tone_base=row[17] or "",
-        word_habits=row[18] or "",
-        emotion_rules=row[19] or "",
-        length_pref=row[20] or "",
-        special_logic_list=row[21] or "",
-        few_shot_examples=row[22] or "",
-        is_active=bool(row[23]) if row[23] is not None else True,
-    )
-
-
-def _card_to_insert_values(card: CharacterCard) -> tuple[Any, ...]:
-    return (
-        card.role_overview,
-        card.formal_name,
-        card.nickname,
-        card.race_or_form,
-        card.gender,
-        card.visual_age,
-        card.actual_age,
-        card.location,
-        card.appearance_desc,
-        card.core_personality,
-        card.self_perception,
-        card.attitude_to_user,
-        card.likes,
-        card.dislikes,
-        card.tone_base,
-        card.word_habits,
-        card.emotion_rules,
-        card.length_pref,
-        card.special_logic_list,
-        card.few_shot_examples,
-        1 if card.is_active else 0,
+        id=model.id,
+        user_id=model.user_id,
+        conversation_id=model.conversation_id,
+        role_overview=model.role_overview or "",
+        formal_name=model.formal_name or "",
+        nickname=model.nickname or "",
+        race_or_form=model.race_or_form or "人类",
+        gender=model.gender or "中性",
+        visual_age=model.visual_age or "",
+        actual_age=model.actual_age or "",
+        location=model.location or "",
+        appearance_desc=model.appearance_desc or "",
+        core_personality=model.core_personality or "",
+        self_perception=model.self_perception or "",
+        attitude_to_user=model.attitude_to_user or "",
+        likes=model.likes or "",
+        dislikes=model.dislikes or "",
+        tone_base=model.tone_base or "",
+        word_habits=model.word_habits or "",
+        emotion_rules=model.emotion_rules or "",
+        length_pref=model.length_pref or "",
+        special_logic_list=model.special_logic_list or "",
+        few_shot_examples=model.few_shot_examples or "",
+        is_active=model.is_active if model.is_active is not None else True,
     )
 
 
 async def insert_character_card(
-    db: Any,
+    session_or_db: Any,
     user_id: str,
     conversation_id: str | None = None,
     card_data: dict[str, Any] | None = None,
@@ -153,7 +115,7 @@ async def insert_character_card(
     插入角色卡数据
 
     Args:
-        db: 数据库连接
+        session_or_db: 数据库会话（SQLModel session）或旧的 db 连接
         user_id: 用户ID
         conversation_id: 会话ID（可选，用于多角色卡场景）
         card_data: 角色卡数据，为空则使用默认数据
@@ -164,45 +126,29 @@ async def insert_character_card(
     merged: dict[str, Any] = {**DEFAULT_CHARACTER_CARD_DATA, **(card_data or {})}
     card_id = str(uuid.uuid4())
 
-    await db.execute(
-        """
-        INSERT INTO character_cards (
-            id, user_id, conversation_id,
-            role_overview, formal_name, nickname, race_or_form, gender,
-            visual_age, actual_age, location, appearance_desc,
-            core_personality, self_perception, attitude_to_user, likes, dislikes,
-            tone_base, word_habits, emotion_rules, length_pref,
-            special_logic_list, few_shot_examples, is_active
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            card_id,
-            user_id,
-            conversation_id,
-            merged["role_overview"],
-            merged["formal_name"],
-            merged["nickname"],
-            merged["race_or_form"],
-            merged["gender"],
-            merged["visual_age"],
-            merged["actual_age"],
-            merged["location"],
-            merged["appearance_desc"],
-            merged["core_personality"],
-            merged["self_perception"],
-            merged["attitude_to_user"],
-            merged["likes"],
-            merged["dislikes"],
-            merged["tone_base"],
-            merged["word_habits"],
-            merged["emotion_rules"],
-            merged["length_pref"],
-            merged["special_logic_list"],
-            merged["few_shot_examples"],
-            1,
-        ),
-    )
-    await db.commit()
+    if hasattr(session_or_db, "exec"):
+        session = session_or_db
+        new_card = CharacterCardModel(
+            id=card_id,
+            user_id=user_id,
+            conversation_id=conversation_id,
+            **merged
+        )
+        session.add(new_card)
+        await session.commit()
+        await session.refresh(new_card)
+    else:
+        from ..database import get_db
+        db = session_or_db
+        merged.update({"id": card_id, "user_id": user_id, "conversation_id": conversation_id})
+        columns = ", ".join(merged.keys())
+        placeholders = ", ".join(["?" for _ in merged])
+        await db.execute(
+            f"INSERT INTO character_cards ({columns}) VALUES ({placeholders})",
+            tuple(merged.values())
+        )
+        await db.commit()
+
     logger.info(
         "Inserted character card id=%s user=%s conversation=%s",
         card_id,
@@ -213,136 +159,278 @@ async def insert_character_card(
 
 
 async def get_character_card_by_conversation(
-    db: Any,
+    session_or_db: Any,
     user_id: str,
     conversation_id: str,
-) -> CharacterCard | None:
+) -> Any:
     """
     根据会话ID获取角色卡
 
     Args:
-        db: 数据库连接
+        session_or_db: 数据库会话或连接
         user_id: 用户ID
         conversation_id: 会话ID
 
     Returns:
         角色卡对象，不存在返回 None
     """
-    cursor = await db.execute(
-        f"""
-        SELECT {_SELECT_FIELDS}
-        FROM character_cards
-        WHERE user_id = ? AND conversation_id = ?
-        """,
-        (user_id, conversation_id),
-    )
-    row = await cursor.fetchone()
-    return _row_to_character_card(row) if row else None
+    if hasattr(session_or_db, "exec"):
+        session = session_or_db
+        result = await session.exec(
+            select(CharacterCardModel)
+            .where(CharacterCardModel.user_id == user_id)
+            .where(CharacterCardModel.conversation_id == conversation_id)
+        )
+        card = result.first()
+        if card:
+            return _model_to_dataclass(card)
+        return None
+    else:
+        from ..database import get_db
+        db = session_or_db
+        cursor = await db.execute(
+            """
+            SELECT id, user_id, conversation_id, role_overview, formal_name, nickname,
+                   race_or_form, gender, visual_age, actual_age, location, appearance_desc,
+                   core_personality, self_perception, attitude_to_user, likes, dislikes,
+                   tone_base, word_habits, emotion_rules, length_pref,
+                   special_logic_list, few_shot_examples, is_active
+            FROM character_cards
+            WHERE user_id = ? AND conversation_id = ?
+            """,
+            (user_id, conversation_id),
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        from dataclasses import make_dataclass
+        fields = ["id", "user_id", "conversation_id", "role_overview", "formal_name", "nickname",
+                  "race_or_form", "gender", "visual_age", "actual_age", "location", "appearance_desc",
+                  "core_personality", "self_perception", "attitude_to_user", "likes", "dislikes",
+                  "tone_base", "word_habits", "emotion_rules", "length_pref",
+                  "special_logic_list", "few_shot_examples", "is_active"]
+        DynamicCharacterCard = make_dataclass("CharacterCard", fields)
+        return DynamicCharacterCard(*row)
 
 
-async def get_fallback_character_card_for_user(db: Any, user_id: str) -> CharacterCard | None:
+async def get_fallback_character_card_for_user(session_or_db: Any, user_id: str) -> Any:
     """
     用户下「角色库」卡片（conversation_id 为空）的兜底选择：
     优先 is_active=1，其次 updated_at 最新。
     """
-    cursor = await db.execute(
-        f"""
-        SELECT {_SELECT_FIELDS}
-        FROM character_cards
-        WHERE user_id = ? AND conversation_id IS NULL
-        ORDER BY is_active DESC, datetime(updated_at) DESC
-        LIMIT 1
-        """,
-        (user_id,),
-    )
-    row = await cursor.fetchone()
-    return _row_to_character_card(row) if row else None
+    if hasattr(session_or_db, "exec"):
+        session = session_or_db
+        result = await session.exec(
+            select(CharacterCardModel)
+            .where(CharacterCardModel.user_id == user_id)
+            .where(CharacterCardModel.conversation_id.is_(None))
+            .order_by(CharacterCardModel.is_active.desc())
+            .order_by(CharacterCardModel.updated_at.desc())
+            .limit(1)
+        )
+        card = result.first()
+        if card:
+            return _model_to_dataclass(card)
+        return None
+    else:
+        from ..database import get_db
+        db = session_or_db
+        cursor = await db.execute(
+            """
+            SELECT id, user_id, conversation_id, role_overview, formal_name, nickname,
+                   race_or_form, gender, visual_age, actual_age, location, appearance_desc,
+                   core_personality, self_perception, attitude_to_user, likes, dislikes,
+                   tone_base, word_habits, emotion_rules, length_pref,
+                   special_logic_list, few_shot_examples, is_active
+            FROM character_cards
+            WHERE user_id = ? AND conversation_id IS NULL
+            ORDER BY is_active DESC, datetime(updated_at) DESC
+            LIMIT 1
+            """,
+            (user_id,),
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        from dataclasses import make_dataclass
+        fields = ["id", "user_id", "conversation_id", "role_overview", "formal_name", "nickname",
+                  "race_or_form", "gender", "visual_age", "actual_age", "location", "appearance_desc",
+                  "core_personality", "self_perception", "attitude_to_user", "likes", "dislikes",
+                  "tone_base", "word_habits", "emotion_rules", "length_pref",
+                  "special_logic_list", "few_shot_examples", "is_active"]
+        DynamicCharacterCard = make_dataclass("CharacterCard", fields)
+        return DynamicCharacterCard(*row)
 
 
-async def _get_default_character_card(db: Any, user_id: str) -> CharacterCard | None:
+async def _get_default_character_card(session_or_db: Any, user_id: str) -> Any:
     """兼容旧名：等价于 get_fallback_character_card_for_user。"""
-    return await get_fallback_character_card_for_user(db, user_id)
+    return await get_fallback_character_card_for_user(session_or_db, user_id)
 
 
-async def get_character_card_by_id(db: Any, user_id: str, card_id: str) -> CharacterCard | None:
+async def get_character_card_by_id(session_or_db: Any, user_id: str, card_id: str) -> Any:
     cache_key = f"char:{user_id}:{card_id}"
     cached = _cache.character.get(cache_key)
     if cached is not None:
         return cached
 
-    cursor = await db.execute(
-        f"""
-        SELECT {_SELECT_FIELDS}
-        FROM character_cards
-        WHERE id = ? AND user_id = ?
-        """,
-        (card_id, user_id),
-    )
-    row = await cursor.fetchone()
-    card = _row_to_character_card(row) if row else None
-
-    if card:
+    if hasattr(session_or_db, "exec"):
+        session = session_or_db
+        result = await session.exec(
+            select(CharacterCardModel)
+            .where(CharacterCardModel.id == card_id)
+            .where(CharacterCardModel.user_id == user_id)
+        )
+        card = result.first()
+        if card:
+            dc = _model_to_dataclass(card)
+            _cache.character.set(cache_key, dc)
+            return dc
+        return None
+    else:
+        from ..database import get_db
+        db = session_or_db
+        cursor = await db.execute(
+            """
+            SELECT id, user_id, conversation_id, role_overview, formal_name, nickname,
+                   race_or_form, gender, visual_age, actual_age, location, appearance_desc,
+                   core_personality, self_perception, attitude_to_user, likes, dislikes,
+                   tone_base, word_habits, emotion_rules, length_pref,
+                   special_logic_list, few_shot_examples, is_active
+            FROM character_cards
+            WHERE id = ? AND user_id = ?
+            """,
+            (card_id, user_id),
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        from dataclasses import make_dataclass
+        fields = ["id", "user_id", "conversation_id", "role_overview", "formal_name", "nickname",
+                  "race_or_form", "gender", "visual_age", "actual_age", "location", "appearance_desc",
+                  "core_personality", "self_perception", "attitude_to_user", "likes", "dislikes",
+                  "tone_base", "word_habits", "emotion_rules", "length_pref",
+                  "special_logic_list", "few_shot_examples", "is_active"]
+        DynamicCharacterCard = make_dataclass("CharacterCard", fields)
+        card = DynamicCharacterCard(*row)
         _cache.character.set(cache_key, card)
+        return card
 
-    return card
 
-
-async def list_character_cards_for_user(db: Any, user_id: str) -> list[CharacterCard]:
+async def list_character_cards_for_user(session_or_db: Any, user_id: str) -> list[Any]:
     cache_key = f"chars:{user_id}"
     cached = _cache.character_list.get(cache_key)
     if cached is not None:
         return cached
 
-    cursor = await db.execute(
-        f"""
-        SELECT {_SELECT_FIELDS}
-        FROM character_cards
-        WHERE user_id = ?
-        ORDER BY datetime(updated_at) DESC
-        """,
-        (user_id,),
-    )
-    rows = await cursor.fetchall()
-    cards = [_row_to_character_card(row) for row in rows]
+    cards = []
+    if hasattr(session_or_db, "exec"):
+        session = session_or_db
+        result = await session.exec(
+            select(CharacterCardModel)
+            .where(CharacterCardModel.user_id == user_id)
+            .order_by(CharacterCardModel.updated_at.desc())
+        )
+        card_models = result.all()
+        cards = [_model_to_dataclass(m) for m in card_models]
+    else:
+        from ..database import get_db
+        db = session_or_db
+        cursor = await db.execute(
+            """
+            SELECT id, user_id, conversation_id, role_overview, formal_name, nickname,
+                   race_or_form, gender, visual_age, actual_age, location, appearance_desc,
+                   core_personality, self_perception, attitude_to_user, likes, dislikes,
+                   tone_base, word_habits, emotion_rules, length_pref,
+                   special_logic_list, few_shot_examples, is_active
+            FROM character_cards
+            WHERE user_id = ?
+            ORDER BY datetime(updated_at) DESC
+            """,
+            (user_id,),
+        )
+        rows = await cursor.fetchall()
+        from dataclasses import make_dataclass
+        fields = ["id", "user_id", "conversation_id", "role_overview", "formal_name", "nickname",
+                  "race_or_form", "gender", "visual_age", "actual_age", "location", "appearance_desc",
+                  "core_personality", "self_perception", "attitude_to_user", "likes", "dislikes",
+                  "tone_base", "word_habits", "emotion_rules", "length_pref",
+                  "special_logic_list", "few_shot_examples", "is_active"]
+        DynamicCharacterCard = make_dataclass("CharacterCard", fields)
+        cards = [DynamicCharacterCard(*row) for row in rows]
 
     _cache.character_list.set(cache_key, cards)
     return cards
 
 
-async def upsert_character_card(db: Any, card: CharacterCard) -> None:
+async def upsert_character_card(session_or_db: Any, card: Any) -> None:
     """按主键 id 插入或覆盖（与前端 char_* id 对齐）。"""
-    values = _card_to_insert_values(card)
-    await db.execute(
-        """
-        INSERT OR REPLACE INTO character_cards (
-            id, user_id, conversation_id,
-            role_overview, formal_name, nickname, race_or_form, gender,
-            visual_age, actual_age, location, appearance_desc,
-            core_personality, self_perception, attitude_to_user, likes, dislikes,
-            tone_base, word_habits, emotion_rules, length_pref,
-            special_logic_list, few_shot_examples, is_active
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            card.id,
-            card.user_id,
-            card.conversation_id,
-            *values,
-        ),
-    )
-    await db.commit()
-    logger.info("Upserted character card id=%s user=%s", card.id, card.user_id)
+    if hasattr(session_or_db, "exec"):
+        session = session_or_db
+        result = await session.exec(
+            select(CharacterCardModel).where(CharacterCardModel.id == card.id)
+        )
+        existing_card = result.first()
 
+        if existing_card:
+            for key, value in card.__dict__.items():
+                if key not in ["created_at", "updated_at"] and hasattr(existing_card, key):
+                    setattr(existing_card, key, value)
+        else:
+            card_data = {k: v for k, v in card.__dict__.items() if k not in ["created_at", "updated_at"]}
+            new_card = CharacterCardModel(**card_data)
+            session.add(new_card)
+
+        await session.commit()
+    else:
+        from ..database import get_db
+        db = session_or_db
+        card_dict = card.__dict__
+        card_dict.pop("created_at", None)
+        card_dict.pop("updated_at", None)
+        card_dict["is_active"] = 1 if card_dict.get("is_active", True) else 0
+
+        columns = ", ".join(card_dict.keys())
+        placeholders = ", ".join(["?" for _ in card_dict])
+        update_clause = ", ".join([f"{k} = excluded.{k}" for k in card_dict.keys()])
+
+        await db.execute(
+            f"""
+            INSERT INTO character_cards ({columns})
+            VALUES ({placeholders})
+            ON CONFLICT (id) DO UPDATE SET {update_clause}
+            """,
+            tuple(card_dict.values())
+        )
+        await db.commit()
+
+    logger.info("Upserted character card id=%s user=%s", card.id, card.user_id)
     _cache.invalidate_character(card.user_id, card.id)
 
 
-async def delete_character_card_by_id(db: Any, user_id: str, card_id: str) -> bool:
-    cursor = await db.execute(
-        "DELETE FROM character_cards WHERE id = ? AND user_id = ?",
-        (card_id, user_id),
-    )
-    await db.commit()
-    deleted = (cursor.rowcount or 0) > 0
+async def delete_character_card_by_id(session_or_db: Any, user_id: str, card_id: str) -> bool:
+    deleted = False
+    if hasattr(session_or_db, "exec"):
+        session = session_or_db
+        result = await session.exec(
+            select(CharacterCardModel)
+            .where(CharacterCardModel.id == card_id)
+            .where(CharacterCardModel.user_id == user_id)
+        )
+        card = result.first()
+        if card:
+            await session.delete(card)
+            await session.commit()
+            deleted = True
+    else:
+        from ..database import get_db
+        db = session_or_db
+        cursor = await db.execute(
+            "DELETE FROM character_cards WHERE id = ? AND user_id = ?",
+            (card_id, user_id),
+        )
+        await db.commit()
+        deleted = (cursor.rowcount or 0) > 0
+
     if deleted:
         logger.info("Deleted character card id=%s user=%s", card_id, user_id)
         _cache.invalidate_character(user_id, card_id)
@@ -350,11 +438,11 @@ async def delete_character_card_by_id(db: Any, user_id: str, card_id: str) -> bo
 
 
 async def get_character_card_for_chat(
-    db: Any,
+    session_or_db: Any,
     user_id: str,
     character_id: str | None,
     conversation_id: str | None,
-) -> CharacterCard:
+) -> Any:
     """
     为对话解析角色卡（静态部分）：
     1. 若提供 character_id：按 id + user_id 取库中卡片；
@@ -364,26 +452,26 @@ async def get_character_card_for_chat(
     5. 若仍无：插入默认模板。
     """
     if character_id:
-        card = await get_character_card_by_id(db, user_id, character_id)
+        card = await get_character_card_by_id(session_or_db, user_id, character_id)
         if card:
             return card
 
     if conversation_id:
-        conv_card = await get_character_card_by_conversation(db, user_id, conversation_id)
+        conv_card = await get_character_card_by_conversation(session_or_db, user_id, conversation_id)
         if conv_card:
             return conv_card
 
-    fallback = await get_fallback_character_card_for_user(db, user_id)
+    fallback = await get_fallback_character_card_for_user(session_or_db, user_id)
     if fallback:
         if conversation_id:
-            return await _insert_copy_for_conversation(db, user_id, conversation_id, fallback)
+            return await _insert_copy_for_conversation(session_or_db, user_id, conversation_id, fallback)
         return fallback
 
-    await insert_character_card(db, user_id, conversation_id, None)
+    await insert_character_card(session_or_db, user_id, conversation_id, None)
     if conversation_id:
-        loaded = await get_character_card_by_conversation(db, user_id, conversation_id)
+        loaded = await get_character_card_by_conversation(session_or_db, user_id, conversation_id)
     else:
-        loaded = await get_fallback_character_card_for_user(db, user_id)
+        loaded = await get_fallback_character_card_for_user(session_or_db, user_id)
     if not loaded:
         msg = f"Failed to load character card after insert user={user_id} conversation={conversation_id}"
         raise RuntimeError(msg)
@@ -391,29 +479,47 @@ async def get_character_card_for_chat(
 
 
 async def _insert_copy_for_conversation(
-    db: Any,
+    session_or_db: Any,
     user_id: str,
     conversation_id: str,
-    source: CharacterCard,
-) -> CharacterCard:
+    source: Any,
+) -> Any:
     """从已有角色卡复制一条记录并绑定到指定会话。"""
     new_id = str(uuid.uuid4())
-    values = _card_to_insert_values(source)
-    await db.execute(
-        """
-        INSERT INTO character_cards (
-            id, user_id, conversation_id,
-            role_overview, formal_name, nickname, race_or_form, gender,
-            visual_age, actual_age, location, appearance_desc,
-            core_personality, self_perception, attitude_to_user, likes, dislikes,
-            tone_base, word_habits, emotion_rules, length_pref,
-            special_logic_list, few_shot_examples, is_active
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (new_id, user_id, conversation_id, *values),
-    )
-    await db.commit()
-    card = await get_character_card_by_conversation(db, user_id, conversation_id)
+
+    if hasattr(session_or_db, "exec"):
+        session = session_or_db
+        source_dict = source.__dict__
+        source_dict.pop("id")
+        source_dict.pop("created_at", None)
+        source_dict.pop("updated_at", None)
+        source_dict["conversation_id"] = conversation_id
+        source_dict["id"] = new_id
+
+        new_card = CharacterCardModel(**source_dict)
+        session.add(new_card)
+        await session.commit()
+        await session.refresh(new_card)
+    else:
+        from ..database import get_db
+        db = session_or_db
+        source_dict = source.__dict__
+        source_dict.pop("id", None)
+        source_dict.pop("created_at", None)
+        source_dict.pop("updated_at", None)
+        source_dict["id"] = new_id
+        source_dict["conversation_id"] = conversation_id
+        source_dict["is_active"] = 1 if source_dict.get("is_active", True) else 0
+
+        columns = ", ".join(source_dict.keys())
+        placeholders = ", ".join(["?" for _ in source_dict])
+        await db.execute(
+            f"INSERT INTO character_cards ({columns}) VALUES ({placeholders})",
+            tuple(source_dict.values())
+        )
+        await db.commit()
+
+    card = await get_character_card_by_conversation(session_or_db, user_id, conversation_id)
     if not card:
         msg = f"Failed to load cloned character card for user={user_id} conversation={conversation_id}"
         raise RuntimeError(msg)
@@ -427,9 +533,9 @@ async def _insert_copy_for_conversation(
 
 
 async def get_or_create_character_card(
-    db: Any,
+    session_or_db: Any,
     user_id: str,
     conversation_id: str | None = None,
-) -> CharacterCard:
+) -> Any:
     """兼容旧调用：等价于未指定 character_id 的 get_character_card_for_chat。"""
-    return await get_character_card_for_chat(db, user_id, None, conversation_id)
+    return await get_character_card_for_chat(session_or_db, user_id, None, conversation_id)

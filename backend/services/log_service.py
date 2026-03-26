@@ -44,6 +44,8 @@ class AuditAction(str, Enum):
     MEMORY_STORE = "MEMORY_STORE"
     MEMORY_DELETE = "MEMORY_DELETE"
     MEMORY_CLEAR = "MEMORY_CLEAR"
+    USER_REGISTER = "USER_REGISTER"
+    USER_LOGIN = "USER_LOGIN"
 
 
 class LogService:

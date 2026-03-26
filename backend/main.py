@@ -11,8 +11,10 @@ from .core import settings, setup_exception_handlers
 from .core.lifecycle import get_lifecycle_manager
 from .core.logging import YumiLogger, get_logger
 from .core.middleware import RequestTracingMiddleware, SlowRequestMiddleware
+from .core.security_middleware import SecurityHeadersMiddleware
 from .database import init_db, init_log_db
-from .routers import cache, character_cards, chat, logs, memory, models, proxy, storage, user
+from .database_sqlmodel import init_db as init_sqlmodel_db, init_log_db as init_sqlmodel_log_db, close_engines
+from .routers import auth, cache, character_cards, chat, logs, memory, models, storage, user
 from .routers import settings as settings_router
 from .services.async_storage import get_async_storage_service
 from .services.emotion import EmotionEngine
@@ -48,14 +50,14 @@ async def lifespan(app: FastAPI):
 
     await init_db()
     await init_log_db()
+    await init_sqlmodel_db()
+    await init_sqlmodel_log_db()
 
     lifecycle_manager = get_lifecycle_manager()
     await lifecycle_manager.start()
     app.state.lifecycle_manager = lifecycle_manager
 
     memory_engine = MemoryEngine()
-    await memory_engine.initialize()
-
     emotion_engine = EmotionEngine()
     await emotion_engine.initialize()
 
@@ -68,9 +70,7 @@ async def lifespan(app: FastAPI):
     app.state.llm_service = llm_service
     app.state.prompt_builder = prompt_builder
 
-    # 初始化异步存储服务
     async_storage = get_async_storage_service()
-    async_storage.set_memory_engine(memory_engine)
     await async_storage.start()
     app.state.async_storage = async_storage
 
@@ -90,6 +90,7 @@ async def lifespan(app: FastAPI):
         await emotion_engine.close()
     if llm_service:
         await llm_service.close()
+    await close_engines()
     logger.info("Yumi backend services shut down complete")
 
 
@@ -104,6 +105,7 @@ setup_exception_handlers(app)
 
 app.add_middleware(SlowRequestMiddleware, threshold_ms=1000)
 app.add_middleware(RequestTracingMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -113,12 +115,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router, prefix="/api", tags=["auth"])
 app.include_router(chat.router, prefix="/api", tags=["chat"])
 app.include_router(character_cards.router, prefix="/api", tags=["character-cards"])
 app.include_router(memory.router, prefix="/api", tags=["memory"])
 app.include_router(user.router, prefix="/api", tags=["user"])
 app.include_router(settings_router.router, prefix="/api", tags=["settings"])
-app.include_router(proxy.router, prefix="/api", tags=["proxy"])
 app.include_router(models.router, prefix="/api", tags=["models"])
 app.include_router(logs.router, prefix="/api", tags=["logs"])
 app.include_router(storage.router, prefix="/api", tags=["storage"])
