@@ -55,14 +55,6 @@
               />
             </div>
           </div>
-
-          <LoadingOverlay
-            :visible="isTestingModel"
-            :text="`正在测试「${testingModelName}」连接...`"
-            :show-timeout="true"
-            :timeout="60000"
-            @timeout="handleTestTimeout"
-          />
         </div>
       </div>
     </Transition>
@@ -102,20 +94,13 @@
       </div>
     </Transition>
 
-    <Dialog
-      v-model="confirmDialog.visible.value"
-      :title="confirmDialog.title.value"
-      :message="confirmDialog.message.value"
-      :type="confirmDialog.type.value"
-      :show-cancel="confirmDialog.showCancel.value"
-      @confirm="confirmDialog.confirm"
-    />
-
     <TestResultDialog
       :visible="testDialogVisible"
       :result="modelsStore.testResult"
       @close="testDialogVisible = false"
     />
+
+    <LoadingState :visible="isTestingModel" :text="`正在测试「${testingModelName}」连接...`" />
 
     <Toast />
   </Teleport>
@@ -127,8 +112,7 @@ import { useModelsStore, useSettingsStore } from '@/stores'
 import { useToast, useConfirmDialog } from '@/composables'
 import type { ModelConfig } from '@/types'
 import { logger } from '@/utils/logger'
-import Dialog from '@/components/common/Dialog.vue'
-import LoadingOverlay from '@/components/common/LoadingOverlay.vue'
+import LoadingState from '@/components/common/LoadingState.vue'
 import Toast from '@/components/common/Toast.vue'
 import ModelCard from './ModelCard.vue'
 import ModelForm from './ModelForm.vue'
@@ -278,12 +262,6 @@ async function handleTest(model: ModelConfig): Promise<void> {
     isTestingModel.value = false
     testingModelName.value = ''
   }
-}
-
-function handleTestTimeout(): void {
-  isTestingModel.value = false
-  testingModelName.value = ''
-  confirmDialog.showDialog('测试超时', '连接超时，请检查网络或稍后重试', 'warning')
 }
 
 async function handleSubmit(): Promise<void> {

@@ -6,9 +6,16 @@ export const chatApi = {
     return httpClient.post<ChatResponse>('/chat', request)
   },
 
-  async getHistory(userId: string, limit = 50, offset = 0): Promise<ChatHistory> {
-    return httpClient.get<ChatHistory>('/chat/history', {
-      params: { userId, limit, offset },
-    })
+  async getHistory(
+    userId: string,
+    limit = 50,
+    offset = 0,
+    conversationId?: string
+  ): Promise<ChatHistory> {
+    const params: Record<string, unknown> = { userId, limit, offset }
+    if (conversationId) {
+      params.conversationId = conversationId
+    }
+    return httpClient.get<ChatHistory>('/chat/history', { params })
   },
 }

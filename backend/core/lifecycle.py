@@ -8,9 +8,14 @@ from __future__ import annotations
 import asyncio
 import gzip
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
+from sqlmodel import select
+
+from ..database_sqlmodel import get_log_session
+from ..models import SystemLog, AuditLog
 from .config import settings
 from .logging import get_logger
 
@@ -64,62 +69,85 @@ class LogLifecycleManager:
 
     async def _archive_old_logs(self) -> None:
         """归档超过热存储期的日志"""
-        import aiosqlite
-
-        cutoff = datetime.now() - timedelta(days=self.HOT_STORAGE_DAYS)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=self.HOT_STORAGE_DAYS)
 
         try:
-            async with aiosqlite.connect(self.db_path) as db:
-                cursor = await db.execute(
-                    "SELECT * FROM system_logs WHERE timestamp < ?", (cutoff.isoformat(),)
+            async with get_log_session() as session:
+                # 归档系统日志
+                result = await session.exec(
+                    select(SystemLog).where(SystemLog.timestamp < cutoff.isoformat())
                 )
-                rows = await cursor.fetchall()
+                system_logs = result.all()
 
-                if rows:
-                    columns = [desc[0] for desc in cursor.description]
-                    logs = [dict(zip(columns, row)) for row in rows]
+                if system_logs:
+                    logs_data = [
+                        {
+                            "id": log.id,
+                            "timestamp": log.timestamp.isoformat() if log.timestamp else None,
+                            "level": log.level,
+                            "event_type": log.event_type,
+                            "trace_id": log.trace_id,
+                            "user_id": log.user_id,
+                            "session_id": log.session_id,
+                            "content": log.content,
+                        }
+                        for log in system_logs
+                    ]
 
                     archive_file = (
                         self.archive_dir / f"system_logs_{cutoff.strftime('%Y%m%d')}.json.gz"
                     )
                     with gzip.open(archive_file, "wt", encoding="utf-8") as f:
-                        json.dump(logs, f, ensure_ascii=False)
+                        json.dump(logs_data, f, ensure_ascii=False)
 
-                    await db.execute(
-                        "DELETE FROM system_logs WHERE timestamp < ?", (cutoff.isoformat(),)
-                    )
-                    await db.commit()
+                    # 删除已归档的日志
+                    for log in system_logs:
+                        await session.delete(log)
+                    await session.commit()
 
-                    logger.info("Archived %d system logs to %s", len(logs), archive_file)
+                    logger.info("Archived %d system logs to %s", len(logs_data), archive_file)
 
-                cursor = await db.execute(
-                    "SELECT * FROM audit_logs WHERE timestamp < ?", (cutoff.isoformat(),)
+                # 归档审计日志
+                result = await session.exec(
+                    select(AuditLog).where(AuditLog.timestamp < cutoff.isoformat())
                 )
-                audit_rows = await cursor.fetchall()
+                audit_logs = result.all()
 
-                if audit_rows:
-                    columns = [desc[0] for desc in cursor.description]
-                    logs = [dict(zip(columns, row)) for row in audit_rows]
+                if audit_logs:
+                    logs_data = [
+                        {
+                            "id": log.id,
+                            "timestamp": log.timestamp.isoformat() if log.timestamp else None,
+                            "user_id": log.user_id,
+                            "action": log.action,
+                            "resource_type": log.resource_type,
+                            "resource_id": log.resource_id,
+                            "result": log.result,
+                            "client_ip": log.client_ip,
+                            "details": log.details,
+                        }
+                        for log in audit_logs
+                    ]
 
                     archive_file = (
                         self.archive_dir / f"audit_logs_{cutoff.strftime('%Y%m%d')}.json.gz"
                     )
                     with gzip.open(archive_file, "wt", encoding="utf-8") as f:
-                        json.dump(logs, f, ensure_ascii=False)
+                        json.dump(logs_data, f, ensure_ascii=False)
 
-                    await db.execute(
-                        "DELETE FROM audit_logs WHERE timestamp < ?", (cutoff.isoformat(),)
-                    )
-                    await db.commit()
+                    # 删除已归档的日志
+                    for log in audit_logs:
+                        await session.delete(log)
+                    await session.commit()
 
-                    logger.info("Archived %d audit logs to %s", len(logs), archive_file)
+                    logger.info("Archived %d audit logs to %s", len(logs_data), archive_file)
 
         except Exception as e:
             logger.error("Failed to archive old logs: %s", e)
 
     async def _delete_expired_archives(self) -> None:
         """删除超过保留期的归档文件"""
-        cutoff = datetime.now() - timedelta(days=self.COLD_STORAGE_DAYS)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=self.COLD_STORAGE_DAYS)
 
         for file in self.archive_dir.glob("*.json.gz"):
             try:
@@ -132,35 +160,33 @@ class LogLifecycleManager:
             except (ValueError, IndexError):
                 continue
 
-    async def run_cleanup_once(self) -> dict[str, int | str]:
+    async def run_cleanup_once(self) -> dict[str, Any]:
         """执行一次清理（用于手动触发）"""
-        result: dict[str, int | str] = {
+        result: dict[str, Any] = {
             "system_logs_archived": 0,
             "audit_logs_archived": 0,
             "archives_deleted": 0,
         }
 
-        import aiosqlite
-
-        cutoff = datetime.now() - timedelta(days=self.HOT_STORAGE_DAYS)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=self.HOT_STORAGE_DAYS)
 
         try:
-            async with aiosqlite.connect(self.db_path) as db:
-                cursor = await db.execute(
-                    "SELECT COUNT(*) FROM system_logs WHERE timestamp < ?", (cutoff.isoformat(),)
+            async with get_log_session() as session:
+                # 统计需要归档的系统日志
+                count_result = await session.exec(
+                    select(SystemLog).where(SystemLog.timestamp < cutoff.isoformat())
                 )
-                row = await cursor.fetchone()
-                result["system_logs_archived"] = row[0] if row else 0
+                result["system_logs_archived"] = len(count_result.all())
 
-                cursor = await db.execute(
-                    "SELECT COUNT(*) FROM audit_logs WHERE timestamp < ?", (cutoff.isoformat(),)
+                # 统计需要归档的审计日志
+                count_result = await session.exec(
+                    select(AuditLog).where(AuditLog.timestamp < cutoff.isoformat())
                 )
-                row = await cursor.fetchone()
-                result["audit_logs_archived"] = row[0] if row else 0
+                result["audit_logs_archived"] = len(count_result.all())
 
             await self._archive_old_logs()
 
-            cutoff_cold = datetime.now() - timedelta(days=self.COLD_STORAGE_DAYS)
+            cutoff_cold = datetime.now(timezone.utc) - timedelta(days=self.COLD_STORAGE_DAYS)
             archives_deleted = 0
             for file in self.archive_dir.glob("*.json.gz"):
                 try:

@@ -36,6 +36,14 @@
               </button>
               <button type="button" class="toolbar-btn" @click="handleReset">重置</button>
               <button type="button" class="toolbar-btn" @click="handleExport">导出</button>
+              <button
+                type="button"
+                class="toolbar-btn delete-btn"
+                @click="handleDelete"
+                :disabled="allCharacters.length <= 1"
+              >
+                删除
+              </button>
             </div>
             <button class="close-btn" type="button" aria-label="关闭" @click="handleClose">
               <IconClose />
@@ -51,6 +59,61 @@
         </div>
       </div>
     </Transition>
+    <Transition name="modal">
+      <div
+        v-if="showDeleteConfirm"
+        class="character-modal-overlay"
+        @click.self="showDeleteConfirm = false"
+      >
+        <div class="character-modal confirm-modal">
+          <div class="modal-header">
+            <h2 class="modal-title">确认删除</h2>
+          </div>
+          <div class="modal-body">
+            <p class="confirm-message">
+              删除角色后，该角色下的所有对话实例也会被一并删除。该操作不可恢复，是否继续？
+            </p>
+            <p v-if="deleteConversationCount > 0" class="confirm-subtext">
+              当前将删除 {{ deleteConversationCount }} 个关联对话。
+            </p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="toolbar-btn" @click="showDeleteConfirm = false">
+              取消
+            </button>
+            <button type="button" class="toolbar-btn delete-btn" @click="confirmDelete">
+              确认删除
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+    <Transition name="modal">
+      <div
+        v-if="showResetConfirm"
+        class="character-modal-overlay"
+        @click.self="showResetConfirm = false"
+      >
+        <div class="character-modal confirm-modal">
+          <div class="modal-header">
+            <h2 class="modal-title">确认重置</h2>
+          </div>
+          <div class="modal-body">
+            <p class="confirm-message">
+              是否确认重置该角色卡为默认配置，此操作不可撤销。
+            </p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="toolbar-btn" @click="showResetConfirm = false">
+              取消
+            </button>
+            <button type="button" class="toolbar-btn delete-btn" @click="confirmReset">
+              确认重置
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
   </Teleport>
 </template>
 
@@ -59,7 +122,10 @@ import { nextTick, ref, watch, computed } from 'vue'
 import { IconClose } from '@/components/icons'
 import CharacterSettings from './CharacterSettings.vue'
 import { useAccountStore } from '@/stores'
+import { conversationsApi } from '@/api'
 import type { AccountCharacter } from '@/types/character'
+import { logger } from '@/utils/logger'
+import { useToast } from '@/composables/useToast'
 
 const props = defineProps<{
   visible: boolean
@@ -70,15 +136,44 @@ const emit = defineEmits<{
 }>()
 
 const accountStore = useAccountStore()
+const toast = useToast()
 const settingsRef = ref<InstanceType<typeof CharacterSettings> | null>(null)
 const isDropdownOpen = ref(false)
 const allCharacters = ref<AccountCharacter[]>([])
 const currentCharacterId = ref<string | null>(null)
+const showDeleteConfirm = ref(false)
+const showResetConfirm = ref(false)
+const deleteConversationCount = ref(0)
 
 const currentCharacterName = computed(() => {
   const char = allCharacters.value.find(c => c.id === currentCharacterId.value)
   return char?.name || '未命名角色'
 })
+
+async function getRelatedConversationIds(characterId: string): Promise<Set<string>> {
+  if (!accountStore.currentAccount) return new Set()
+  
+  const [backendResult, localConversations] = await Promise.all([
+    conversationsApi.getConversations(
+      accountStore.currentAccount.id,
+      characterId,
+      200,
+      0
+    ),
+    accountStore.loadConversations(),
+  ])
+
+  const localMatches = localConversations.filter(
+    conv =>
+      (conv.characterId || (conv as { character_id?: string }).character_id) ===
+      characterId
+  )
+  
+  return new Set<string>([
+    ...backendResult.conversations.map(conv => conv.id),
+    ...localMatches.map(conv => conv.id),
+  ])
+}
 
 function handleClose(): void {
   emit('close')
@@ -91,11 +186,98 @@ async function handleSave(): Promise<void> {
 }
 
 function handleReset(): void {
-  settingsRef.value?.reset()
+  showResetConfirm.value = true
+}
+
+async function confirmReset(): Promise<void> {
+  try {
+    await settingsRef.value?.resetToDefault()
+    await loadCharacters()
+    toast.success('已重置为系统默认配置')
+  } catch (error) {
+    logger.error('CharacterModal', 'Failed to reset character', error)
+    toast.error('重置失败')
+  } finally {
+    showResetConfirm.value = false
+  }
 }
 
 function handleExport(): void {
   settingsRef.value?.exportJson()
+}
+
+function handleDelete(): void {
+  if (!currentCharacterId.value || !accountStore.currentAccount) {
+    showDeleteConfirm.value = true
+    return
+  }
+
+  const deletingCharacterId = currentCharacterId.value
+  void (async () => {
+    try {
+      const conversationIds = await getRelatedConversationIds(deletingCharacterId)
+      deleteConversationCount.value = conversationIds.size
+    } catch (error) {
+      logger.warn('CharacterModal', 'Failed to pre-calculate related conversations count', {
+        error: error as Error,
+      })
+      deleteConversationCount.value = 0
+    } finally {
+      showDeleteConfirm.value = true
+    }
+  })()
+}
+
+async function confirmDelete(): Promise<void> {
+  try {
+    if (!currentCharacterId.value) return
+
+    const deletingCharacterId = currentCharacterId.value
+    const charName = currentCharacterName.value
+    let deletedConversationCount = 0
+
+    const conversationIds = await getRelatedConversationIds(deletingCharacterId)
+    deleteConversationCount.value = conversationIds.size
+
+    for (const conversationId of conversationIds) {
+      try {
+        await conversationsApi.deleteConversation(conversationId)
+      } catch (error) {
+        logger.warn(
+          'CharacterModal',
+          'Failed to delete conversation from backend, continuing local cleanup',
+          { conversationId, error }
+        )
+      }
+      await accountStore.deleteConversation(conversationId)
+      deletedConversationCount += 1
+    }
+
+    await accountStore.deleteCharacter(deletingCharacterId)
+    await loadCharacters()
+
+    if (allCharacters.value.length > 0) {
+      const newCharacterId = allCharacters.value[0].id
+      currentCharacterId.value = newCharacterId
+      await accountStore.setActiveCharacterId(newCharacterId)
+      await nextTick()
+      await settingsRef.value?.loadCharacter(newCharacterId)
+    }
+
+    showDeleteConfirm.value = false
+    toast.success(
+      deletedConversationCount > 0
+        ? `已删除角色「${charName}」及 ${deletedConversationCount} 个关联对话`
+        : `已删除角色「${charName}」`
+    )
+    logger.info('CharacterModal', 'Deleted character with related conversations', {
+      characterId: deletingCharacterId,
+      deletedConversationCount,
+    })
+  } catch (error) {
+    logger.error('CharacterModal', 'Failed to delete character', error)
+    toast.error('删除角色失败')
+  }
 }
 
 async function handleCreateNew(): Promise<void> {
@@ -181,6 +363,10 @@ watch(
     font-weight: 600;
     color: #333333;
     min-width: 0;
+  }
+
+  .header-actions {
+    margin-left: auto;
   }
 }
 
@@ -348,5 +534,50 @@ watch(
     transform: scale(0.97) translateY(-12px);
     opacity: 0;
   }
+}
+
+.toolbar-btn.delete-btn {
+  background: #fef2f2;
+  color: #dc2626;
+  border-color: #fecaca;
+
+  &:hover:not(:disabled) {
+    background: #fee2e2;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.confirm-modal {
+  width: min(95vw, 450px);
+}
+
+.confirm-modal .modal-body {
+  padding: 24px 20px;
+  text-align: center;
+}
+
+.confirm-message {
+  margin: 0;
+  font-size: 15px;
+  color: #374151;
+  line-height: 1.6;
+}
+
+.confirm-subtext {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px 20px;
+  border-top: 1px solid #e5e7eb;
 }
 </style>

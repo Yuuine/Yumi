@@ -1,6 +1,6 @@
 <template>
   <div class="message-list" ref="containerRef" @scroll="handleScroll">
-    <div class="messages-wrapper" ref="wrapperRef">
+    <div ref="wrapperRef" class="messages-wrapper">
       <div v-if="isLoadingMore" class="loading-indicator">
         <IconSpinner class="spinner" />
         <span>加载历史消息...</span>
@@ -16,7 +16,7 @@
         :message="message"
         :data-message-id="message.id"
         class="message-item"
-        @copy="handleCopy"
+        @copy-content="handleCopy"
       />
 
       <div v-if="displayMessages.length === 0 && !isLoadingMore" class="empty-state">
@@ -24,12 +24,13 @@
       </div>
     </div>
 
-    <ScrollToBottom :visible="showScrollButton" @click="smoothScrollToBottom" />
+    <ScrollToBottom :visible="showScrollButton" @click="onScrollToBottomClick" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted, onUnmounted, computed } from 'vue'
+import { ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { useChatStore } from '@/stores'
 import type { ChatMessage } from '@/types'
 import MessageItem from './MessageItem.vue'
 import ScrollToBottom from './ScrollToBottom.vue'
@@ -44,45 +45,93 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const emit = defineEmits<{
-  copy: [content: string]
+  'copy-content': [content: string]
   loadMore: []
   scrollStateChange: [isAtBottom: boolean]
 }>()
 
+const chatStore = useChatStore()
 const containerRef = ref<HTMLElement | null>(null)
 const wrapperRef = ref<HTMLElement | null>(null)
+
+let resizeObserver: ResizeObserver | null = null
 
 const displayMessages = ref<ChatMessage[]>([])
 const isLoadingMore = ref(false)
 const hasMoreHistory = ref(true)
-const isNearBottom = ref(true)
 const isInternalUpdate = ref(false)
 const isInitialLoad = ref(true)
 const scrollDebounceTimer = ref<ReturnType<typeof setTimeout> | null>(null)
-const isAutoScrolling = ref(false)
 const showScrollButton = ref(false)
 
 const SCROLL_THRESHOLD = 150
 const DEBOUNCE_DELAY = 100
 const BOTTOM_THRESHOLD = 50
 
-const isAtBottom = computed(() => {
+function isAtBottom(): boolean {
   if (!containerRef.value) return true
   const { scrollTop, scrollHeight, clientHeight } = containerRef.value
   return scrollHeight - scrollTop - clientHeight < BOTTOM_THRESHOLD
-})
+}
+
+function scrollToBottom(): void {
+  nextTick(() => {
+    if (containerRef.value) {
+      containerRef.value.scrollTop = containerRef.value.scrollHeight
+    }
+  })
+}
+
+function beginStickyFollow(): void {}
+
+function endStickyFollow(): void {}
+
+async function completeStickyFollowSession(): Promise<void> {
+  await nextTick()
+  scrollToBottom()
+}
+
+function scrollToBottomInstant(): void {
+  scrollToBottom()
+}
+
+function scrollToBottomSmooth(): void {
+  scrollToBottom()
+}
+
+function onScrollToBottomClick(): void {
+  scrollToBottom()
+}
+
+watch(
+  () => chatStore.currentConversationId,
+  (id, prev) => {
+    if (id === prev) return
+    if (prev === undefined) return
+    isInitialLoad.value = true
+  }
+)
 
 onMounted(() => {
-  // 首次加载的滚动已在 watch 中处理
+  nextTick(() => {
+    const wrap = wrapperRef.value
+    if (!wrap || typeof ResizeObserver === 'undefined') return
+    resizeObserver = new ResizeObserver(() => {
+      if (isAtBottom()) {
+        scrollToBottom()
+      }
+    })
+    resizeObserver.observe(wrap)
+  })
 })
 
 onUnmounted(() => {
+  resizeObserver?.disconnect()
+  resizeObserver = null
   if (scrollDebounceTimer.value) {
     clearTimeout(scrollDebounceTimer.value)
   }
 })
-
-const forceScrollFlag = ref(false)
 
 watch(
   () => props.messages,
@@ -90,7 +139,6 @@ watch(
     const prevLength = oldMessages?.length || 0
     const newLength = newMessages.length
 
-    // 首次加载：直接显示消息并滚动到底部
     if (isInitialLoad.value) {
       displayMessages.value = [...newMessages]
       isInitialLoad.value = false
@@ -101,73 +149,44 @@ watch(
       return
     }
 
-    // 内部更新（加载历史消息）：保持当前滚动位置
     if (isInternalUpdate.value) {
       displayMessages.value = [...newMessages]
       isInternalUpdate.value = false
       return
     }
 
-    // 接收新消息：根据用户位置或强制滚动标志决定是否自动滚动
     if (newLength > prevLength) {
       displayMessages.value = [...newMessages]
-
-      // 强制滚动（用户发送消息时）
-      if (forceScrollFlag.value) {
-        forceScrollFlag.value = false
-        nextTick(() => {
-          scrollToBottom()
-          emit('scrollStateChange', true)
-        })
-        return
-      }
-
-      // 用户在底部位置，自动滚动到底部查看新消息
-      const wasAtBottom = isAtBottom.value
-      if (wasAtBottom) {
+      if (isAtBottom()) {
         nextTick(() => {
           scrollToBottom()
           emit('scrollStateChange', true)
         })
       }
-      // 用户不在底部时，不自动滚动，保持当前位置
-      // 滚动按钮由 handleScroll 中的 scrollStateChange 事件控制
+      return
+    }
+
+    if (newLength === prevLength && oldMessages) {
+      const isUpdatingLastMessage =
+        newLength > 0 &&
+        oldMessages[newMessages.length - 1]?.id === newMessages[newMessages.length - 1]?.id &&
+        oldMessages[newMessages.length - 1]?.content !==
+          newMessages[newMessages.length - 1]?.content
+
+      displayMessages.value = [...newMessages]
+
+      if (isUpdatingLastMessage && isAtBottom()) {
+        nextTick(() => {
+          scrollToBottom()
+          emit('scrollStateChange', true)
+        })
+      }
     } else {
       displayMessages.value = [...newMessages]
     }
   },
   { deep: true, immediate: true }
 )
-
-function scrollToBottom() {
-  if (!containerRef.value) return
-
-  isAutoScrolling.value = true
-  requestAnimationFrame(() => {
-    if (!containerRef.value) return
-    containerRef.value.scrollTop = containerRef.value.scrollHeight
-    setTimeout(() => {
-      isAutoScrolling.value = false
-    }, 100)
-  })
-}
-
-function smoothScrollToBottom() {
-  if (!containerRef.value) return
-
-  isAutoScrolling.value = true
-  containerRef.value.scrollTo({
-    top: containerRef.value.scrollHeight,
-    behavior: 'smooth',
-  })
-  setTimeout(() => {
-    isAutoScrolling.value = false
-  }, 500)
-}
-
-function forceScrollToBottom() {
-  forceScrollFlag.value = true
-}
 
 function getFirstVisibleMessageId(): string | null {
   if (!containerRef.value) return null
@@ -188,20 +207,17 @@ function scrollToMessage(messageId: string | null) {
   if (!messageId || !containerRef.value) return
   const messageEl = containerRef.value.querySelector(`[data-message-id="${messageId}"]`)
   if (messageEl) {
-    messageEl.scrollIntoView({ block: 'start' })
+    messageEl.scrollIntoView({ block: 'start', behavior: 'auto' })
   }
 }
 
 function handleScroll() {
   if (!containerRef.value) return
 
-  if (isAutoScrolling.value) return
-
   const { scrollTop, scrollHeight, clientHeight } = containerRef.value
   const distanceFromBottom = scrollHeight - scrollTop - clientHeight
   const currentIsAtBottom = distanceFromBottom < BOTTOM_THRESHOLD
 
-  isNearBottom.value = distanceFromBottom < 100
   showScrollButton.value = !currentIsAtBottom
 
   emit('scrollStateChange', currentIsAtBottom)
@@ -226,7 +242,6 @@ async function loadMoreHistory() {
 
   isLoadingMore.value = true
 
-  // 获取当前可见的第一个消息ID
   const firstVisibleId = getFirstVisibleMessageId()
 
   isInternalUpdate.value = true
@@ -235,7 +250,6 @@ async function loadMoreHistory() {
   await waitForDomUpdate()
 
   nextTick(() => {
-    // 滚动到之前可见的消息位置
     scrollToMessage(firstVisibleId)
     isLoadingMore.value = false
   })
@@ -250,7 +264,7 @@ function waitForDomUpdate(): Promise<void> {
 }
 
 function handleCopy(content: string) {
-  emit('copy', content)
+  emit('copy-content', content)
 }
 
 function setHasMoreHistory(value: boolean) {
@@ -278,13 +292,20 @@ function getMessageProgress(): number {
 }
 
 defineExpose({
-  scrollToBottom,
-  smoothScrollToBottom,
-  forceScrollToBottom,
+  /** 瞬时到底（兼容旧调用：切换会话、挂载） */
+  scrollToBottom: scrollToBottomInstant,
+  scrollToBottomInstant,
+  scrollToBottomSmooth,
+  smoothScrollToBottom: onScrollToBottomClick,
+  beginStickyFollow,
+  endStickyFollow,
+  completeStickyFollowSession,
+  /** @deprecated 使用 beginStickyFollow */
+  forceScrollToBottom: beginStickyFollow,
   isAtBottom,
   addMessage: (message: ChatMessage) => {
     displayMessages.value.push(message)
-    nextTick(scrollToBottom)
+    nextTick(() => scrollToBottom())
   },
   setHasMoreHistory,
   setLoadingMore,
@@ -298,9 +319,9 @@ defineExpose({
   position: relative;
   flex: 1;
   overflow-y: auto;
-  padding: 24px 24px 200px;
+  padding: 24px 24px 120px;
   padding-left: 88px;
-  scroll-behavior: smooth;
+  /* 自动滚动由 JS 控制 behavior，避免与 scrollTo 叠加 */
 
   .messages-wrapper {
     max-width: 800px;

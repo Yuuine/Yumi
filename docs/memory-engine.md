@@ -19,6 +19,7 @@
 | [架构设计](./architecture.md) | 系统整体架构、模块划分 |
 | [API 文档](./api.md) | 完整的 RESTful API 接口 |
 | [情绪引擎](./emotion-engine.md) | 情绪引擎详细设计 |
+| [RAG 技术说明](./rag-technical.md) | 检索增强生成：向量检索、相似度与 LLM 集成 |
 
 ---
 
@@ -137,17 +138,17 @@ $$
 **衰减因子**：
 
 $$
-\text{decay\_factor} = e^{-\frac{t}{S}}
+\text{decay-factor} = e^{-\frac{t}{S}}
 $$
 
 其中：
 - $t$ = 经过的天数
-- $\text{decay\_factor} \in [\text{min\_decay\_factor}, 1.0]$
+- $\text{decay-factor} \in [\text{min-decay-factor}, 1.0]$
 
 **有效相似度**：
 
 $$
-\text{effective\_similarity} = \text{similarity} \times \text{decay\_factor}
+\text{effective-similarity} = \text{similarity} \times \text{decay-factor}
 $$
 
 **直观理解**：
@@ -187,17 +188,17 @@ $$
 **相似度计算**：
 
 $$
-\text{similarity} = 1 - \text{cosine\_distance}
+\text{similarity} = 1 - \text{cosine-distance}
 $$
 
 其中：
-- $\text{cosine\_distance}$ = ChromaDB 返回的余弦距离，范围 $[0, 1]$
+- $\text{cosine-distance}$ = ChromaDB 返回的余弦距离，范围 $[0, 1]$
 - $\text{similarity}$ = 余弦相似度，范围 $[0, 1]$
 
 **去重判断**：
 
 $$
-\text{is\_duplicate} = (\text{similarity} \geq \text{threshold})
+\text{is-duplicate} = (\text{similarity} \geq \text{threshold})
 $$
 
 **阈值**：0.85（推荐值，范围 0.80-0.90）

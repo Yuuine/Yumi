@@ -7,12 +7,22 @@ import time
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
+from sqlmodel import select
 
-from ..core import clear_active_model, get_conversation_cache
+from ..core import clear_active_model, get_conversation_cache, get_logger
+from ..database_sqlmodel import get_session
+from ..services.cache_service import get_cache_service
+from ..models import (
+    User,
+    Conversation,
+    ConversationLog,
+    CharacterCard,
+    ModelConfig,
+)
 from ..services.log_service import AuditAction, log_service
 
 router = APIRouter()
-logger = log_service.logger if hasattr(log_service, "logger") else None
+logger = get_logger(__name__)
 
 
 class UserPreferences(BaseModel):
@@ -45,52 +55,70 @@ class PurgeUserResponse(BaseModel):
 
 @router.get("/user/profile", response_model=UserProfile)
 async def get_user_profile(userId: str, req: Request):
-    from ..database import get_db
+    cache_service = get_cache_service()
+    cache_key = f"user:{userId}"
+    
+    try:
+        cached = cache_service.user.get(cache_key)
+        if cached is not None:
+            if isinstance(cached, dict) and 'id' in cached and 'roleName' in cached and 'preferences' in cached:
+                logger.debug("UserRouter", "Cache HIT", {"key": cache_key})
+                return cached
+            else:
+                logger.debug("UserRouter", "Cache has invalid data type, clearing", {"key": cache_key})
+                cache_service.user.delete(cache_key)
+    except Exception as e:
+        logger.error("UserRouter", "Cache read error", {"error": str(e)})
+        cache_service.user.delete(cache_key)
+    
+    logger.debug("UserRouter", "Cache MISS", {"key": cache_key})
+    async with get_session() as session:
+        result = await session.exec(select(User).where(User.id == userId))
+        user = result.first()
 
-    async with get_db() as db:
-        cursor = await db.execute(
-            """SELECT id, role_name, preferences_json
-               FROM users WHERE id = ?""",
-            (userId,),
-        )
-        row = await cursor.fetchone()
-
-        if not row:
+        if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
-        preferences = json.loads(row[2]) if row[2] else {}
+        preferences = json.loads(user.preferences_json) if user.preferences_json else {}
 
-        return UserProfile(
-            id=row[0],
-            role_name=row[1],
+        result = UserProfile(
+            id=user.id,
+            role_name=user.role_name,
             preferences=UserPreferences(**preferences),
         )
+    
+    try:
+        cache_service.user.set(cache_key, result.model_dump(by_alias=True))
+    except Exception as e:
+        logger.error("UserRouter", "Cache write error", {"error": str(e)})
+    
+    return result
 
 
 @router.put("/user/profile", response_model=UserProfile)
 async def update_user_profile(profile: UserProfile, req: Request):
-    from ..database import get_db
-
     start_time = time.time()
 
     try:
-        async with get_db() as db:
-            cursor = await db.execute(
-                "SELECT preferences_json FROM users WHERE id = ?", (profile.id,)
-            )
-            old_row = await cursor.fetchone()
-            old_preferences = json.loads(old_row[0]) if old_row and old_row[0] else {}
+        async with get_session() as session:
+            result = await session.exec(select(User).where(User.id == profile.id))
+            user = result.first()
 
-            await db.execute(
-                """INSERT OR REPLACE INTO users (id, role_name, preferences_json, updated_at)
-                   VALUES (?, ?, ?, CURRENT_TIMESTAMP)""",
-                (
-                    profile.id,
-                    profile.role_name,
-                    json.dumps(profile.preferences.dict(by_alias=False)),
-                ),
-            )
-            await db.commit()
+            old_preferences = {}
+            if user:
+                old_preferences = json.loads(user.preferences_json) if user.preferences_json else {}
+                user.role_name = profile.role_name
+                user.preferences_json = json.dumps(profile.preferences.dict(by_alias=False))
+            else:
+                user = User(
+                    id=profile.id,
+                    role_name=profile.role_name,
+                    preferences_json=json.dumps(profile.preferences.dict(by_alias=False))
+                )
+                session.add(user)
+
+            await session.commit()
+            await session.refresh(user)
 
         latency_ms = (time.time() - start_time) * 1000
 
@@ -110,6 +138,12 @@ async def update_user_profile(profile: UserProfile, req: Request):
             },
         )
 
+        try:
+            cache_service = get_cache_service()
+            cache_service.invalidate_user(profile.id)
+        except Exception as e:
+            logger.error("UserRouter", "Cache invalidate error", {"error": str(e)})
+
         return profile
 
     except Exception as e:
@@ -128,10 +162,114 @@ async def update_user_profile(profile: UserProfile, req: Request):
         raise
 
 
+class UserListItem(BaseModel):
+    id: str
+    role_name: str = Field(..., alias="roleName")
+    created_at: str = Field(..., alias="createdAt")
+    updated_at: str = Field(..., alias="updatedAt")
+
+    class Config:
+        populate_by_name = True
+
+
+class ListUsersResponse(BaseModel):
+    users: list[UserListItem]
+
+
+class FullAccountDataResponse(BaseModel):
+    id: str
+    role_name: str = Field(..., alias="roleName")
+    preferences: UserPreferences
+    created_at: str = Field(..., alias="createdAt")
+    updated_at: str = Field(..., alias="updatedAt")
+
+    class Config:
+        populate_by_name = True
+
+
+@router.get("/user/list", response_model=ListUsersResponse)
+async def list_users(req: Request):
+    async with get_session() as session:
+        result = await session.exec(select(User).order_by(User.updated_at.desc()))
+        users = result.all()
+
+        user_list = []
+        for user in users:
+            user_list.append(
+                UserListItem(
+                    id=user.id,
+                    role_name=user.role_name,
+                    created_at=user.created_at.isoformat() if user.created_at else "",
+                    updated_at=user.updated_at.isoformat() if user.updated_at else "",
+                )
+            )
+
+        return ListUsersResponse(users=user_list)
+
+
+@router.get("/user/full/{user_id}")
+async def get_full_account_data(user_id: str, req: Request):
+    from ..services.character_card import list_character_cards_for_user
+    from ..services.conversation_service import conversation_service
+
+    async with get_session() as session:
+        result = await session.exec(select(User).where(User.id == user_id))
+        user = result.first()
+
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        preferences = json.loads(user.preferences_json) if user.preferences_json else {}
+
+        character_cards = await list_character_cards_for_user(session, user_id)
+
+        conversations = await conversation_service.get_user_conversations(
+            user_id=user_id,
+            limit=1000,
+            offset=0
+        )
+
+        return {
+            "id": user.id,
+            "roleName": user.nickname,
+            "preferences": preferences,
+            "createdAt": user.created_at.isoformat() if user.created_at else "",
+            "updatedAt": user.updated_at.isoformat() if user.updated_at else "",
+            "characterCards": [
+                {
+                    "id": card.id,
+                    "userId": card.user_id,
+                    "conversationId": getattr(card, 'conversation_id', None),
+                    "roleOverview": card.role_overview,
+                    "formalName": card.formal_name,
+                    "nickname": card.nickname,
+                    "raceOrForm": card.race_or_form,
+                    "gender": card.gender,
+                    "visualAge": card.visual_age,
+                    "actualAge": card.actual_age,
+                    "location": card.location,
+                    "appearanceDesc": card.appearance_desc,
+                    "corePersonality": card.core_personality,
+                    "selfPerception": card.self_perception,
+                    "attitudeToUser": card.attitude_to_user,
+                    "likes": card.likes,
+                    "dislikes": card.dislikes,
+                    "toneBase": card.tone_base,
+                    "wordHabits": card.word_habits,
+                    "emotionRules": card.emotion_rules,
+                    "lengthPref": card.length_pref,
+                    "specialLogicList": card.special_logic_list,
+                    "fewShotExamples": card.few_shot_examples,
+                    "isActive": card.is_active,
+                }
+                for card in character_cards
+            ],
+            "conversations": conversations,
+        }
+
+
 @router.post("/user/purge", response_model=PurgeUserResponse)
 async def purge_user_data(payload: PurgeUserRequest, req: Request):
-    from ..database import get_db
-
     user_id = payload.userId.strip()
     if not user_id:
         raise HTTPException(status_code=400, detail="userId is required")
@@ -146,32 +284,50 @@ async def purge_user_data(payload: PurgeUserRequest, req: Request):
         raise HTTPException(status_code=500, detail="清理向量记忆失败") from e
 
     try:
-        async with get_db() as db:
-            cursor = await db.execute("DELETE FROM conversation_logs WHERE user_id = ?", (user_id,))
-            cleared_logs = cursor.rowcount or 0
+        async with get_session() as session:
+            cleared_logs = 0
+            result = await session.exec(select(ConversationLog).where(ConversationLog.user_id == user_id))
+            logs_to_delete = result.all()
+            for log in logs_to_delete:
+                await session.delete(log)
+                cleared_logs += 1
 
-            cursor = await db.execute("DELETE FROM conversations WHERE user_id = ?", (user_id,))
-            cleared_conversations = cursor.rowcount or 0
+            cleared_conversations = 0
+            result = await session.exec(select(Conversation).where(Conversation.user_id == user_id))
+            convs_to_delete = result.all()
+            for conv in convs_to_delete:
+                await session.delete(conv)
+                cleared_conversations += 1
 
-            cursor = await db.execute("DELETE FROM memory_summaries WHERE user_id = ?", (user_id,))
-            cleared_summaries = cursor.rowcount or 0
+            # TODO: MemorySummary 模型已移除，需要重新实现记忆清理逻辑
+            cleared_summaries = 0
 
-            cursor = await db.execute("DELETE FROM character_cards WHERE user_id = ?", (user_id,))
-            cleared_character_cards = cursor.rowcount or 0
+            cleared_character_cards = 0
+            result = await session.exec(select(CharacterCard).where(CharacterCard.user_id == user_id))
+            cards_to_delete = result.all()
+            for card in cards_to_delete:
+                await session.delete(card)
+                cleared_character_cards += 1
 
-            cursor = await db.execute("DELETE FROM audit_logs WHERE user_id = ?", (user_id,))
-            cleared_audit_logs = cursor.rowcount or 0
+            # TODO: AuditLog 和 SystemLog 在日志数据库中，需要从日志数据库清理
+            cleared_audit_logs = 0
+            cleared_system_logs = 0
 
-            cursor = await db.execute("DELETE FROM system_logs WHERE user_id = ?", (user_id,))
-            cleared_system_logs = cursor.rowcount or 0
+            cleared_user_profile = 0
+            result = await session.exec(select(User).where(User.id == user_id))
+            user_to_delete = result.first()
+            if user_to_delete:
+                await session.delete(user_to_delete)
+                cleared_user_profile = 1
 
-            cursor = await db.execute("DELETE FROM users WHERE id = ?", (user_id,))
-            cleared_user_profile = cursor.rowcount or 0
+            cleared_model_configs = 0
+            result = await session.exec(select(ModelConfig).where(ModelConfig.account_id == user_id))
+            configs_to_delete = result.all()
+            for config in configs_to_delete:
+                await session.delete(config)
+                cleared_model_configs += 1
 
-            cursor = await db.execute("DELETE FROM model_configs WHERE account_id = ?", (user_id,))
-            cleared_model_configs = cursor.rowcount or 0
-
-            await db.commit()
+            await session.commit()
 
         clear_active_model(user_id)
         conversation_cache = get_conversation_cache()

@@ -1,20 +1,24 @@
 """
 Log Query API Router - 日志查询接口
+基于 SQLModel 重构
 """
 
 from __future__ import annotations
 
 import json
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
+from typing import Any
 
 from fastapi import APIRouter, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from sqlmodel import select, func
 
 from ..core import get_logger
-from ..database import get_db
+from ..database_sqlmodel import get_log_session
+from ..models import SystemLog, AuditLog
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -98,87 +102,67 @@ async def query_logs(
     """查询系统日志"""
     offset = (page - 1) * page_size
 
-    conditions = []
-    params = []
-
-    if start_time:
-        conditions.append("timestamp >= ?")
-        params.append(start_time)
-    if end_time:
-        conditions.append("timestamp <= ?")
-        params.append(end_time)
-    if level:
-        conditions.append("level = ?")
-        params.append(level.upper())
-    if event_type:
-        conditions.append("event_type = ?")
-        params.append(event_type.upper())
-    if trace_id:
-        conditions.append("trace_id = ?")
-        params.append(trace_id)
-    if user_id:
-        conditions.append("user_id = ?")
-        params.append(user_id)
-    if keyword:
-        conditions.append("content LIKE ?")
-        params.append(f"%{keyword}%")
-
-    where_clause = " AND ".join(conditions) if conditions else "1=1"
-
     try:
-        async with get_db() as db:
-            count_cursor = await db.execute(
-                f"SELECT COUNT(*) FROM system_logs WHERE {where_clause}",
-                params,
-            )
-            total_row = await count_cursor.fetchone()
-            total = total_row[0] if total_row else 0
+        async with get_log_session() as session:
+            # 构建查询条件
+            query = select(SystemLog)
 
-            query_cursor = await db.execute(
-                f"""SELECT id, timestamp, level, event_type, trace_id, user_id, session_id, content
-                    FROM system_logs
-                    WHERE {where_clause}
-                    ORDER BY timestamp DESC
-                    LIMIT ? OFFSET ?""",
-                params + [page_size, offset],
-            )
-            rows = await query_cursor.fetchall()
+            if start_time:
+                query = query.where(SystemLog.timestamp >= start_time)
+            if end_time:
+                query = query.where(SystemLog.timestamp <= end_time)
+            if level:
+                query = query.where(SystemLog.level == level.upper())
+            if event_type:
+                query = query.where(SystemLog.event_type == event_type.upper())
+            if trace_id:
+                query = query.where(SystemLog.trace_id == trace_id)
+            if user_id:
+                query = query.where(SystemLog.user_id == user_id)
+            if keyword:
+                query = query.where(SystemLog.content.contains(keyword))
+
+            # 获取总数
+            count_result = await session.exec(select(func.count()).select_from(query.subquery()))
+            total = count_result.one()
+
+            # 获取分页数据
+            query = query.order_by(SystemLog.timestamp.desc()).offset(offset).limit(page_size)
+            result = await session.exec(query)
+            logs = result.all()
 
             items = [
                 LogEntry(
-                    id=row[0],
-                    timestamp=row[1],
-                    level=row[2],
-                    event_type=row[3],
-                    trace_id=row[4],
-                    user_id=row[5],
-                    session_id=row[6],
-                    content=row[7],
+                    id=log.id,
+                    timestamp=log.timestamp.isoformat() if log.timestamp else "",
+                    level=log.level,
+                    event_type=log.event_type,
+                    trace_id=log.trace_id,
+                    user_id=log.user_id,
+                    session_id=log.session_id,
+                    content=log.content,
                 )
-                for row in rows
+                for log in logs
             ]
 
+            # 聚合统计
             aggregations = None
             if page == 1:
-                agg_cursor = await db.execute(
-                    f"""SELECT level, COUNT(*) as count
-                        FROM system_logs
-                        WHERE {where_clause}
-                        GROUP BY level""",
-                    params,
-                )
-                level_rows = await agg_cursor.fetchall()
-                logs_by_level = {row[0]: row[1] for row in level_rows}
+                level_query = select(SystemLog.level, func.count()).group_by(SystemLog.level)
+                if start_time:
+                    level_query = level_query.where(SystemLog.timestamp >= start_time)
+                if end_time:
+                    level_query = level_query.where(SystemLog.timestamp <= end_time)
+                level_result = await session.exec(level_query)
+                logs_by_level = {row[0]: row[1] for row in level_result.all()}
 
-                agg_cursor = await db.execute(
-                    f"""SELECT event_type, COUNT(*) as count
-                        FROM system_logs
-                        WHERE {where_clause}
-                        GROUP BY event_type""",
-                    params,
-                )
-                type_rows = await agg_cursor.fetchall()
-                logs_by_type = {row[0]: row[1] for row in type_rows}
+                type_query = select(SystemLog.event_type, func.count()).group_by(SystemLog.event_type)
+                if start_time:
+                    type_query = type_query.where(SystemLog.timestamp >= start_time)
+                if end_time:
+                    type_query = type_query.where(SystemLog.timestamp <= end_time)
+                type_result = await session.exec(type_query)
+                logs_by_type = {row[0]: row[1] for row in type_result.all()}
 
                 aggregations = {
                     "byLevel": logs_by_level,
@@ -210,62 +194,46 @@ async def query_audit_logs(
     """查询审计日志"""
     offset = (page - 1) * page_size
 
-    conditions = []
-    params = []
-
-    if start_time:
-        conditions.append("timestamp >= ?")
-        params.append(start_time)
-    if end_time:
-        conditions.append("timestamp <= ?")
-        params.append(end_time)
-    if user_id:
-        conditions.append("user_id = ?")
-        params.append(user_id)
-    if action:
-        conditions.append("action = ?")
-        params.append(action.upper())
-    if resource_type:
-        conditions.append("resource_type = ?")
-        params.append(resource_type.lower())
-    if result:
-        conditions.append("result = ?")
-        params.append(result.upper())
-
-    where_clause = " AND ".join(conditions) if conditions else "1=1"
-
     try:
-        async with get_db() as db:
-            count_cursor = await db.execute(
-                f"SELECT COUNT(*) FROM audit_logs WHERE {where_clause}",
-                params,
-            )
-            total_row = await count_cursor.fetchone()
-            total = total_row[0] if total_row else 0
+        async with get_log_session() as session:
+            # 构建查询条件
+            query = select(AuditLog)
 
-            query_cursor = await db.execute(
-                f"""SELECT id, timestamp, user_id, action, resource_type, resource_id, result, client_ip, details
-                    FROM audit_logs
-                    WHERE {where_clause}
-                    ORDER BY timestamp DESC
-                    LIMIT ? OFFSET ?""",
-                params + [page_size, offset],
-            )
-            rows = await query_cursor.fetchall()
+            if start_time:
+                query = query.where(AuditLog.timestamp >= start_time)
+            if end_time:
+                query = query.where(AuditLog.timestamp <= end_time)
+            if user_id:
+                query = query.where(AuditLog.user_id == user_id)
+            if action:
+                query = query.where(AuditLog.action == action.upper())
+            if resource_type:
+                query = query.where(AuditLog.resource_type == resource_type.lower())
+            if result:
+                query = query.where(AuditLog.result == result.upper())
+
+            # 获取总数
+            count_result = await session.exec(select(func.count()).select_from(query.subquery()))
+            total = count_result.one()
+
+            # 获取分页数据
+            query = query.order_by(AuditLog.timestamp.desc()).offset(offset).limit(page_size)
+            result_query = await session.exec(query)
+            logs = result_query.all()
 
             items = [
                 AuditLogEntry(
-                    id=row[0],
-                    timestamp=row[1],
-                    user_id=row[2],
-                    action=row[3],
-                    resource_type=row[4],
-                    resource_id=row[5],
-                    result=row[6],
-                    client_ip=row[7],
-                    details=json.loads(row[8]) if row[8] else None,
+                    id=log.id,
+                    timestamp=log.timestamp.isoformat() if log.timestamp else "",
+                    user_id=log.user_id,
+                    action=log.action,
+                    resource_type=log.resource_type,
+                    resource_id=log.resource_id,
+                    result=log.result,
+                    client_ip=log.client_ip,
+                    details=log.details,
                 )
-                for row in rows
+                for log in logs
             ]
 
             return AuditLogQueryResponse(total=total, items=items)
@@ -279,38 +247,35 @@ async def query_audit_logs(
 async def get_log_stats():
     """获取日志统计信息"""
     try:
-        async with get_db() as db:
-            total_cursor = await db.execute("SELECT COUNT(*) FROM system_logs")
-            total_row = await total_cursor.fetchone()
-            total_logs = total_row[0] if total_row else 0
+        async with get_log_session() as session:
+            # 总数
+            count_result = await session.exec(select(func.count(SystemLog.id)))
+            total_logs = count_result.one()
 
-            level_cursor = await db.execute(
-                "SELECT level, COUNT(*) FROM system_logs GROUP BY level"
-            )
-            level_rows = await level_cursor.fetchall()
-            logs_by_level = {row[0]: row[1] for row in level_rows}
+            # 按级别统计
+            level_query = select(SystemLog.level, func.count()).group_by(SystemLog.level)
+            level_result = await session.exec(level_query)
+            logs_by_level = {row[0]: row[1] for row in level_result.all()}
 
-            type_cursor = await db.execute(
-                "SELECT event_type, COUNT(*) FROM system_logs GROUP BY event_type"
-            )
-            type_rows = await type_cursor.fetchall()
-            logs_by_event_type = {row[0]: row[1] for row in type_rows}
+            # 按事件类型统计
+            type_query = select(SystemLog.event_type, func.count()).group_by(SystemLog.event_type)
+            type_result = await session.exec(type_query)
+            logs_by_event_type = {row[0]: row[1] for row in type_result.all()}
 
-            now = datetime.utcnow()
+            # 最近24小时
+            now = datetime.now(timezone.utc)
             last_24h = (now - timedelta(hours=24)).isoformat()
             last_7d = (now - timedelta(days=7)).isoformat()
 
-            cursor_24h = await db.execute(
-                "SELECT COUNT(*) FROM system_logs WHERE timestamp >= ?", (last_24h,)
+            count_24h = await session.exec(
+                select(func.count(SystemLog.id)).where(SystemLog.timestamp >= last_24h)
             )
-            row_24h = await cursor_24h.fetchone()
-            logs_last_24h = row_24h[0] if row_24h else 0
+            logs_last_24h = count_24h.one()
 
-            cursor_7d = await db.execute(
-                "SELECT COUNT(*) FROM system_logs WHERE timestamp >= ?", (last_7d,)
+            count_7d = await session.exec(
+                select(func.count(SystemLog.id)).where(SystemLog.timestamp >= last_7d)
             )
-            row_7d = await cursor_7d.fetchone()
-            logs_last_7d = row_7d[0] if row_7d else 0
+            logs_last_7d = count_7d.one()
 
             return LogStatsResponse(
                 total_logs=total_logs,
@@ -340,61 +305,48 @@ async def export_logs(
     sanitize: bool = Query(True, description="是否脱敏处理"),
 ):
     """导出日志文件"""
-    conditions = []
-    params = []
-
-    if start_time:
-        conditions.append("timestamp >= ?")
-        params.append(start_time)
-    if end_time:
-        conditions.append("timestamp <= ?")
-        params.append(end_time)
-    if level:
-        conditions.append("level = ?")
-        params.append(level.upper())
-    if event_type:
-        conditions.append("event_type = ?")
-        params.append(event_type.upper())
-
-    where_clause = " AND ".join(conditions) if conditions else "1=1"
-
     try:
-        async with get_db() as db:
-            cursor = await db.execute(
-                f"""SELECT id, timestamp, level, event_type, trace_id, user_id, session_id, content
-                    FROM system_logs
-                    WHERE {where_clause}
-                    ORDER BY timestamp DESC
-                    LIMIT 10000""",
-                params,
-            )
-            rows = await cursor.fetchall()
+        async with get_log_session() as session:
+            # 构建查询条件
+            query = select(SystemLog)
 
-            logs = []
-            for row in rows:
-                log_entry = {
-                    "id": row[0],
-                    "timestamp": row[1],
-                    "level": row[2],
-                    "event_type": row[3],
-                    "trace_id": row[4],
-                    "user_id": row[5],
-                    "session_id": row[6],
-                    "content": sanitize_content(row[7]) if sanitize else row[7],
-                }
-                logs.append(log_entry)
+            if start_time:
+                query = query.where(SystemLog.timestamp >= start_time)
+            if end_time:
+                query = query.where(SystemLog.timestamp <= end_time)
+            if level:
+                query = query.where(SystemLog.level == level.upper())
+            if event_type:
+                query = query.where(SystemLog.event_type == event_type.upper())
+
+            # 获取数据（限制10000条）
+            query = query.order_by(SystemLog.timestamp.desc()).limit(10000)
+            result = await session.exec(query)
+            logs = result.all()
 
             export_data = {
-                "export_time": datetime.utcnow().isoformat(),
+                "export_time": datetime.now(timezone.utc).isoformat(),
                 "total_count": len(logs),
                 "sanitized": sanitize,
-                "logs": logs,
+                "logs": [
+                    {
+                        "id": log.id,
+                        "timestamp": log.timestamp.isoformat() if log.timestamp else "",
+                        "level": log.level,
+                        "event_type": log.event_type,
+                        "trace_id": log.trace_id,
+                        "user_id": log.user_id,
+                        "session_id": log.session_id,
+                        "content": sanitize_content(log.content) if sanitize else log.content,
+                    }
+                    for log in logs
+                ],
             }
 
             json_content = json.dumps(export_data, ensure_ascii=False, indent=2)
             buffer = BytesIO(json_content.encode("utf-8"))
 
-            filename = f"yumi_logs_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json"
+            filename = f"yumi_logs_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json"
 
             return StreamingResponse(
                 buffer,
@@ -417,65 +369,54 @@ async def export_audit_logs(
     sanitize: bool = Query(True, description="是否脱敏处理"),
 ):
     """导出审计日志文件"""
-    conditions = []
-    params = []
-
-    if start_time:
-        conditions.append("timestamp >= ?")
-        params.append(start_time)
-    if end_time:
-        conditions.append("timestamp <= ?")
-        params.append(end_time)
-    if action:
-        conditions.append("action = ?")
-        params.append(action.upper())
-
-    where_clause = " AND ".join(conditions) if conditions else "1=1"
-
     try:
-        async with get_db() as db:
-            cursor = await db.execute(
-                f"""SELECT id, timestamp, user_id, action, resource_type, resource_id, result, client_ip, details
-                    FROM audit_logs
-                    WHERE {where_clause}
-                    ORDER BY timestamp DESC
-                    LIMIT 10000""",
-                params,
-            )
-            rows = await cursor.fetchall()
+        async with get_log_session() as session:
+            # 构建查询条件
+            query = select(AuditLog)
 
-            logs = []
-            for row in rows:
-                details = json.loads(row[8]) if row[8] else None
+            if start_time:
+                query = query.where(AuditLog.timestamp >= start_time)
+            if end_time:
+                query = query.where(AuditLog.timestamp <= end_time)
+            if action:
+                query = query.where(AuditLog.action == action.upper())
+
+            # 获取数据（限制10000条）
+            query = query.order_by(AuditLog.timestamp.desc()).limit(10000)
+            result = await session.exec(query)
+            logs = result.all()
+
+            export_logs_data = []
+            for log in logs:
+                details = log.details
                 if sanitize and details:
                     details_str = json.dumps(details, ensure_ascii=False)
                     details_str = sanitize_content(details_str)
                     details = json.loads(details_str)
 
-                log_entry = {
-                    "id": row[0],
-                    "timestamp": row[1],
-                    "user_id": row[2],
-                    "action": row[3],
-                    "resource_type": row[4],
-                    "resource_id": row[5],
-                    "result": row[6],
-                    "client_ip": row[7],
+                export_logs_data.append({
+                    "id": log.id,
+                    "timestamp": log.timestamp.isoformat() if log.timestamp else "",
+                    "user_id": log.user_id,
+                    "action": log.action,
+                    "resource_type": log.resource_type,
+                    "resource_id": log.resource_id,
+                    "result": log.result,
+                    "client_ip": log.client_ip,
                     "details": details,
-                }
-                logs.append(log_entry)
+                })
 
             export_data = {
-                "export_time": datetime.utcnow().isoformat(),
-                "total_count": len(logs),
+                "export_time": datetime.now(timezone.utc).isoformat(),
+                "total_count": len(export_logs_data),
                 "sanitized": sanitize,
-                "audit_logs": logs,
+                "audit_logs": export_logs_data,
             }
 
             json_content = json.dumps(export_data, ensure_ascii=False, indent=2)
             buffer = BytesIO(json_content.encode("utf-8"))
 
-            filename = f"yumi_audit_logs_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json"
+            filename = f"yumi_audit_logs_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json"
 
             return StreamingResponse(
                 buffer,

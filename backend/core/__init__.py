@@ -32,6 +32,11 @@ from .model_state import (
     has_active_model,
     set_active_model,
 )
+from .auth import (
+    get_current_user_id,
+    require_current_user,
+    validate_user_access,
+)
 
 __all__ = [
     "Settings",
@@ -65,4 +70,7 @@ __all__ = [
     "get_lru_cache",
     "get_ttl_cache",
     "get_conversation_cache",
+    "get_current_user_id",
+    "require_current_user",
+    "validate_user_access",
 ]

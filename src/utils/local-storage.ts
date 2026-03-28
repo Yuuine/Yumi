@@ -1,3 +1,5 @@
+import { logger } from '@/utils/logger'
+
 /**
  * 本地存储工具
  * 用于持久化用户设置和缓存数据
@@ -19,7 +21,7 @@ export function saveToStorage<T>(key: string, data: T): void {
   try {
     localStorage.setItem(key, JSON.stringify(data))
   } catch (error) {
-    console.error('Failed to save to localStorage:', error)
+    logger.error('LocalStorage', 'Failed to save to localStorage', error)
   }
 }
 
@@ -31,7 +33,7 @@ export function loadFromStorage<T>(key: string, defaultValue: T): T {
     const data = localStorage.getItem(key)
     return data ? JSON.parse(data) : defaultValue
   } catch (error) {
-    console.error('Failed to load from localStorage:', error)
+    logger.error('LocalStorage', 'Failed to load from localStorage', error)
     return defaultValue
   }
 }
@@ -43,7 +45,7 @@ export function removeFromStorage(key: string): void {
   try {
     localStorage.removeItem(key)
   } catch (error) {
-    console.error('Failed to remove from localStorage:', error)
+    logger.error('LocalStorage', 'Failed to remove from localStorage', error)
   }
 }
 
@@ -70,6 +72,14 @@ export function clearAllCache(): void {
   Object.values(KEYS).forEach(key => {
     removeFromStorage(key)
   })
+}
+
+/**
+ * 清除聊天缓存，不影响登录身份
+ */
+export function clearMessageCache(): void {
+  removeFromStorage(KEYS.CACHED_MESSAGES)
+  removeFromStorage(KEYS.LAST_SYNC)
 }
 
 export { KEYS, MAX_CACHED_MESSAGES }

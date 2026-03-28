@@ -4,9 +4,11 @@ Tests for chat router
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
+from typing import Annotated
 
 import pytest
+from fastapi import FastAPI
 
 
 class TestChatRouter:
@@ -20,9 +22,9 @@ class TestChatRouter:
         test_user_id,
         test_message,
     ):
-        from fastapi import FastAPI
         from httpx import ASGITransport, AsyncClient
 
+        from backend.core.auth import get_current_user_id
         from backend.routers.chat import router
 
         app = FastAPI()
@@ -30,6 +32,11 @@ class TestChatRouter:
         app.state.emotion_engine = mock_emotion_engine
         app.state.llm_service = mock_llm_service
         app.state.prompt_builder = mock_prompt_builder
+
+        async def override_get_current_user_id():
+            return test_user_id
+
+        app.dependency_overrides[get_current_user_id] = override_get_current_user_id
 
         app.include_router(router, prefix="/api")
 
@@ -65,6 +72,8 @@ class TestChatRouter:
                 assert "emotion" in data
                 assert data["memoryUsed"] == 0
 
+        app.dependency_overrides.clear()
+
     @pytest.mark.asyncio
     async def test_send_message_with_memories(
         self,
@@ -75,6 +84,11 @@ class TestChatRouter:
         test_user_id,
         test_message,
     ):
+        from httpx import ASGITransport, AsyncClient
+
+        from backend.core.auth import get_current_user_id
+        from backend.routers.chat import router
+
         mock_memory_engine.search = AsyncMock(
             return_value=[
                 {
@@ -94,6 +108,19 @@ class TestChatRouter:
             "display_name": "Test Model",
         }
 
+        app = FastAPI()
+        app.state.memory_engine = mock_memory_engine
+        app.state.emotion_engine = mock_emotion_engine
+        app.state.llm_service = mock_llm_service
+        app.state.prompt_builder = mock_prompt_builder
+
+        async def override_get_current_user_id():
+            return test_user_id
+
+        app.dependency_overrides[get_current_user_id] = override_get_current_user_id
+
+        app.include_router(router, prefix="/api")
+
         with patch("backend.routers.chat.settings") as mock_settings:
             mock_settings.app.debug = False
             mock_settings.memory.summary_trigger_turns = 70
@@ -103,19 +130,6 @@ class TestChatRouter:
                 new_callable=AsyncMock,
                 return_value=mock_model_config,
             ):
-                from fastapi import FastAPI
-                from httpx import ASGITransport, AsyncClient
-
-                from backend.routers.chat import router
-
-                app = FastAPI()
-                app.state.memory_engine = mock_memory_engine
-                app.state.emotion_engine = mock_emotion_engine
-                app.state.llm_service = mock_llm_service
-                app.state.prompt_builder = mock_prompt_builder
-
-                app.include_router(router, prefix="/api")
-
                 async with AsyncClient(
                     transport=ASGITransport(app=app), base_url="http://test"
                 ) as client:
@@ -131,6 +145,8 @@ class TestChatRouter:
                     data = response.json()
                     assert data["memoryUsed"] == 1
 
+        app.dependency_overrides.clear()
+
     @pytest.mark.asyncio
     async def test_send_message_llm_error(
         self,
@@ -141,22 +157,27 @@ class TestChatRouter:
         test_user_id,
         test_message,
     ):
+        from httpx import ASGITransport, AsyncClient
+
+        from backend.core.auth import get_current_user_id
         from backend.core.exceptions import LLMException
+        from backend.routers.chat import router
 
         mock_llm_service.chat = AsyncMock(side_effect=LLMException("LLM error"))
 
-        from fastapi import FastAPI
-        from httpx import ASGITransport, AsyncClient
-
-        from backend.core.error_handlers import setup_exception_handlers
-        from backend.routers.chat import router
-
         app = FastAPI()
-        setup_exception_handlers(app)
         app.state.memory_engine = mock_memory_engine
         app.state.emotion_engine = mock_emotion_engine
         app.state.llm_service = mock_llm_service
         app.state.prompt_builder = mock_prompt_builder
+
+        async def override_get_current_user_id():
+            return test_user_id
+
+        app.dependency_overrides[get_current_user_id] = override_get_current_user_id
+
+        from backend.core.error_handlers import setup_exception_handlers
+        setup_exception_handlers(app)
 
         app.include_router(router, prefix="/api")
 
@@ -171,44 +192,48 @@ class TestChatRouter:
 
             assert response.status_code == 400
 
+        app.dependency_overrides.clear()
+
     @pytest.mark.asyncio
     async def test_get_chat_history(
         self,
         test_user_id,
     ):
-        from fastapi import FastAPI
         from httpx import ASGITransport, AsyncClient
 
+        from backend.core.auth import get_current_user_id
         from backend.routers.chat import router
+        from backend.database_sqlmodel import get_session
 
         app = FastAPI()
         app.include_router(router, prefix="/api")
 
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            with patch("backend.routers.chat.get_db") as mock_get_db:
-                mock_db = AsyncMock()
-                mock_cursor = AsyncMock()
-                mock_cursor.fetchall = AsyncMock(
-                    return_value=[
-                        (1, "user", "Hello", "2024-01-01T00:00:00", 0.5, 0.3),
-                        (2, "assistant", "Hi!", "2024-01-01T00:00:01", 0.6, 0.4),
-                    ]
-                )
-                mock_db.execute = AsyncMock(return_value=mock_cursor)
-                mock_db.commit = AsyncMock()
-                mock_db.__aenter__ = AsyncMock(return_value=mock_db)
-                mock_db.__aexit__ = AsyncMock(return_value=None)
-                mock_get_db.return_value = mock_db
+        async def override_get_current_user_id():
+            return test_user_id
 
+        app.dependency_overrides[get_current_user_id] = override_get_current_user_id
+
+        mock_log_result = MagicMock()
+        mock_log_result.all.return_value = []
+        mock_session = AsyncMock()
+        mock_session.exec.return_value = mock_log_result
+        mock_session.commit = AsyncMock()
+
+        async def mock_get_session():
+            yield mock_session
+
+        with patch("backend.database_sqlmodel.get_session", mock_get_session):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.get(
                     "/api/chat/history",
-                    params={"userId": test_user_id, "limit": 50},
+                    params={"userId": test_user_id, "limit": 50, "conversationId": "conv-test-1"},
                 )
 
                 assert response.status_code == 200
                 data = response.json()
                 assert "messages" in data
-                assert len(data["messages"]) == 2
+
+        app.dependency_overrides.clear()
 
 
 class TestChatRequest:

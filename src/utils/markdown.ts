@@ -35,11 +35,9 @@ const ALLOWED_TAGS = [
   'tr',
   'th',
   'td',
-  'div',
-  'span',
 ]
 
-const ALLOWED_ATTR = ['href', 'src', 'alt', 'title', 'class', 'id', 'target', 'rel']
+const ALLOWED_ATTR = ['href', 'src', 'alt', 'title', 'target', 'rel']
 
 /**
  * 将 Markdown 内容渲染为安全的 HTML
@@ -52,6 +50,9 @@ export function renderMarkdown(content: string): string {
   return DOMPurify.sanitize(rawHtml, {
     ALLOWED_TAGS,
     ALLOWED_ATTR,
+    FORBID_TAGS: ['script', 'style', 'iframe', 'form', 'input', 'button'],
+    FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur'],
+    ADD_ATTR: ['target'],
   })
 }
 

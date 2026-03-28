@@ -8,20 +8,24 @@
       <router-view v-else />
       <Toast />
       <DataSyncDialog ref="dataSyncDialogRef" @confirm="handleDataSyncConfirm" />
+      <ConfirmDialog />
     </el-config-provider>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
-import { useAccountStore, useChatStore, useModelsStore } from '@/stores'
+import { useAccountStore, useChatStore, useModelsStore, useAuthStore } from '@/stores'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import Toast from '@/components/common/Toast.vue'
 import DataSyncDialog from '@/components/common/DataSyncDialog.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { useToast } from '@/composables/useToast'
 import { userApi } from '@/api/user'
+import { apiCache } from '@/utils/api-cache'
 import { logger } from '@/utils/logger'
+import router from '@/router'
 
 const toast = useToast()
 
@@ -32,6 +36,7 @@ const settingsStore = useSettingsStore()
 const accountStore = useAccountStore()
 const chatStore = useChatStore()
 const modelsStore = useModelsStore()
+const authStore = useAuthStore()
 const themeClass = computed(() => `theme-${settingsStore.theme}`)
 
 const showInitLoading = ref(true)
@@ -58,44 +63,52 @@ function showDefaultAccountCreatedToastIfNeeded(): void {
   }
 }
 
-async function initializeAccountAndHideLoading(): Promise<void> {
-  await accountStore.initialize()
+async function initializeAccountAndHideLoading(force = false): Promise<void> {
+  await accountStore.initialize(force)
   showInitLoading.value = false
   showDefaultAccountCreatedToastIfNeeded()
+
+  // 账号初始化完成后，如果存在当前账号，则加载对话和模型
+  if (accountStore.currentAccountId) {
+    chatStore.currentUserId = accountStore.currentAccountId
+    await Promise.all([
+      chatStore.initializeConversation(),
+      modelsStore.loadModels(),
+      modelsStore.loadActiveModel(),
+    ])
+  }
 }
 
 async function checkDataSync(): Promise<boolean> {
   try {
-    const data = loadLocalAccounts()
+    // 先尝试从后端获取账号列表
+    const backendAccounts = await userApi.listUsers()
+    const backendAccountIds = new Set(backendAccounts.users.map(u => u.id))
 
-    if (!data) {
-      logger.info('App', 'No local accounts found')
+    // 如果后端有账号，说明数据已同步，直接正常初始化
+    if (backendAccountIds.size > 0) {
+      logger.info('App', 'Backend has accounts, data is synced', { count: backendAccountIds.size })
       return true
     }
 
-    const accounts = data.accounts ?? []
+    // 后端没有账号，检查本地是否有账号
+    const localData = loadLocalAccounts()
+    const localAccounts = localData?.accounts ?? []
 
-    if (accounts.length === 0) {
-      logger.info('App', 'Local accounts found but empty')
+    // 本地也没有账号，正常初始化（会创建默认账号）
+    if (localAccounts.length === 0) {
+      logger.info('App', 'No accounts anywhere, will create default')
       return true
     }
 
-    for (const account of accounts) {
-      try {
-        await userApi.getProfile(account.id)
-        logger.info('App', 'Account exists in backend', { accountId: account.id })
-        return true
-      } catch (_e) {
-        logger.info('App', 'Account not found in backend, showing sync dialog', {
-          accountId: account.id,
-        })
-        return false
-      }
-    }
-
-    return true
+    // 后端没有账号，但本地有账号 → 需要用户选择是否同步
+    logger.info('App', 'Local accounts exist but backend is empty, showing sync dialog', {
+      localCount: localAccounts.length,
+    })
+    return false
   } catch (e) {
     logger.error('App', 'Failed to check data sync', e as Record<string, unknown>)
+    // 出错时正常初始化，让 accountStore 处理
     return true
   }
 }
@@ -159,14 +172,38 @@ async function handleDataSyncConfirm(option: 'restart' | 'sync') {
   }
 }
 
+function clearApiCache(): void {
+  logger.info('App', 'Clearing API cache on unload')
+  apiCache.clear()
+}
+
 onMounted(async () => {
+  window.addEventListener('beforeunload', clearApiCache)
+  
+  // 首先验证用户认证状态
+  const isAuthenticated = await authStore.initializeAuth()
+
+  if (!isAuthenticated) {
+    logger.info('App', 'User not authenticated, redirecting to login')
+    showInitLoading.value = false
+    router.push('/login')
+    return
+  }
+
   const isSynced = await checkDataSync()
 
-  if (isSynced) {
-    await initializeAccountAndHideLoading()
-  } else {
+  if (!isSynced) {
     dataSyncDialogRef.value?.open()
+    return
   }
+
+  // 强制重新初始化账号，确保加载当前登录用户的数据
+  await initializeAccountAndHideLoading(true)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('beforeunload', clearApiCache)
+  clearApiCache()
 })
 
 watch(
@@ -177,11 +214,15 @@ watch(
       return
     }
     chatStore.currentUserId = accountId
-    await Promise.all([
-      chatStore.loadHistory(),
-      modelsStore.loadModels(),
-      modelsStore.loadActiveModel(),
-    ])
+
+    // 等待账号数据完全加载后再初始化对话和模型
+    if (accountStore.isInitialized) {
+      await Promise.all([
+        chatStore.initializeConversation(),
+        modelsStore.loadModels(),
+        modelsStore.loadActiveModel(),
+      ])
+    }
   },
   { immediate: true }
 )

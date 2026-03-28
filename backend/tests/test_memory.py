@@ -41,6 +41,7 @@ class TestMemoryEngine:
         with patch("backend.services.memory.settings") as mock_settings:
             mock_settings.vector_db.persist_dir = str(tmp_path / "chroma")
             mock_settings.vector_db.collection_name = "test_memory"
+            mock_settings.memory.deduplication_threshold = 0.85
 
             engine = MemoryEngine()
 

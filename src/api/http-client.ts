@@ -1,5 +1,7 @@
 import axios, { type AxiosError, type AxiosInstance, type AxiosRequestConfig } from 'axios'
 import { error } from '@/composables/useToast'
+import router from '@/router'
+import { apiCache } from '@/utils/api-cache'
 
 export interface ApiError {
   code: string
@@ -8,9 +10,27 @@ export interface ApiError {
   requestId?: string
 }
 
+export interface CacheConfig {
+  cache?: boolean
+  ttl?: number
+}
+
 export interface ApiErrorResponse {
   success: false
   error: ApiError
+}
+
+// 处理未授权跳转
+function handleUnauthorized(): void {
+  // 清除本地存储的认证信息
+  localStorage.removeItem('yumi_access_token')
+  localStorage.removeItem('yumi_refresh_token')
+  localStorage.removeItem('yumi_user_id')
+
+  // 如果当前不在登录页，则跳转到登录页
+  if (router.currentRoute.value.path !== '/login') {
+    router.push('/login')
+  }
 }
 
 export class HttpClient {
@@ -32,6 +52,10 @@ export class HttpClient {
   private setupInterceptors(): void {
     this.instance.interceptors.request.use(
       config => {
+        const accessToken = localStorage.getItem('yumi_access_token')
+        if (accessToken) {
+          config.headers.Authorization = `Bearer ${accessToken}`
+        }
         return config
       },
       error => {
@@ -45,15 +69,50 @@ export class HttpClient {
       },
       (error: AxiosError<ApiErrorResponse>) => {
         const apiError = this.normalizeError(error)
+
+        // 处理 401 未授权和 403 拒绝访问，自动跳转到登录页
+        if (error.response?.status === 401 || error.response?.status === 403) {
+          handleUnauthorized()
+        }
+
         this.handleGlobalError(apiError)
         return Promise.reject(apiError)
       }
     )
   }
 
-  private normalizeError(error: AxiosError<ApiErrorResponse>): ApiError {
-    if (error.response?.data?.error) {
-      return error.response.data.error
+  private normalizeError(error: AxiosError<unknown>): ApiError {
+    // 处理标准错误格式 { error: { message, code } }
+    const data = error.response?.data as Record<string, unknown>
+    if (data?.error) {
+      return data.error as ApiError
+    }
+
+    // 处理后端直接返回的错误格式 { message, code } 或 { detail: { message, code } }
+    if (data) {
+      // FastAPI 的 HTTPException 可能返回 { detail: ... }
+      if (data.detail) {
+        if (typeof data.detail === 'string') {
+          return {
+            code: 'HTTP_ERROR',
+            message: data.detail,
+          }
+        }
+        const detail = data.detail as Record<string, unknown>
+        if (detail.message) {
+          return {
+            code: (detail.code as string) || 'HTTP_ERROR',
+            message: detail.message as string,
+          }
+        }
+      }
+      // 直接返回的对象格式
+      if (data.message) {
+        return {
+          code: (data.code as string) || 'HTTP_ERROR',
+          message: data.message as string,
+        }
+      }
     }
 
     if (error.response) {
@@ -109,8 +168,23 @@ export class HttpClient {
     error(apiError.message, { duration: 5000 })
   }
 
-  async get<T>(url: string, config?: AxiosRequestConfig): Promise<T> {
+  async get<T>(url: string, config?: AxiosRequestConfig & CacheConfig): Promise<T> {
+    const cacheConfig = config as CacheConfig
+    const params = config?.params as Record<string, unknown> | undefined
+
+    if (cacheConfig?.cache) {
+      const cached = apiCache.get<T>('GET', url, params)
+      if (cached !== null) {
+        return cached
+      }
+    }
+
     const response = await this.instance.get<T>(url, config)
+
+    if (cacheConfig?.cache) {
+      apiCache.set('GET', url, response.data, cacheConfig.ttl ?? 300000, params)
+    }
+
     return response.data
   }
 

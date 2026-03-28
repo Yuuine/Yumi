@@ -46,10 +46,21 @@ def mock_emotion_data():
 @pytest_asyncio.fixture
 async def mock_memory_engine():
     engine = MagicMock()
+    state = {"turns": 0}
+
+    async def _record_conversation_turn(_user_id: str) -> int:
+        state["turns"] += 1
+        return state["turns"]
+
+    async def _get_turn_count(_user_id: str) -> int:
+        return state["turns"]
+
     engine.search = AsyncMock(return_value=[])
     engine.store = AsyncMock(return_value="test-memory-id")
     engine.get_recent = AsyncMock(return_value=[])
-    engine.get_turn_count = AsyncMock(return_value=0)
+    engine.get_turn_count = AsyncMock(side_effect=_get_turn_count)
+    engine.record_conversation_turn = AsyncMock(side_effect=_record_conversation_turn)
+    engine.summarize_with_llm = AsyncMock(return_value="")
     engine.close = AsyncMock()
     return engine
 

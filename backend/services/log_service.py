@@ -1,6 +1,7 @@
 """
 Log Service - 统一日志记录服务
 提供结构化日志记录，支持多种日志类型
+基于 SQLModel 重构
 """
 
 from __future__ import annotations
@@ -12,7 +13,8 @@ from enum import Enum
 from typing import Any
 
 from ..core.logging import get_logger, request_id_var
-from ..database import get_db
+from ..database_sqlmodel import get_log_session
+from ..models import SystemLog, AuditLog
 
 logger = get_logger(__name__)
 
@@ -44,6 +46,8 @@ class AuditAction(str, Enum):
     MEMORY_STORE = "MEMORY_STORE"
     MEMORY_DELETE = "MEMORY_DELETE"
     MEMORY_CLEAR = "MEMORY_CLEAR"
+    USER_REGISTER = "USER_REGISTER"
+    USER_LOGIN = "USER_LOGIN"
 
 
 class LogService:
@@ -75,10 +79,10 @@ class LogService:
     ) -> None:
         """记录用户操作日志"""
         trace_id = LogService._get_trace_id()
-        timestamp = datetime.now(UTC).isoformat()
+        timestamp = datetime.now(UTC)
 
         log_entry = {
-            "timestamp": timestamp,
+            "timestamp": timestamp.isoformat(),
             "level": "INFO",
             "event_type": EventType.USER_ACTION.value,
             "trace_id": trace_id,
@@ -101,22 +105,18 @@ class LogService:
         )
 
         try:
-            async with get_db() as db:
-                await db.execute(
-                    """INSERT INTO system_logs
-                       (timestamp, level, event_type, trace_id, user_id, session_id, content)
-                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        timestamp,
-                        "INFO",
-                        EventType.USER_ACTION.value,
-                        trace_id,
-                        user_id,
-                        session_id,
-                        json.dumps(log_entry, ensure_ascii=False),
-                    ),
+            async with get_log_session() as session:
+                system_log = SystemLog(
+                    timestamp=timestamp,
+                    level="INFO",
+                    event_type=EventType.USER_ACTION.value,
+                    trace_id=trace_id,
+                    user_id=user_id,
+                    session_id=session_id,
+                    content=json.dumps(log_entry, ensure_ascii=False),
                 )
-                await db.commit()
+                session.add(system_log)
+                await session.commit()
         except Exception as e:
             logger.error("Failed to save user action log: %s", e)
 
@@ -134,11 +134,11 @@ class LogService:
     ) -> None:
         """记录 AI 交互日志"""
         trace_id = LogService._get_trace_id()
-        timestamp = datetime.now(UTC).isoformat()
+        timestamp = datetime.now(UTC)
         content_hash = LogService._generate_content_hash(content)
 
         log_entry = {
-            "timestamp": timestamp,
+            "timestamp": timestamp.isoformat(),
             "level": "INFO",
             "event_type": EventType.AI_INTERACTION.value,
             "trace_id": trace_id,
@@ -162,22 +162,18 @@ class LogService:
         )
 
         try:
-            async with get_db() as db:
-                await db.execute(
-                    """INSERT INTO system_logs
-                       (timestamp, level, event_type, trace_id, user_id, session_id, content)
-                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        timestamp,
-                        "INFO",
-                        EventType.AI_INTERACTION.value,
-                        trace_id,
-                        user_id,
-                        session_id,
-                        json.dumps(log_entry, ensure_ascii=False),
-                    ),
+            async with get_log_session() as session:
+                system_log = SystemLog(
+                    timestamp=timestamp,
+                    level="INFO",
+                    event_type=EventType.AI_INTERACTION.value,
+                    trace_id=trace_id,
+                    user_id=user_id,
+                    session_id=session_id,
+                    content=json.dumps(log_entry, ensure_ascii=False),
                 )
-                await db.commit()
+                session.add(system_log)
+                await session.commit()
         except Exception as e:
             logger.error("Failed to save AI interaction log: %s", e)
 
@@ -195,10 +191,10 @@ class LogService:
     ) -> None:
         """记录 API 调用日志"""
         trace_id = LogService._get_trace_id()
-        timestamp = datetime.now(UTC).isoformat()
+        timestamp = datetime.now(UTC)
 
         log_entry = {
-            "timestamp": timestamp,
+            "timestamp": timestamp.isoformat(),
             "level": "ERROR" if error else "INFO",
             "event_type": EventType.API_CALL.value,
             "trace_id": trace_id,
@@ -231,20 +227,16 @@ class LogService:
             )
 
         try:
-            async with get_db() as db:
-                await db.execute(
-                    """INSERT INTO system_logs
-                       (timestamp, level, event_type, trace_id, content)
-                       VALUES (?, ?, ?, ?, ?)""",
-                    (
-                        timestamp,
-                        log_entry["level"],
-                        EventType.API_CALL.value,
-                        trace_id,
-                        json.dumps(log_entry, ensure_ascii=False),
-                    ),
+            async with get_log_session() as session:
+                system_log = SystemLog(
+                    timestamp=timestamp,
+                    level="ERROR" if error else "INFO",
+                    event_type=EventType.API_CALL.value,
+                    trace_id=trace_id,
+                    content=json.dumps(log_entry, ensure_ascii=False),
                 )
-                await db.commit()
+                session.add(system_log)
+                await session.commit()
         except Exception as e:
             logger.error("Failed to save API call log: %s", e)
 
@@ -260,10 +252,10 @@ class LogService:
     ) -> None:
         """记录审计日志"""
         trace_id = LogService._get_trace_id()
-        timestamp = datetime.now(UTC).isoformat()
+        timestamp = datetime.now(UTC)
 
         log_entry = {
-            "timestamp": timestamp,
+            "timestamp": timestamp.isoformat(),
             "level": "INFO",
             "event_type": EventType.SECURITY_AUDIT.value,
             "trace_id": trace_id,
@@ -285,23 +277,19 @@ class LogService:
         )
 
         try:
-            async with get_db() as db:
-                await db.execute(
-                    """INSERT INTO audit_logs
-                       (timestamp, user_id, action, resource_type, resource_id, result, client_ip, details)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        timestamp,
-                        user_id,
-                        action.value,
-                        resource_type,
-                        resource_id,
-                        result,
-                        client_ip,
-                        json.dumps(details, ensure_ascii=False) if details else None,
-                    ),
+            async with get_log_session() as session:
+                audit_log = AuditLog(
+                    timestamp=timestamp,
+                    user_id=user_id,
+                    action=action.value,
+                    resource_type=resource_type,
+                    resource_id=resource_id,
+                    result=result,
+                    client_ip=client_ip,
+                    details=details,
                 )
-                await db.commit()
+                session.add(audit_log)
+                await session.commit()
         except Exception as e:
             logger.error("Failed to save audit log: %s", e)
 
@@ -331,10 +319,10 @@ class LogService:
             extra: 额外信息
         """
         trace_id = LogService._get_trace_id()
-        timestamp = datetime.now(UTC).isoformat()
+        timestamp = datetime.now(UTC)
 
         log_entry = {
-            "timestamp": timestamp,
+            "timestamp": timestamp.isoformat(),
             "level": "ERROR" if error else "INFO",
             "event_type": EventType.DB_OPERATION.value,
             "trace_id": trace_id,
@@ -368,21 +356,17 @@ class LogService:
             )
 
         try:
-            async with get_db() as db:
-                await db.execute(
-                    """INSERT INTO system_logs
-                       (timestamp, level, event_type, trace_id, user_id, content)
-                       VALUES (?, ?, ?, ?, ?, ?)""",
-                    (
-                        timestamp,
-                        log_entry["level"],
-                        EventType.DB_OPERATION.value,
-                        trace_id,
-                        user_id,
-                        json.dumps(log_entry, ensure_ascii=False),
-                    ),
+            async with get_log_session() as session:
+                system_log = SystemLog(
+                    timestamp=timestamp,
+                    level="ERROR" if error else "INFO",
+                    event_type=EventType.DB_OPERATION.value,
+                    trace_id=trace_id,
+                    user_id=user_id,
+                    content=json.dumps(log_entry, ensure_ascii=False),
                 )
-                await db.commit()
+                session.add(system_log)
+                await session.commit()
         except Exception as e:
             logger.error("Failed to save DB operation log: %s", e)
 

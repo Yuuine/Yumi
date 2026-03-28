@@ -177,12 +177,12 @@ graph TB
 
 | 字段 | 类型 | 范围 | 说明 |
 |------|------|------|------|
-| current_valence | float | [-1.0, 1.0] | 当前效价 |
-| current_arousal | float | [0.0, 1.0] | 当前唤醒度 |
-| base_valence | float | [-1.0, 1.0] | 基准效价（角色卡） |
-| base_arousal | float | [0.0, 1.0] | 基准唤醒度（角色卡） |
-| emotion_sensitivity | float | [0.0, 1.0] | 情绪敏感度 |
-| last_updated | datetime | - | 最后更新时间 |
+| current-valence | float | [-1.0, 1.0] | 当前效价 |
+| current-arousal | float | [0.0, 1.0] | 当前唤醒度 |
+| base-valence | float | [-1.0, 1.0] | 基准效价（角色卡） |
+| base-arousal | float | [0.0, 1.0] | 基准唤醒度（角色卡） |
+| emotion-sensitivity | float | [0.0, 1.0] | 情绪敏感度 |
+| last-updated | datetime | - | 最后更新时间 |
 
 ---
 
@@ -191,7 +191,7 @@ graph TB
 **总体公式**：
 
 $$
-\text{AI\_情绪} = f(\text{基准性格}, \text{事件影响}, \text{用户情绪}, \text{时间衰减})
+\text{AI-情绪} = f(\text{基准性格}, \text{事件影响}, \text{用户情绪}, \text{时间衰减})
 $$
 
 ---
@@ -222,11 +222,11 @@ $$
 **共情公式**：
 
 $$
-\Delta \text{valence}_{\text{empathy}} = (\text{user\_valence} - \text{ai\_valence}) \times \text{empathy\_factor} \times \text{user\_confidence}
+\Delta \text{valence}_{\text{empathy}} = (\text{user-valence} - \text{ai-valence}) \times \text{empathy-factor} \times \text{user-confidence}
 $$
 
 其中：
-- $\text{empathy\_factor} \in [0.0, 1.0]$（推荐 0.3）
+- $\text{empathy-factor} \in [0.0, 1.0]$（推荐 0.3）
 - 0.0 = 完全独立
 - 0.3 = 平衡
 - 0.7 = 高度共情
@@ -239,20 +239,20 @@ $$
 **衰减因子**：
 
 $$
-\text{decay\_factor} = e^{-\frac{t}{T}}
+\text{decay-factor} = e^{-\frac{t}{T}}
 $$
 
 其中：
 - $t$ = 经过的秒数
 - $T$ = 半衰期（默认 1800 秒 = 30 分钟）
-- $\text{decay\_factor} \in [0, 1]$
+- $\text{decay-factor} \in [0, 1]$
 
 **衰减后的情绪**：
 
 $$
 \begin{align*}
-\text{valence}_{\text{decay}} &= \text{base\_valence} + (\text{current\_valence} - \text{base\_valence}) \times \text{decay\_factor} \\
-\text{arousal}_{\text{decay}} &= \text{base\_arousal} + (\text{current\_arousal} - \text{base\_arousal}) \times \text{decay\_factor}
+\text{valence}_{\text{decay}} &= \text{base-valence} + (\text{current-valence} - \text{base-valence}) \times \text{decay-factor} \\
+\text{arousal}_{\text{decay}} &= \text{base-arousal} + (\text{current-arousal} - \text{base-arousal}) \times \text{decay-factor}
 \end{align*}
 $$
 
@@ -310,14 +310,14 @@ $$
 
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
-| `emotion.detection_enabled` | true | 是否启用用户情绪分析 |
+| `emotion.detection-enabled` | true | 是否启用用户情绪分析 |
 | `emotion.model` | `"keyword"` | 分析模型：`"keyword"` 或 `"transformer"` |
-| `emotion.ai_emotion_enabled` | true | 是否启用 AI 情绪系统 |
-| `emotion.empathy_factor` | 0.3 | 共情强度 (0.0-1.0) |
-| `emotion.emotion_half_life` | 1800 | 情绪半衰期（秒），默认 30 分钟 |
-| `emotion.default_base_valence` | 0.3 | 默认基准效价（角色卡未设置时） |
-| `emotion.default_base_arousal` | 0.4 | 默认基准唤醒度（角色卡未设置时） |
-| `emotion.default_sensitivity` | 0.7 | 默认情绪敏感度 (0.0-1.0) |
+| `emotion.ai-emotion-enabled` | true | 是否启用 AI 情绪系统 |
+| `emotion.empathy-factor` | 0.3 | 共情强度 (0.0-1.0) |
+| `emotion.emotion-half-life` | 1800 | 情绪半衰期（秒），默认 30 分钟 |
+| `emotion.default-base-valence` | 0.3 | 默认基准效价（角色卡未设置时） |
+| `emotion.default-base-arousal` | 0.4 | 默认基准唤醒度（角色卡未设置时） |
+| `emotion.default-sensitivity` | 0.7 | 默认情绪敏感度 (0.0-1.0) |
 
 ---
 

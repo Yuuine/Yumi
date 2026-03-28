@@ -15,7 +15,6 @@ from .model_adapters import (
     StreamChatResult,
     create_adapter,
 )
-from .proxy_config import get_proxy_config
 
 logger = get_logger(__name__)
 
@@ -33,7 +32,6 @@ class LLMService:
         model_name: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
-        proxy_config=None,
     ) -> ModelConfig:
         return ModelConfig(
             provider_id=provider_id,
@@ -43,7 +41,6 @@ class LLMService:
             max_tokens=max_tokens or settings.llm.max_tokens,
             temperature=temperature or settings.llm.default_temperature,
             timeout=settings.llm.timeout,
-            proxy_config=proxy_config,
         )
 
     async def get_adapter(
@@ -53,13 +50,11 @@ class LLMService:
         api_key: str | None = None,
         model_name: str | None = None,
     ) -> OpenAICompatibleAdapter:
-        proxy_config = await get_proxy_config()
         config = self._create_config(
             provider_id=provider_id,
             base_url=base_url,
             api_key=api_key,
             model_name=model_name,
-            proxy_config=proxy_config,
         )
         return create_adapter(config)
 

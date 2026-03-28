@@ -1,5 +1,6 @@
 """
 Chat API Router - 支持流式响应
+基于新数据库设计重构
 """
 
 from __future__ import annotations
@@ -9,11 +10,12 @@ import time
 import uuid
 from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Annotated
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from sqlmodel import select
 
 from ..core import (
     LLMException,
@@ -23,10 +25,13 @@ from ..core import (
     get_logger,
     set_active_model,
     settings,
+    require_current_user,
+    validate_user_access,
 )
-from ..database import get_db
-from ..routers.models import decrypt_api_key
+from ..database_sqlmodel import get_session
+from ..models import ConversationLog, ModelConfig, ConversationResponse
 from ..services.async_storage import StorageTask, get_async_storage_service
+from ..services.cache_service import get_cache_service
 from ..services.conversation_service import conversation_service
 from ..services.dialogue_log_service import DialogueInteraction, EndReason, dialogue_log_service
 from ..services.emotion import EmotionData
@@ -66,6 +71,11 @@ class ChatHistory(BaseModel):
     messages: list[ChatMessage]
 
 
+class DialogueLogListResponse(BaseModel):
+    logs: list[dict]
+    total: int
+
+
 def _format_llm_response(llm_response: Any) -> str:
     """格式化LLM响应内容，处理推理过程和回答的组合"""
     if isinstance(llm_response, str):
@@ -95,35 +105,35 @@ async def _get_active_model_config(account_id: str) -> dict | None:
         return active_model
 
     try:
-        async with get_db() as db:
-            cursor = await db.execute(
-                """SELECT id, provider_id, base_url, api_key, model_name, name
-                   FROM model_configs
-                   WHERE account_id = ? AND is_enabled = 1
-                   ORDER BY updated_at DESC
-                   LIMIT 1""",
-                (account_id,),
+        async with get_session() as session:
+            result = await session.exec(
+                select(ModelConfig)
+                .where(ModelConfig.account_id == account_id)
+                .where(ModelConfig.is_enabled == True)
+                .order_by(ModelConfig.updated_at.desc())
+                .limit(1)
             )
-            row = await cursor.fetchone()
+            config = result.first()
 
-            if row:
-                config = {
-                    "model_id": row[0],
-                    "provider_id": row[1],
-                    "base_url": row[2],
-                    "api_key": decrypt_api_key(row[3]) if row[3] else "",
-                    "model_name": row[4],
-                    "display_name": row[5],
+            if config:
+                from ..routers.models import decrypt_api_key
+                model_config = {
+                    "model_id": config.id,
+                    "provider_id": config.provider_id,
+                    "base_url": config.base_url,
+                    "api_key": decrypt_api_key(config.api_key) if config.api_key else "",
+                    "model_name": config.model_name,
+                    "display_name": config.name,
                 }
-                set_active_model(account_id, config)
+                set_active_model(account_id, model_config)
                 if settings.app.debug:
                     logger.info(
                         "Active model loaded from DB: %s (provider=%s, model=%s)",
-                        config["display_name"],
-                        config["provider_id"],
-                        config["model_name"],
+                        model_config["display_name"],
+                        model_config["provider_id"],
+                        model_config["model_name"],
                     )
-                return config
+                return model_config
             return None
     except Exception as e:
         logger.error("Failed to get active model config: %s", e)
@@ -268,23 +278,39 @@ def _update_dialogue_interaction_error(
 async def _generate_summary_if_needed(
     user_id: str,
     req: Request,
+    active_model: dict | None,
 ) -> str | None:
-    """如果需要，生成记忆摘要"""
-    if settings.app.debug:
+    """达阈值时用当前对话模型生成 LLM 摘要并写入 `[摘要]` 向量；每轮对话只计一次 turn。"""
+    if settings.app.debug or not active_model:
         return None
 
     memory_engine = req.app.state.memory_engine
     turn_count = await memory_engine.get_turn_count(user_id)
-    if turn_count > 0 and turn_count % settings.memory.summary_trigger_turns == 0:
-        return await memory_engine.summarize(user_id)
-    return None
+    if turn_count <= 0 or turn_count % settings.memory.summary_trigger_turns != 0:
+        return None
+
+    llm_service = req.app.state.llm_service
+    return await memory_engine.summarize_with_llm(
+        user_id,
+        llm_service,
+        provider_id=active_model["provider_id"],
+        base_url=active_model["base_url"],
+        api_key=active_model["api_key"],
+        model_name=active_model["model_name"],
+    )
 
 
 @router.post("/chat", response_model=ChatResponse)
-async def send_message(request: ChatRequest, req: Request) -> ChatResponse:
+async def send_message(
+    request: ChatRequest, 
+    req: Request,
+    current_user_id: Annotated[str, Depends(require_current_user)]
+) -> ChatResponse:
     """发送聊天消息"""
     start_time = time.time()
     start_datetime = datetime.now(timezone.utc).isoformat()
+
+    validate_user_access(request.userId, current_user_id)
 
     active_model = await _get_active_model_config(request.userId)
     if not active_model:
@@ -363,7 +389,10 @@ async def send_message(request: ChatRequest, req: Request) -> ChatResponse:
         )
         await async_storage.enqueue(assistant_task)
 
-        new_summary = await _generate_summary_if_needed(request.userId, req)
+        await req.app.state.memory_engine.record_conversation_turn(request.userId)
+        new_summary = await _generate_summary_if_needed(
+            request.userId, req, active_model
+        )
 
         total_latency_ms = (time.time() - start_time) * 1000
         await log_service.log_user_action(
@@ -434,32 +463,44 @@ async def send_message(request: ChatRequest, req: Request) -> ChatResponse:
 
 
 @router.get("/chat/history", response_model=ChatHistory)
-async def get_chat_history(userId: str, limit: int = 50, offset: int = 0) -> ChatHistory:
-    """获取聊天历史记录"""
-    async with get_db() as db:
-        cursor = await db.execute(
-            """SELECT id, role, content, timestamp, emotion_valence, emotion_arousal
-               FROM conversation_logs
-               WHERE user_id = ?
-               ORDER BY timestamp DESC
-               LIMIT ? OFFSET ?""",
-            (userId, limit, offset),
+async def get_chat_history(
+    userId: str,
+    limit: int = 50,
+    offset: int = 0,
+    conversationId: str | None = None,
+    current_user_id: Annotated[str, Depends(require_current_user)] = "",
+) -> ChatHistory:
+    """获取指定会话的聊天历史（按时间正序返回当前窗口内的消息）。"""
+    
+    validate_user_access(userId, current_user_id)
+    
+    if not conversationId:
+        return ChatHistory(messages=[])
+
+    async with get_session() as session:
+        result = await session.exec(
+            select(ConversationLog)
+            .where(ConversationLog.user_id == userId)
+            .where(ConversationLog.conversation_id == conversationId)
+            .order_by(ConversationLog.timestamp.desc())
+            .limit(limit)
+            .offset(offset)
         )
-        rows = await cursor.fetchall()
+        logs = result.all()
 
         messages = [
             ChatMessage(
-                id=str(row[0]),
-                role=row[1],
-                content=row[2],
-                timestamp=row[3],
+                id=str(log.id),
+                role=log.role,
+                content=log.content,
+                timestamp=log.timestamp.isoformat() if log.timestamp else "",
                 emotion=(
-                    EmotionData(valence=row[4], arousal=row[5])
-                    if row[4] is not None and row[5] is not None
+                    EmotionData(valence=log.emotion_valence, arousal=log.emotion_arousal)
+                    if log.emotion_valence is not None and log.emotion_arousal is not None
                     else None
                 ),
             )
-            for row in list(reversed(list(rows)))
+            for log in reversed(logs)
         ]
 
         return ChatHistory(messages=messages)
@@ -626,7 +667,20 @@ async def _stream_chat_generator(
         )
         await async_storage.enqueue(assistant_task)
 
-        yield f"data: {json.dumps({'done': True, 'conversationId': conversation_id, 'emotion': {'valence': assistant_emotion.valence, 'arousal': assistant_emotion.arousal}})}\n\n"
+        await req.app.state.memory_engine.record_conversation_turn(userId)
+        new_summary = await _generate_summary_if_needed(userId, req, active_model)
+
+        done_payload: dict[str, Any] = {
+            "done": True,
+            "conversationId": conversation_id,
+            "emotion": {
+                "valence": assistant_emotion.valence,
+                "arousal": assistant_emotion.arousal,
+            },
+        }
+        if new_summary:
+            done_payload["newSummary"] = new_summary
+        yield f"data: {json.dumps(done_payload)}\n\n"
 
     except Exception as e:
         logger.error("Stream error: %s", e)
@@ -652,6 +706,9 @@ async def stream_chat(
 ) -> StreamingResponse:
     """流式聊天响应"""
     active_model = await _get_active_model_config(userId)
+    if not active_model:
+        raise NoActiveModelException()
+    
     start_time = time.time()
     start_datetime = datetime.now(timezone.utc).isoformat()
 
@@ -675,11 +732,6 @@ async def stream_chat(
             "X-Accel-Buffering": "no",
         },
     )
-
-
-class DialogueLogListResponse(BaseModel):
-    logs: list[dict]
-    total: int
 
 
 @router.get("/dialogue-logs", response_model=DialogueLogListResponse)
@@ -714,15 +766,30 @@ async def get_conversations(
     characterId: str | None = None,
     limit: int = 20,
     offset: int = 0,
+    current_user_id: Annotated[str, Depends(require_current_user)] = "",
 ) -> dict[str, Any]:
     """获取用户的会话列表，可按角色卡筛选"""
+    
+    validate_user_access(userId, current_user_id)
+    
+    cache_service = get_cache_service()
+    cache_key = f"convs:{userId}:{characterId}:{limit}:{offset}"
+    
+    cached = cache_service.conversation_list.get(cache_key)
+    if cached is not None:
+        logger.debug("ChatRouter", "Cache HIT", {"key": cache_key})
+        return cached
+    
+    logger.debug("ChatRouter", "Cache MISS", {"key": cache_key})
     conversations = await conversation_service.get_user_conversations(
         user_id=userId,
         limit=limit,
         offset=offset,
         character_id=characterId,
     )
-    return {"conversations": conversations}
+    result = {"conversations": conversations}
+    cache_service.conversation_list.set(cache_key, result)
+    return result
 
 
 @router.get("/conversations/{conversation_id}/dialogue-logs")
@@ -754,3 +821,74 @@ async def get_dialogue_log_stats(userId: str | None = None) -> Any:
     """获取对话交互日志统计信息"""
     stats = await dialogue_log_service.get_log_stats(user_id=userId)
     return stats
+
+
+@router.post("/conversations", response_model=ConversationResponse)
+async def create_conversation(
+    request: dict[str, Any],
+    current_user_id: Annotated[str, Depends(require_current_user)] = "",
+) -> ConversationResponse:
+    """创建新会话"""
+    user_id = request.get("userId") or request.get("user_id")
+    character_id = request.get("characterId") or request.get("character_id")
+    conversation_id = request.get("id")
+    title = request.get("title", "新对话")
+
+    if not user_id:
+        raise HTTPException(status_code=400, detail="userId is required")
+
+    validate_user_access(user_id, current_user_id)
+
+    created = await conversation_service.create_conversation(
+        user_id=user_id,
+        character_id=character_id,
+        conversation_id=conversation_id,
+        title=title,
+    )
+    cache_service = get_cache_service()
+    cache_service.invalidate_conversation(user_id, created["id"])
+    return created
+
+
+@router.put("/conversations/{conversation_id}/title")
+async def update_conversation_title(
+    conversation_id: str,
+    request: dict[str, Any],
+    current_user_id: Annotated[str, Depends(require_current_user)] = "",
+) -> dict[str, Any]:
+    """更新会话标题"""
+    title = request.get("title", "")
+    
+    # 获取会话信息以验证权限
+    conversation = await conversation_service.get_conversation(conversation_id)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    
+    validate_user_access(conversation["user_id"], current_user_id)
+    
+    updated = await conversation_service.update_conversation_title(
+        conversation_id=conversation_id,
+        title=title,
+    )
+    cache_service = get_cache_service()
+    cache_service.invalidate_conversation(conversation["user_id"], conversation_id)
+    return {"success": True, "conversation": updated}
+
+
+@router.delete("/conversations/{conversation_id}")
+async def delete_conversation(
+    conversation_id: str,
+    current_user_id: Annotated[str, Depends(require_current_user)] = "",
+) -> dict[str, Any]:
+    """删除会话"""
+    # 获取会话信息以验证权限
+    conversation = await conversation_service.get_conversation(conversation_id)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    
+    validate_user_access(conversation["user_id"], current_user_id)
+    
+    await conversation_service.delete_conversation(conversation_id)
+    cache_service = get_cache_service()
+    cache_service.invalidate_conversation(conversation["user_id"], conversation_id)
+    return {"success": True, "message": "Conversation deleted"}

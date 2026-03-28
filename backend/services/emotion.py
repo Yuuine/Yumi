@@ -5,7 +5,10 @@ Supports keyword-based analysis and optional transformer model
 
 from __future__ import annotations
 
+import math
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any
 
 from pydantic import BaseModel
@@ -13,6 +16,46 @@ from pydantic import BaseModel
 from ..core import get_logger, settings
 
 logger = get_logger(__name__)
+
+_POSITIVE_EVENT_WORDS = ("开心", "高兴", "成功", "好消息", "太棒了")
+_NEGATIVE_EVENT_WORDS = ("难过", "失败", "坏消息", "糟糕", "失望")
+
+
+def emotion_label_from_va(valence: float, arousal: float) -> str:
+    """与关键词分析器一致的情绪标签映射（效价–唤醒度）。"""
+    if valence > 0.5 and arousal > 0.6:
+        return "兴奋"
+    if valence > 0.5 and arousal <= 0.6:
+        return "开心"
+    if valence > 0.2 and arousal <= 0.4:
+        return "平静"
+    if valence < -0.5 and arousal > 0.6:
+        return "愤怒"
+    if valence < -0.5 and arousal <= 0.6:
+        return "悲伤"
+    if valence < -0.2 and arousal > 0.5:
+        return "焦虑"
+    if valence < -0.2 and arousal <= 0.5:
+        return "低落"
+    if arousal > 0.7:
+        return "激动"
+    return "中性"
+
+
+def _count_event_words(text: str) -> tuple[int, int]:
+    n_pos = sum(1 for w in _POSITIVE_EVENT_WORDS if w in text)
+    n_neg = sum(1 for w in _NEGATIVE_EVENT_WORDS if w in text)
+    return n_pos, n_neg
+
+
+@dataclass
+class AIEmotionStateRecord:
+    current_valence: float
+    current_arousal: float
+    base_valence: float
+    base_arousal: float
+    sensitivity: float
+    last_updated: datetime
 
 
 class EmotionData(BaseModel):
@@ -171,23 +214,7 @@ class KeywordEmotionAnalyzer(EmotionAnalyzer):
         )
 
     def _get_emotion_label(self, valence: float, arousal: float) -> str:
-        if valence > 0.5 and arousal > 0.6:
-            return "兴奋"
-        if valence > 0.5 and arousal <= 0.6:
-            return "开心"
-        if valence > 0.2 and arousal <= 0.4:
-            return "平静"
-        if valence < -0.5 and arousal > 0.6:
-            return "愤怒"
-        if valence < -0.5 and arousal <= 0.6:
-            return "悲伤"
-        if valence < -0.2 and arousal > 0.5:
-            return "焦虑"
-        if valence < -0.2 and arousal <= 0.5:
-            return "低落"
-        if arousal > 0.7:
-            return "激动"
-        return "中性"
+        return emotion_label_from_va(valence, arousal)
 
 
 class TransformerEmotionAnalyzer(EmotionAnalyzer):
@@ -260,6 +287,72 @@ class EmotionEngine:
     def __init__(self) -> None:
         self.analyzer: EmotionAnalyzer | None = None
         self._initialized = False
+        self._ai_emotion_states: dict[str, AIEmotionStateRecord] = {}
+
+    def _ai_state_key(self, user_id: str, character_id: str | None) -> str:
+        return f"{user_id}\t{character_id or ''}"
+
+    def _default_ai_state(self) -> AIEmotionStateRecord:
+        now = datetime.now(timezone.utc)
+        bv = settings.emotion.default_base_valence
+        ba = settings.emotion.default_base_arousal
+        sens = settings.emotion.default_sensitivity
+        return AIEmotionStateRecord(bv, ba, bv, ba, sens, now)
+
+    async def step_ai_emotion(
+        self,
+        user_id: str,
+        character_id: str | None,
+        user_text: str,
+        user_emotion: EmotionData,
+    ) -> EmotionData:
+        """
+        按文档 4.3：时间衰减 → 事件影响 + 共情 → 限幅，并持久化 AI 情绪状态（进程内）。
+        """
+        key = self._ai_state_key(user_id, character_id)
+        state = self._ai_emotion_states.get(key)
+        if state is None:
+            state = self._default_ai_state()
+
+        now = datetime.now(timezone.utc)
+        t = (now - state.last_updated).total_seconds()
+        T = max(float(settings.emotion.emotion_half_life), 1.0)
+        decay_factor = math.exp(-t / T)
+
+        v_decay = state.base_valence + (state.current_valence - state.base_valence) * decay_factor
+        a_decay = state.base_arousal + (state.current_arousal - state.base_arousal) * decay_factor
+
+        n_pos, n_neg = _count_event_words(user_text)
+        delta_v = 0.2 * n_pos - 0.2 * n_neg
+        delta_a = 0.15 * n_pos + 0.1 * n_neg
+
+        empathy = settings.emotion.empathy_factor
+        delta_v_empathy = (user_emotion.valence - v_decay) * empathy * user_emotion.confidence
+
+        sens = state.sensitivity
+        new_v = v_decay + (delta_v + delta_v_empathy) * sens
+        new_a = a_decay + delta_a * sens
+
+        new_v = max(-1.0, min(1.0, new_v))
+        new_a = max(0.0, min(1.0, new_a))
+
+        label = emotion_label_from_va(new_v, new_a)
+
+        self._ai_emotion_states[key] = AIEmotionStateRecord(
+            current_valence=new_v,
+            current_arousal=new_a,
+            base_valence=state.base_valence,
+            base_arousal=state.base_arousal,
+            sensitivity=state.sensitivity,
+            last_updated=now,
+        )
+
+        return EmotionData(
+            valence=round(new_v, 3),
+            arousal=round(new_a, 3),
+            label=label,
+            confidence=1.0,
+        )
 
     async def initialize(self) -> None:
         if self._initialized:

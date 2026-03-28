@@ -5,6 +5,7 @@ Implements Ebbinghaus decay, semantic deduplication, and LLM summarization
 
 from __future__ import annotations
 
+import math
 import time
 import uuid
 from datetime import datetime
@@ -118,8 +119,6 @@ class MemoryEngine:
                 details={"error": str(e)},
             )
 
-        self.turn_counts[user_id] = self.turn_counts.get(user_id, 0) + 1
-
         logger.debug("Stored memory %s for user %s", memory_id, user_id)
         return memory_id
 
@@ -127,8 +126,9 @@ class MemoryEngine:
         self,
         user_id: str,
         content: str,
-        threshold: float = 0.95,
+        threshold: float | None = None,
     ) -> bool:
+        threshold = threshold or settings.memory.deduplication_threshold
         try:
             results = self._ensure_collection().query(
                 query_texts=[content],
@@ -183,7 +183,8 @@ class MemoryEngine:
 
                 decay_factor = 1.0
                 if apply_decay and "timestamp" in metadata:
-                    decay_factor = self._calculate_decay(metadata["timestamp"])
+                    importance = metadata.get("importance_score", 0.5)
+                    decay_factor = self._calculate_decay(metadata["timestamp"], importance)
 
                 effective_similarity = similarity * decay_factor
 
@@ -199,6 +200,11 @@ class MemoryEngine:
                 )
 
         memories.sort(key=lambda x: x["similarity"], reverse=True)
+        
+        if apply_decay:
+            for mem in memories:
+                await self.consolidate(mem["id"], mem["metadata"])
+        
         return memories[:top_k]
 
     async def get_recent(self, user_id: str, limit: int | None = None) -> list[dict[str, Any]]:
@@ -235,12 +241,26 @@ class MemoryEngine:
     async def get_turn_count(self, user_id: str) -> int:
         return self.turn_counts.get(user_id, 0)
 
+    async def record_conversation_turn(self, user_id: str) -> int:
+        """每完成一轮用户–助手对话计一次（与异步向量写入解耦）。"""
+        n = self.turn_counts.get(user_id, 0) + 1
+        self.turn_counts[user_id] = n
+        return n
+
+    def reset_summary_turn_count(self, user_id: str) -> None:
+        self.turn_counts[user_id] = 0
+
     async def summarize_with_llm(
         self,
         user_id: str,
         llm_service: Any,
+        *,
+        provider_id: str = "openai",
+        base_url: str | None = None,
+        api_key: str | None = None,
+        model_name: str | None = None,
     ) -> str:
-        recent_memories = await self.get_recent(user_id, limit=35)
+        recent_memories = await self.get_recent(user_id, limit=settings.memory.summary_context_size)
 
         if not recent_memories:
             return ""
@@ -262,18 +282,29 @@ class MemoryEngine:
 摘要："""
 
         try:
-            summary = await llm_service.chat(
+            response = await llm_service.chat(
                 messages=[{"role": "user", "content": summary_prompt}],
                 temperature=0.3,
                 max_tokens=300,
+                provider_id=provider_id,
+                base_url=base_url,
+                api_key=api_key,
+                model_name=model_name,
+                use_thinking=False,
             )
+            summary = (getattr(response, "content", None) or "").strip()
+            if not summary:
+                logger.warning("LLM summary empty for user %s", user_id)
+                return await self.summarize(user_id)
 
             await self.store(
                 user_id=user_id,
                 content=f"[摘要] {summary}",
-                metadata={"type": "summary", "timestamp": datetime.now().isoformat()},
+                metadata={"type": "summary"},
                 skip_dedup=True,
             )
+
+            self.reset_summary_turn_count(user_id)
 
             logger.info("Generated and stored LLM summary for user %s", user_id)
             return summary
@@ -443,16 +474,40 @@ class MemoryEngine:
 
         return min(score, 1.0)
 
-    def _calculate_decay(self, timestamp_str: str) -> float:
+    def _calculate_decay(self, timestamp_str: str, importance: float = 0.5) -> float:
         try:
             timestamp = datetime.fromisoformat(timestamp_str)
             days_elapsed = (datetime.now() - timestamp).days
 
-            importance_factor = 1.0
-            decay = 1 - settings.memory.decay_rate * days_elapsed * importance_factor
-            return max(decay, settings.memory.min_decay_factor)
+            if days_elapsed <= 0:
+                return 1.0
+
+            S = 7 + importance * 14
+            decay_factor = math.exp(-days_elapsed / S)
+            return max(decay_factor, settings.memory.min_decay_factor)
         except (ValueError, TypeError):
             return 1.0
+
+    async def consolidate(self, memory_id: str, metadata: dict[str, Any]) -> None:
+        try:
+            importance = metadata.get("importance_score", 0.5)
+            new_importance = min(importance * (1 + settings.memory.consolidation_boost), 1.0)
+            
+            if new_importance == importance:
+                return
+            
+            metadata["importance_score"] = new_importance
+            metadata["last_access_time"] = datetime.now().isoformat()
+            
+            self._ensure_collection().update(
+                ids=[memory_id],
+                metadatas=[metadata],
+            )
+            
+            logger.debug("Consolidated memory %s: importance from %.2f to %.2f", 
+                       memory_id, importance, new_importance)
+        except Exception as e:
+            logger.warning("Failed to consolidate memory %s: %s", memory_id, e)
 
     async def close(self) -> None:
         pass
