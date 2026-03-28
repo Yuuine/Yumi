@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..core import get_logger
 from ..database_sqlmodel import get_session
+from ..services.cache_service import get_cache_service
 from ..services.character_card import (
     CharacterCard,
     delete_character_card_by_id,
@@ -132,9 +133,39 @@ async def list_character_cards(
     """
     获取用户的所有角色卡
     """
+    cache_service = get_cache_service()
+    cache_key = f"chars:{userId}"
+    
+    try:
+        cached = cache_service.character_list.get(cache_key)
+        if cached is not None:
+            if isinstance(cached, list):
+                is_valid = True
+                for item in cached:
+                    if not isinstance(item, dict) or 'id' not in item or 'userId' not in item:
+                        is_valid = False
+                        break
+                if is_valid:
+                    logger.debug("CharacterCardsRouter", "Cache HIT", {"key": cache_key})
+                    return cached
+                else:
+                    logger.debug("CharacterCardsRouter", "Cache has invalid data type, clearing", {"key": cache_key})
+                    cache_service.character_list.delete(cache_key)
+    except Exception as e:
+        logger.error("CharacterCardsRouter", "Cache read error", {"error": str(e)})
+        cache_service.character_list.delete(cache_key)
+    
+    logger.debug("CharacterCardsRouter", "Cache MISS", {"key": cache_key})
     async with get_session() as session:
         cards = await list_character_cards_for_user(session, userId)
-    return [_card_to_response(c) for c in cards]
+    result = [_card_to_response(c) for c in cards]
+    
+    try:
+        cache_service.character_list.set(cache_key, result)
+    except Exception as e:
+        logger.error("CharacterCardsRouter", "Cache write error", {"error": str(e)})
+    
+    return result
 
 
 @router.put("/character-cards/{card_id}")
@@ -155,7 +186,11 @@ async def upsert_one_character_card(
         await upsert_character_card(session, card)
 
     _clear_prompt_cache(req, userId)
-
+    try:
+        cache_service = get_cache_service()
+        cache_service.invalidate_character(userId, card_id)
+    except Exception as e:
+        logger.error("CharacterCardsRouter", "Cache invalidate error", {"error": str(e)})
     return {"success": True, "id": card_id}
 
 
@@ -179,6 +214,12 @@ async def upsert_character_cards_batch(
             await upsert_character_card(session, card)
 
     _clear_prompt_cache(req, userId)
+    try:
+        cache_service = get_cache_service()
+        for item in payload.cards:
+            cache_service.invalidate_character(userId, item.id)
+    except Exception as e:
+        logger.error("CharacterCardsRouter", "Cache invalidate error", {"error": str(e)})
     return {"success": True, "count": len(payload.cards)}
 
 
@@ -196,4 +237,9 @@ async def delete_character_card_endpoint(
     if not ok:
         raise HTTPException(status_code=404, detail="Character card not found")
     _clear_prompt_cache(req, userId)
+    try:
+        cache_service = get_cache_service()
+        cache_service.invalidate_character(userId, card_id)
+    except Exception as e:
+        logger.error("CharacterCardsRouter", "Cache invalidate error", {"error": str(e)})
     return {"success": True, "id": card_id}

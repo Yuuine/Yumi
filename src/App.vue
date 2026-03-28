@@ -14,7 +14,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useAccountStore, useChatStore, useModelsStore, useAuthStore } from '@/stores'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
@@ -23,6 +23,7 @@ import DataSyncDialog from '@/components/common/DataSyncDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { useToast } from '@/composables/useToast'
 import { userApi } from '@/api/user'
+import { apiCache } from '@/utils/api-cache'
 import { logger } from '@/utils/logger'
 import router from '@/router'
 
@@ -171,7 +172,14 @@ async function handleDataSyncConfirm(option: 'restart' | 'sync') {
   }
 }
 
+function clearApiCache(): void {
+  logger.info('App', 'Clearing API cache on unload')
+  apiCache.clear()
+}
+
 onMounted(async () => {
+  window.addEventListener('beforeunload', clearApiCache)
+  
   // 首先验证用户认证状态
   const isAuthenticated = await authStore.initializeAuth()
 
@@ -191,6 +199,11 @@ onMounted(async () => {
 
   // 强制重新初始化账号，确保加载当前登录用户的数据
   await initializeAccountAndHideLoading(true)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('beforeunload', clearApiCache)
+  clearApiCache()
 })
 
 watch(

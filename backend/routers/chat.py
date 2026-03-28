@@ -31,6 +31,7 @@ from ..core import (
 from ..database_sqlmodel import get_session
 from ..models import ConversationLog, ModelConfig, ConversationResponse
 from ..services.async_storage import StorageTask, get_async_storage_service
+from ..services.cache_service import get_cache_service
 from ..services.conversation_service import conversation_service
 from ..services.dialogue_log_service import DialogueInteraction, EndReason, dialogue_log_service
 from ..services.emotion import EmotionData
@@ -771,13 +772,24 @@ async def get_conversations(
     
     validate_user_access(userId, current_user_id)
     
+    cache_service = get_cache_service()
+    cache_key = f"convs:{userId}:{characterId}:{limit}:{offset}"
+    
+    cached = cache_service.conversation_list.get(cache_key)
+    if cached is not None:
+        logger.debug("ChatRouter", "Cache HIT", {"key": cache_key})
+        return cached
+    
+    logger.debug("ChatRouter", "Cache MISS", {"key": cache_key})
     conversations = await conversation_service.get_user_conversations(
         user_id=userId,
         limit=limit,
         offset=offset,
         character_id=characterId,
     )
-    return {"conversations": conversations}
+    result = {"conversations": conversations}
+    cache_service.conversation_list.set(cache_key, result)
+    return result
 
 
 @router.get("/conversations/{conversation_id}/dialogue-logs")
@@ -833,6 +845,8 @@ async def create_conversation(
         conversation_id=conversation_id,
         title=title,
     )
+    cache_service = get_cache_service()
+    cache_service.invalidate_conversation(user_id, created["id"])
     return created
 
 
@@ -856,6 +870,8 @@ async def update_conversation_title(
         conversation_id=conversation_id,
         title=title,
     )
+    cache_service = get_cache_service()
+    cache_service.invalidate_conversation(conversation["user_id"], conversation_id)
     return {"success": True, "conversation": updated}
 
 
@@ -873,4 +889,6 @@ async def delete_conversation(
     validate_user_access(conversation["user_id"], current_user_id)
     
     await conversation_service.delete_conversation(conversation_id)
+    cache_service = get_cache_service()
+    cache_service.invalidate_conversation(conversation["user_id"], conversation_id)
     return {"success": True, "message": "Conversation deleted"}

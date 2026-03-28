@@ -1,12 +1,18 @@
 import axios, { type AxiosError, type AxiosInstance, type AxiosRequestConfig } from 'axios'
 import { error } from '@/composables/useToast'
 import router from '@/router'
+import { apiCache } from '@/utils/api-cache'
 
 export interface ApiError {
   code: string
   message: string
   details?: Record<string, unknown>
   requestId?: string
+}
+
+export interface CacheConfig {
+  cache?: boolean
+  ttl?: number
 }
 
 export interface ApiErrorResponse {
@@ -162,8 +168,23 @@ export class HttpClient {
     error(apiError.message, { duration: 5000 })
   }
 
-  async get<T>(url: string, config?: AxiosRequestConfig): Promise<T> {
+  async get<T>(url: string, config?: AxiosRequestConfig & CacheConfig): Promise<T> {
+    const cacheConfig = config as CacheConfig
+    const params = config?.params as Record<string, unknown> | undefined
+
+    if (cacheConfig?.cache) {
+      const cached = apiCache.get<T>('GET', url, params)
+      if (cached !== null) {
+        return cached
+      }
+    }
+
     const response = await this.instance.get<T>(url, config)
+
+    if (cacheConfig?.cache) {
+      apiCache.set('GET', url, response.data, cacheConfig.ttl ?? 300000, params)
+    }
+
     return response.data
   }
 

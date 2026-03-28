@@ -185,6 +185,7 @@ class CacheService:
             "conversation_list", max_size=100, default_ttl=60.0
         )
         self._message_cache = TrackedLRUCache("message", max_size=500, default_ttl=60.0)
+        self._settings_cache = TrackedLRUCache("settings", max_size=10, default_ttl=300.0)
 
         self._caches: dict[str, TrackedLRUCache | TrackedTTLCache] = {
             "user": self._user_cache,
@@ -193,6 +194,7 @@ class CacheService:
             "conversation": self._conversation_cache,
             "conversation_list": self._conversation_list_cache,
             "message": self._message_cache,
+            "settings": self._settings_cache,
         }
 
         logger.info("CacheService", "Initialized")
@@ -220,6 +222,10 @@ class CacheService:
     @property
     def message(self) -> TrackedLRUCache:
         return self._message_cache
+
+    @property
+    def settings(self) -> TrackedLRUCache:
+        return self._settings_cache
 
     def get_cache(self, name: str) -> TrackedLRUCache | TrackedTTLCache | None:
         return self._caches.get(name)

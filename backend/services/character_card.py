@@ -23,7 +23,6 @@ from ..models import CharacterCard as CharacterCardModel
 from .cache_service import get_cache_service
 
 logger = get_logger(__name__)
-_cache = get_cache_service()
 
 
 @dataclass
@@ -183,21 +182,13 @@ async def get_character_card_by_id(session, user_id: str, card_id: str) -> Chara
 
 async def list_character_cards_for_user(session, user_id: str) -> list[CharacterCard]:
     """获取用户的所有角色卡"""
-    cache_key = f"chars:{user_id}"
-    cached = _cache.character_list.get(cache_key)
-    if cached is not None:
-        return cached
-
     result = await session.exec(
         select(CharacterCardModel)
         .where(CharacterCardModel.user_id == user_id)
         .order_by(CharacterCardModel.updated_at.desc())
     )
     card_models = result.all()
-    cards = [_model_to_dataclass(m) for m in card_models]
-
-    _cache.character_list.set(cache_key, cards)
-    return cards
+    return [_model_to_dataclass(m) for m in card_models]
 
 
 async def upsert_character_card(session, card: CharacterCard) -> None:
@@ -221,7 +212,8 @@ async def upsert_character_card(session, card: CharacterCard) -> None:
     await session.commit()
 
     logger.info("Upserted character card id=%s user=%s", card.id, card.user_id)
-    _cache.invalidate_character(card.user_id, card.id)
+    cache_service = get_cache_service()
+    cache_service.invalidate_character(card.user_id, card.id)
 
 
 async def delete_character_card_by_id(session, user_id: str, card_id: str) -> bool:
@@ -241,7 +233,8 @@ async def delete_character_card_by_id(session, user_id: str, card_id: str) -> bo
     await session.delete(card)
     await session.commit()
     logger.info("Deleted character card id=%s user=%s (cascaded conversations)", card_id, user_id)
-    _cache.invalidate_character(user_id, card_id)
+    cache_service = get_cache_service()
+    cache_service.invalidate_character(user_id, card_id)
     return True
 
 

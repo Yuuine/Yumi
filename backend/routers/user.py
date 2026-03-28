@@ -9,8 +9,9 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlmodel import select
 
-from ..core import clear_active_model, get_conversation_cache
+from ..core import clear_active_model, get_conversation_cache, get_logger
 from ..database_sqlmodel import get_session
+from ..services.cache_service import get_cache_service
 from ..models import (
     User,
     Conversation,
@@ -21,7 +22,7 @@ from ..models import (
 from ..services.log_service import AuditAction, log_service
 
 router = APIRouter()
-logger = log_service.logger if hasattr(log_service, "logger") else None
+logger = get_logger(__name__)
 
 
 class UserPreferences(BaseModel):
@@ -54,6 +55,23 @@ class PurgeUserResponse(BaseModel):
 
 @router.get("/user/profile", response_model=UserProfile)
 async def get_user_profile(userId: str, req: Request):
+    cache_service = get_cache_service()
+    cache_key = f"user:{userId}"
+    
+    try:
+        cached = cache_service.user.get(cache_key)
+        if cached is not None:
+            if isinstance(cached, dict) and 'id' in cached and 'roleName' in cached and 'preferences' in cached:
+                logger.debug("UserRouter", "Cache HIT", {"key": cache_key})
+                return cached
+            else:
+                logger.debug("UserRouter", "Cache has invalid data type, clearing", {"key": cache_key})
+                cache_service.user.delete(cache_key)
+    except Exception as e:
+        logger.error("UserRouter", "Cache read error", {"error": str(e)})
+        cache_service.user.delete(cache_key)
+    
+    logger.debug("UserRouter", "Cache MISS", {"key": cache_key})
     async with get_session() as session:
         result = await session.exec(select(User).where(User.id == userId))
         user = result.first()
@@ -63,11 +81,18 @@ async def get_user_profile(userId: str, req: Request):
 
         preferences = json.loads(user.preferences_json) if user.preferences_json else {}
 
-        return UserProfile(
+        result = UserProfile(
             id=user.id,
             role_name=user.role_name,
             preferences=UserPreferences(**preferences),
         )
+    
+    try:
+        cache_service.user.set(cache_key, result.model_dump(by_alias=True))
+    except Exception as e:
+        logger.error("UserRouter", "Cache write error", {"error": str(e)})
+    
+    return result
 
 
 @router.put("/user/profile", response_model=UserProfile)
@@ -112,6 +137,12 @@ async def update_user_profile(profile: UserProfile, req: Request):
                 "latency_ms": round(latency_ms, 2),
             },
         )
+
+        try:
+            cache_service = get_cache_service()
+            cache_service.invalidate_user(profile.id)
+        except Exception as e:
+            logger.error("UserRouter", "Cache invalidate error", {"error": str(e)})
 
         return profile
 
