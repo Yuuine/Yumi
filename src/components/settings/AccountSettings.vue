@@ -27,18 +27,32 @@
         <div class="info-value">{{ formatDate(currentAccount?.createdAt) }}</div>
       </div>
     </div>
+
+    <!-- 退出登录按钮 -->
+    <div class="logout-section">
+      <button class="logout-btn" type="button" @click="handleLogout">
+        <IconLogout class="logout-icon" />
+        <span>退出登录</span>
+      </button>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useAccountStore } from '@/stores'
+import { useRouter } from 'vue-router'
+import { useAccountStore, useAuthStore } from '@/stores'
 import { IconCopy } from '@/components/icons'
+import { IconLogout } from '@/components/icons'
 import { useToast } from '@/composables/useToast'
+import { useConfirmDialog } from '@/composables/useModal'
 import { logger } from '@/utils/logger'
 
 const accountStore = useAccountStore()
+const authStore = useAuthStore()
+const router = useRouter()
 const toast = useToast()
+const confirmDialog = useConfirmDialog()
 
 const currentAccount = computed(() => accountStore.currentAccount)
 
@@ -67,6 +81,22 @@ async function handleCopyAccountId(): Promise<void> {
     toast.error(`复制失败: ${errMsg}`)
     logger.error('AccountSettings', 'Failed to copy account ID', error)
   }
+}
+
+function handleLogout(): void {
+  confirmDialog.showDialog('退出登录', '确定要退出登录吗？', 'warning', true, () => {
+    // 执行退出操作
+    authStore.logout()
+    // 重置账号状态
+    accountStore.accounts = []
+    accountStore.currentAccount = null
+    accountStore.currentConfig = null
+    accountStore.isInitialized = false
+    toast.success('已退出登录')
+    logger.info('AccountSettings', 'User logged out')
+    // 跳转至登录页面
+    router.push('/login')
+  })
 }
 </script>
 
@@ -142,5 +172,43 @@ async function handleCopyAccountId(): Promise<void> {
   width: 14px;
   height: 14px;
   display: block;
+}
+
+// 退出登录区域样式
+.logout-section {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.logout-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 24px;
+  border: 1px solid #ef4444;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #ef4444;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: #ef4444;
+    color: #ffffff;
+  }
+
+  &:active {
+    transform: scale(0.98);
+  }
+}
+
+.logout-icon {
+  width: 18px;
+  height: 18px;
 }
 </style>

@@ -10,12 +10,14 @@
       <h3 class="dialog-title">{{ confirmDialog.title.value }}</h3>
       <p class="dialog-message">{{ confirmDialog.message.value }}</p>
       <div class="dialog-actions">
-        <button v-if="confirmDialog.showCancel.value" class="btn btn-secondary" @click="confirmDialog.cancel">
+        <button
+          v-if="confirmDialog.showCancel.value"
+          class="btn btn-secondary"
+          @click="confirmDialog.cancel"
+        >
           取消
         </button>
-        <button class="btn btn-primary" @click="confirmDialog.confirm">
-          确定
-        </button>
+        <button class="btn btn-primary" @click="confirmDialog.confirm">确定</button>
       </div>
     </div>
   </ModalWrapper>

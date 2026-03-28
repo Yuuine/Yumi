@@ -8,6 +8,7 @@ import type { AccountCharacter, CharacterCardFlat } from '@/types/character'
 import type { Conversation } from '@/types'
 import { userApi, characterCardsApi } from '@/api'
 import type { UserListItem } from '@/api/user'
+import { useAuthStore } from './auth'
 import {
   generateAccountId,
   generateCharacterId,
@@ -188,7 +189,7 @@ const DEFAULT_ACCOUNT_CONFIG: AccountConfig = {
 
 const STORAGE_KEY = 'yumi_accounts'
 const ACCOUNT_DATA_KEY_PREFIX = 'yumi_account_'
-const RELATED_CACHE_KEYS = ['yumi_cached_messages', 'yumi_last_sync', 'yumi_user_id']
+const RELATED_CACHE_KEYS = ['yumi_cached_messages', 'yumi_last_sync']
 
 function getAccountStorageKey(accountId: string): string {
   return `${ACCOUNT_DATA_KEY_PREFIX}${accountId}`
@@ -255,15 +256,58 @@ export const useAccountStore = defineStore('account', () => {
   const hasAccounts = computed(() => accounts.value.length > 0)
   const currentAccountId = computed(() => currentAccount.value?.id ?? null)
 
-  async function initialize(): Promise<void> {
-    if (isInitialized.value) return
+  async function initialize(force = false): Promise<void> {
+    if (isInitialized.value && !force) return
 
     isLoading.value = true
     try {
       deviceFingerprint.value = await generateDeviceFingerprint()
-      await loadAccountsIndex()
-      await syncLocalAccountsWithBackend()
-      await ensureCurrentAccountAvailable()
+
+      // 优先从 JWT auth 系统获取当前用户信息
+      const authStore = useAuthStore()
+      if (authStore.accessToken && !authStore.userId) {
+        await authStore.validateToken()
+      }
+      const authNickname = authStore.nickname || undefined
+      if (authStore.isAuthenticated && authStore.userId) {
+        // 从后端获取用户详细信息
+        try {
+          const fullData = await userApi.getFullAccountData(authStore.userId)
+          currentAccount.value = {
+            id: authStore.userId,
+            displayName: authNickname || fullData.roleName || '用户',
+            deviceFingerprint: deviceFingerprint.value?.fingerprint || '',
+            createdAt: fullData.createdAt || new Date().toISOString(),
+            lastActiveAt: fullData.updatedAt || new Date().toISOString(),
+          }
+          logger.info('AccountStore', 'Loaded account from auth system', {
+            userId: authStore.userId,
+          })
+          // 加载完整的账号数据（角色卡等）
+          await loadCurrentAccountData()
+        } catch (error) {
+          logger.warn(
+            'AccountStore',
+            'Failed to load user profile from backend',
+            error as Record<string, unknown>
+          )
+          // 使用 auth store 中的基本信息
+          currentAccount.value = {
+            id: authStore.userId,
+            displayName: authNickname || '用户',
+            deviceFingerprint: deviceFingerprint.value?.fingerprint || '',
+            createdAt: new Date().toISOString(),
+            lastActiveAt: new Date().toISOString(),
+          }
+          // 即使获取详细信息失败，也尝试加载账号数据
+          await loadCurrentAccountData()
+        }
+      } else {
+        // 回退到旧的本地存储机制
+        await loadAccountsIndex()
+        await syncLocalAccountsWithBackend()
+        await ensureCurrentAccountAvailable()
+      }
 
       isInitialized.value = true
       logger.info('AccountStore', 'Initialized', {
@@ -351,8 +395,9 @@ export const useAccountStore = defineStore('account', () => {
       }
     }
 
+    // 不再强制创建默认账号，允许账号没有角色卡
     if (accounts.value.length === 0) {
-      await createDefaultAccount()
+      logger.info('AccountStore', 'No accounts available, but not creating default')
       return
     }
 
@@ -364,14 +409,14 @@ export const useAccountStore = defineStore('account', () => {
       ? localStorage.getItem(getAccountStorageKey(currentAccount.value.id))
       : null
     if (!currentData) {
-      // Current account payload is missing, fallback to first valid account or create default.
+      // Current account payload is missing, fallback to first valid account
       const fallbackAccount = accounts.value.find(account =>
         localStorage.getItem(getAccountStorageKey(account.id))
       )
       currentAccount.value = fallbackAccount ?? null
       if (!currentAccount.value) {
         accounts.value = []
-        await createDefaultAccount()
+        logger.info('AccountStore', 'No valid accounts available')
         return
       }
     }
@@ -475,6 +520,7 @@ export const useAccountStore = defineStore('account', () => {
       config: baseConfig,
     }
 
+    // 角色卡变为可选，不再强制要求
     if (defaultCharacter) {
       const char = defaultCharacter as AccountCharacter
       char.accountId = accountId
@@ -541,79 +587,128 @@ export const useAccountStore = defineStore('account', () => {
     const stored = localStorage.getItem(storageKey)
     const localData = stored ? JSON.parse(stored) : null
 
+    let userProfile = null
+    let characterCards: CharacterCardFlat[] = []
+    let conversations: AccountConversation[] = []
+
+    // 分别获取用户资料、角色卡和对话，避免一个失败影响其他
     try {
-      logger.info('AccountStore', 'Loading data from backend', { accountId })
-
-      const [userProfile, characterCards] = await Promise.all([
-        userApi.getProfile(accountId),
-        characterCardsApi.list(accountId),
-      ])
-
-      logger.info('AccountStore', 'Received data from backend', { accountId, characterCards })
-
-      const cfg = localData?.config ?? createDefaultAccountConfig()
-      const chars: Record<string, AccountCharacter> = {}
-      characterCards.forEach(card => {
-        chars[card.id] = convertFlatToAccount(card)
-      })
-
-      const ids = Object.keys(chars)
-      if (
-        (cfg.activeCharacterId === undefined || cfg.activeCharacterId === null) &&
-        ids.length > 0
-      ) {
-        cfg.activeCharacterId = ids[0]
-      }
-      if (cfg.activeCharacterId && ids.length > 0 && !ids.includes(cfg.activeCharacterId)) {
-        cfg.activeCharacterId = ids[0]
-      }
-      currentConfig.value = cfg
-
-      currentAccount.value = {
-        ...currentAccount.value,
-        displayName: userProfile.roleName ?? currentAccount.value.displayName,
-      }
-
-      const accountData = {
-        ...(localData ?? {}),
-        profile: currentAccount.value,
-        config: cfg,
-        characters: chars,
-      }
-      localStorage.setItem(storageKey, JSON.stringify(accountData))
-
-      logger.info('AccountStore', 'Loaded account data from backend', { accountId })
+      logger.info('AccountStore', 'Loading user profile from backend', { accountId })
+      userProfile = await userApi.getProfile(accountId)
+      logger.info('AccountStore', 'Loaded user profile', { accountId, userProfile })
     } catch (error) {
       logger.warn(
         'AccountStore',
-        'Failed to load from backend, falling back to localStorage',
+        'Failed to load user profile from backend',
         error as Record<string, unknown>
       )
+    }
 
-      if (localData) {
-        const cfg = localData.config ?? createDefaultAccountConfig()
-        const chars = localData.characters as Record<string, AccountCharacter> | undefined
-        const ids = chars ? Object.keys(chars) : []
-        if (
-          (cfg.activeCharacterId === undefined || cfg.activeCharacterId === null) &&
-          ids.length > 0
-        ) {
-          cfg.activeCharacterId = ids[0]
-        }
-        if (cfg.activeCharacterId && ids.length > 0 && !ids.includes(cfg.activeCharacterId)) {
-          cfg.activeCharacterId = ids[0]
-        }
-        currentConfig.value = cfg
+    try {
+      logger.info('AccountStore', 'Loading character cards from backend', { accountId })
+      characterCards = await characterCardsApi.list(accountId)
+      logger.info('AccountStore', 'Loaded character cards', {
+        accountId,
+        count: characterCards.length,
+      })
+    } catch (error) {
+      logger.warn(
+        'AccountStore',
+        'Failed to load character cards from backend',
+        error as Record<string, unknown>
+      )
+    }
 
-        currentAccount.value = {
-          ...currentAccount.value,
-          ...localData.profile,
-        }
+    try {
+      logger.info('AccountStore', 'Loading conversations from backend', { accountId })
+      conversations = await loadConversationsFromBackend(accountId)
+      logger.info('AccountStore', 'Loaded conversations', {
+        accountId,
+        count: conversations.length,
+      })
+    } catch (error) {
+      logger.warn(
+        'AccountStore',
+        'Failed to load conversations from backend',
+        error as Record<string, unknown>
+      )
+    }
 
-        logger.info('AccountStore', 'Loaded account data from localStorage', { accountId })
-      } else {
-        logger.warn('AccountStore', 'No local data available', { accountId })
+    // 更新账号显示名称
+    const authStore = useAuthStore()
+    if (currentAccount.value) {
+      if (authStore.userId === currentAccount.value.id && authStore.nickname) {
+        currentAccount.value.displayName = authStore.nickname
+      } else if (userProfile?.roleName) {
+        currentAccount.value.displayName = userProfile.roleName
       }
+    }
+
+    // 处理角色卡数据
+    const cfg = localData?.config ?? createDefaultAccountConfig()
+    const chars: Record<string, AccountCharacter> = {}
+    characterCards.forEach(card => {
+      chars[card.id] = convertFlatToAccount(card)
+    })
+
+    const ids = Object.keys(chars)
+    if ((cfg.activeCharacterId === undefined || cfg.activeCharacterId === null) && ids.length > 0) {
+      cfg.activeCharacterId = ids[0]
+    }
+    if (cfg.activeCharacterId && ids.length > 0 && !ids.includes(cfg.activeCharacterId)) {
+      cfg.activeCharacterId = ids[0]
+    }
+    currentConfig.value = cfg
+
+    // 处理对话数据
+    const convs: Record<string, AccountConversation> = {}
+    conversations.forEach(conv => {
+      convs[conv.id] = conv
+    })
+
+    // 保存到本地存储
+    const accountData = {
+      ...(localData ?? {}),
+      profile: currentAccount.value,
+      config: cfg,
+      characters: chars,
+      conversations: convs,
+    }
+    localStorage.setItem(storageKey, JSON.stringify(accountData))
+
+    logger.info('AccountStore', 'Account data loaded', {
+      accountId,
+      characterCount: ids.length,
+      conversationCount: conversations.length,
+    })
+  }
+
+  /**
+   * 从后端加载对话列表
+   */
+  async function loadConversationsFromBackend(accountId: string): Promise<AccountConversation[]> {
+    try {
+      const fullData = await userApi.getFullAccountData(accountId)
+      if (fullData.conversations && Array.isArray(fullData.conversations)) {
+        return fullData.conversations.map(conv => ({
+          id: conv.id,
+          accountId: conv.user_id,
+          characterId: conv.character_id || undefined,
+          title: conv.title || '新对话',
+          createdAt: conv.created_at,
+          updatedAt: conv.updated_at,
+          messageCount: 0,
+          messages: [],
+        }))
+      }
+      return []
+    } catch (error) {
+      logger.warn(
+        'AccountStore',
+        'Failed to load conversations from backend',
+        error as Record<string, unknown>
+      )
+      return []
     }
   }
 

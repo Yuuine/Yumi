@@ -1,5 +1,6 @@
 """
 Character Card Model - 角色卡模型
+基于新数据库设计，移除 conversation_id 字段（解决循环依赖）
 """
 
 from datetime import datetime
@@ -9,8 +10,10 @@ from sqlmodel import Field, SQLModel
 
 class CharacterCardBase(SQLModel):
     """角色卡基础模型"""
-    user_id: str = Field(index=True)
-    conversation_id: Optional[str] = Field(default=None, index=True)
+    model_config = {
+        'protected_namespaces': ()
+    }
+    user_id: str = Field(index=True, foreign_key="users.id")
     role_overview: str = Field(default="")
     formal_name: str = Field(default="")
     nickname: str = Field(default="")
@@ -31,7 +34,7 @@ class CharacterCardBase(SQLModel):
     length_pref: str = Field(default="")
     special_logic_list: str = Field(default="")
     few_shot_examples: str = Field(default="")
-    is_active: bool = Field(default=True)
+    is_active: bool = Field(default=True, index=True)
 
 
 class CharacterCard(CharacterCardBase, table=True):
@@ -50,7 +53,9 @@ class CharacterCardCreate(CharacterCardBase):
 
 class CharacterCardUpdate(SQLModel):
     """更新角色卡模型"""
-    conversation_id: Optional[str] = None
+    model_config = {
+        'protected_namespaces': ()
+    }
     role_overview: Optional[str] = None
     formal_name: Optional[str] = None
     nickname: Optional[str] = None

@@ -17,7 +17,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..core import get_logger, settings
-from ..database import get_db
+from ..database_sqlmodel import get_session
 from .character_card import (
     CharacterCard,
     get_character_card_for_chat,
@@ -304,8 +304,8 @@ class PromptBuilder:
         character_id: str | None,
         conversation_id: str | None,
     ) -> CharacterCard:
-        async with get_db() as db:
-            return await get_character_card_for_chat(db, user_id, character_id, conversation_id)
+        async with get_session() as session:
+            return await get_character_card_for_chat(session, user_id, character_id)
 
     def clear_character_card_cache(self, user_id: str, conversation_id: str | None) -> None:
         """

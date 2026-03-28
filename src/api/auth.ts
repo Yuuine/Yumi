@@ -14,6 +14,7 @@ export interface AuthResponse {
   userId: string
   accessToken: string
   refreshToken: string
+  nickname: string
 }
 
 class AuthApi {

@@ -40,7 +40,7 @@
                 type="button"
                 class="toolbar-btn delete-btn"
                 @click="handleDelete"
-                :disabled="allCharacters.length <= 1 || hasConversationsForCharacter"
+                :disabled="allCharacters.length <= 1"
               >
                 删除
               </button>
@@ -70,7 +70,12 @@
             <h2 class="modal-title">确认删除</h2>
           </div>
           <div class="modal-body">
-            <p class="confirm-message">确定要删除该角色吗？该操作不可逆。</p>
+            <p class="confirm-message">
+              删除角色后，该角色下的所有对话实例也会被一并删除。该操作不可恢复，是否继续？
+            </p>
+            <p v-if="deleteConversationCount > 0" class="confirm-subtext">
+              当前将删除 {{ deleteConversationCount }} 个关联对话。
+            </p>
           </div>
           <div class="modal-footer">
             <button type="button" class="toolbar-btn" @click="showDeleteConfirm = false">
@@ -91,6 +96,7 @@ import { nextTick, ref, watch, computed } from 'vue'
 import { IconClose } from '@/components/icons'
 import CharacterSettings from './CharacterSettings.vue'
 import { useAccountStore } from '@/stores'
+import { conversationsApi } from '@/api'
 import type { AccountCharacter } from '@/types/character'
 import { logger } from '@/utils/logger'
 import { useToast } from '@/composables/useToast'
@@ -111,6 +117,7 @@ const allCharacters = ref<AccountCharacter[]>([])
 const currentCharacterId = ref<string | null>(null)
 const showDeleteConfirm = ref(false)
 const hasConversationsForCharacter = ref(false)
+const deleteConversationCount = ref(0)
 
 const currentCharacterName = computed(() => {
   const char = allCharacters.value.find(c => c.id === currentCharacterId.value)
@@ -125,7 +132,9 @@ async function checkConversationsForCharacter(): Promise<void> {
   try {
     const conversations = await accountStore.loadConversations()
     hasConversationsForCharacter.value = conversations.some(
-      conv => conv.characterId === currentCharacterId.value
+      conv =>
+        (conv.characterId || (conv as { character_id?: string }).character_id) ===
+        currentCharacterId.value
     )
   } catch {
     hasConversationsForCharacter.value = false
@@ -151,19 +160,90 @@ function handleExport(): void {
 }
 
 function handleDelete(): void {
-  if (hasConversationsForCharacter.value) {
-    toast.warning('该角色存在对话实例，无法删除')
+  if (!currentCharacterId.value || !accountStore.currentAccount) {
+    showDeleteConfirm.value = true
     return
   }
-  showDeleteConfirm.value = true
+
+  const deletingCharacterId = currentCharacterId.value
+  void (async () => {
+    try {
+      const [backendResult, localConversations] = await Promise.all([
+        conversationsApi.getConversations(
+          accountStore.currentAccount!.id,
+          deletingCharacterId,
+          200,
+          0
+        ),
+        accountStore.loadConversations(),
+      ])
+
+      const localMatches = localConversations.filter(
+        conv =>
+          (conv.characterId || (conv as { character_id?: string }).character_id) ===
+          deletingCharacterId
+      )
+      deleteConversationCount.value = new Set<string>([
+        ...backendResult.conversations.map(conv => conv.id),
+        ...localMatches.map(conv => conv.id),
+      ]).size
+    } catch (error) {
+      logger.warn('CharacterModal', 'Failed to pre-calculate related conversations count', {
+        error: error as Error,
+      })
+      deleteConversationCount.value = 0
+    } finally {
+      showDeleteConfirm.value = true
+    }
+  })()
 }
 
 async function confirmDelete(): Promise<void> {
   try {
     if (!currentCharacterId.value) return
 
+    const deletingCharacterId = currentCharacterId.value
     const charName = currentCharacterName.value
-    await accountStore.deleteCharacter(currentCharacterId.value)
+    let deletedConversationCount = 0
+
+    if (accountStore.currentAccount) {
+      const [backendResult, localConversations] = await Promise.all([
+        conversationsApi.getConversations(
+          accountStore.currentAccount.id,
+          deletingCharacterId,
+          200,
+          0
+        ),
+        accountStore.loadConversations(),
+      ])
+
+      const localMatches = localConversations.filter(
+        conv =>
+          (conv.characterId || (conv as { character_id?: string }).character_id) ===
+          deletingCharacterId
+      )
+      const allConversationIds = new Set<string>([
+        ...backendResult.conversations.map(conv => conv.id),
+        ...localMatches.map(conv => conv.id),
+      ])
+      deleteConversationCount.value = allConversationIds.size
+
+      for (const conversationId of allConversationIds) {
+        try {
+          await conversationsApi.deleteConversation(conversationId)
+        } catch (error) {
+          logger.warn(
+            'CharacterModal',
+            'Failed to delete conversation from backend, continuing local cleanup',
+            { conversationId, error }
+          )
+        }
+        await accountStore.deleteConversation(conversationId)
+        deletedConversationCount += 1
+      }
+    }
+
+    await accountStore.deleteCharacter(deletingCharacterId)
     await loadCharacters()
 
     if (allCharacters.value.length > 0) {
@@ -175,8 +255,15 @@ async function confirmDelete(): Promise<void> {
     }
 
     showDeleteConfirm.value = false
-    toast.success(`已删除角色「${charName}」`)
-    logger.info('CharacterModal', 'Deleted character', { characterId: currentCharacterId.value })
+    toast.success(
+      deletedConversationCount > 0
+        ? `已删除角色「${charName}」及 ${deletedConversationCount} 个关联对话`
+        : `已删除角色「${charName}」`
+    )
+    logger.info('CharacterModal', 'Deleted character with related conversations', {
+      characterId: deletingCharacterId,
+      deletedConversationCount,
+    })
   } catch (error) {
     logger.error('CharacterModal', 'Failed to delete character', error)
     toast.error('删除角色失败')
@@ -476,6 +563,12 @@ watch(
   font-size: 15px;
   color: #374151;
   line-height: 1.6;
+}
+
+.confirm-subtext {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: #6b7280;
 }
 
 .modal-footer {

@@ -1,12 +1,16 @@
 """
 Settings API Router
+基于 SQLModel 重构
 """
 
 import time
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, ConfigDict
+from sqlmodel import select
 
+from ..database_sqlmodel import get_session
+from ..models import Setting
 from ..services.log_service import AuditAction, log_service
 
 router = APIRouter()
@@ -28,13 +32,12 @@ class AppSettings(BaseModel):
 
 @router.get("/settings", response_model=AppSettings)
 async def get_settings(req: Request):
-    from ..database import get_db
+    """获取系统设置"""
+    async with get_session() as session:
+        result = await session.exec(select(Setting))
+        settings_list = result.all()
 
-    async with get_db() as db:
-        cursor = await db.execute("SELECT key, value FROM settings")
-        rows = await cursor.fetchall()
-
-        settings_dict = {row[0]: row[1] for row in rows}
+        settings_dict = {s.key: s.value for s in settings_list}
 
         return AppSettings(
             api_endpoint=settings_dict.get("api_endpoint", "http://127.0.0.1:11434/v1"),
@@ -51,15 +54,15 @@ async def get_settings(req: Request):
 
 @router.put("/settings", response_model=AppSettings)
 async def update_settings(settings: AppSettings, req: Request):
-    from ..database import get_db
-
+    """更新系统设置"""
     start_time = time.time()
 
     try:
-        async with get_db() as db:
-            cursor = await db.execute("SELECT key, value FROM settings")
-            old_rows = await cursor.fetchall()
-            old_settings = {row[0]: row[1] for row in old_rows}
+        async with get_session() as session:
+            # 获取旧设置
+            result = await session.exec(select(Setting))
+            old_settings_list = result.all()
+            old_settings = {s.key: s.value for s in old_settings_list}
 
             settings_dict = settings.dict()
             changed_keys = []
@@ -70,12 +73,17 @@ async def update_settings(settings: AppSettings, req: Request):
                 if old_value != new_value:
                     changed_keys.append(key)
 
-                await db.execute(
-                    """INSERT OR REPLACE INTO settings (key, value, updated_at)
-                       VALUES (?, ?, CURRENT_TIMESTAMP)""",
-                    (key, new_value),
-                )
-            await db.commit()
+                # 查找或创建设置项
+                result = await session.exec(select(Setting).where(Setting.key == key))
+                existing = result.first()
+
+                if existing:
+                    existing.value = new_value
+                else:
+                    new_setting = Setting(key=key, value=new_value)
+                    session.add(new_setting)
+
+            await session.commit()
 
         latency_ms = (time.time() - start_time) * 1000
 

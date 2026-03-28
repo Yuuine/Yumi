@@ -15,10 +15,7 @@ from ..models import (
     User,
     Conversation,
     ConversationLog,
-    MemorySummary,
     CharacterCard,
-    AuditLog,
-    SystemLog,
     ModelConfig,
 )
 from ..services.log_service import AuditAction, log_service
@@ -203,7 +200,7 @@ async def get_full_account_data(user_id: str, req: Request):
 
         return {
             "id": user.id,
-            "roleName": user.role_name,
+            "roleName": user.nickname,
             "preferences": preferences,
             "createdAt": user.created_at.isoformat() if user.created_at else "",
             "updatedAt": user.updated_at.isoformat() if user.updated_at else "",
@@ -211,7 +208,7 @@ async def get_full_account_data(user_id: str, req: Request):
                 {
                     "id": card.id,
                     "userId": card.user_id,
-                    "conversationId": card.conversation_id,
+                    "conversationId": getattr(card, 'conversation_id', None),
                     "roleOverview": card.role_overview,
                     "formalName": card.formal_name,
                     "nickname": card.nickname,
@@ -271,12 +268,8 @@ async def purge_user_data(payload: PurgeUserRequest, req: Request):
                 await session.delete(conv)
                 cleared_conversations += 1
 
+            # TODO: MemorySummary 模型已移除，需要重新实现记忆清理逻辑
             cleared_summaries = 0
-            result = await session.exec(select(MemorySummary).where(MemorySummary.user_id == user_id))
-            summaries_to_delete = result.all()
-            for summary in summaries_to_delete:
-                await session.delete(summary)
-                cleared_summaries += 1
 
             cleared_character_cards = 0
             result = await session.exec(select(CharacterCard).where(CharacterCard.user_id == user_id))
@@ -285,19 +278,9 @@ async def purge_user_data(payload: PurgeUserRequest, req: Request):
                 await session.delete(card)
                 cleared_character_cards += 1
 
+            # TODO: AuditLog 和 SystemLog 在日志数据库中，需要从日志数据库清理
             cleared_audit_logs = 0
-            result = await session.exec(select(AuditLog).where(AuditLog.user_id == user_id))
-            audits_to_delete = result.all()
-            for audit in audits_to_delete:
-                await session.delete(audit)
-                cleared_audit_logs += 1
-
             cleared_system_logs = 0
-            result = await session.exec(select(SystemLog).where(SystemLog.user_id == user_id))
-            syslogs_to_delete = result.all()
-            for syslog in syslogs_to_delete:
-                await session.delete(syslog)
-                cleared_system_logs += 1
 
             cleared_user_profile = 0
             result = await session.exec(select(User).where(User.id == user_id))

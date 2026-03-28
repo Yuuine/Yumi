@@ -16,7 +16,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
-import { useAccountStore, useChatStore, useModelsStore } from '@/stores'
+import { useAccountStore, useChatStore, useModelsStore, useAuthStore } from '@/stores'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import Toast from '@/components/common/Toast.vue'
 import DataSyncDialog from '@/components/common/DataSyncDialog.vue'
@@ -24,6 +24,7 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { useToast } from '@/composables/useToast'
 import { userApi } from '@/api/user'
 import { logger } from '@/utils/logger'
+import router from '@/router'
 
 const toast = useToast()
 
@@ -34,6 +35,7 @@ const settingsStore = useSettingsStore()
 const accountStore = useAccountStore()
 const chatStore = useChatStore()
 const modelsStore = useModelsStore()
+const authStore = useAuthStore()
 const themeClass = computed(() => `theme-${settingsStore.theme}`)
 
 const showInitLoading = ref(true)
@@ -60,10 +62,20 @@ function showDefaultAccountCreatedToastIfNeeded(): void {
   }
 }
 
-async function initializeAccountAndHideLoading(): Promise<void> {
-  await accountStore.initialize()
+async function initializeAccountAndHideLoading(force = false): Promise<void> {
+  await accountStore.initialize(force)
   showInitLoading.value = false
   showDefaultAccountCreatedToastIfNeeded()
+
+  // 账号初始化完成后，如果存在当前账号，则加载对话和模型
+  if (accountStore.currentAccountId) {
+    chatStore.currentUserId = accountStore.currentAccountId
+    await Promise.all([
+      chatStore.initializeConversation(),
+      modelsStore.loadModels(),
+      modelsStore.loadActiveModel(),
+    ])
+  }
 }
 
 async function checkDataSync(): Promise<boolean> {
@@ -160,6 +172,16 @@ async function handleDataSyncConfirm(option: 'restart' | 'sync') {
 }
 
 onMounted(async () => {
+  // 首先验证用户认证状态
+  const isAuthenticated = await authStore.initializeAuth()
+
+  if (!isAuthenticated) {
+    logger.info('App', 'User not authenticated, redirecting to login')
+    showInitLoading.value = false
+    router.push('/login')
+    return
+  }
+
   const isSynced = await checkDataSync()
 
   if (!isSynced) {
@@ -167,7 +189,8 @@ onMounted(async () => {
     return
   }
 
-  await initializeAccountAndHideLoading()
+  // 强制重新初始化账号，确保加载当前登录用户的数据
+  await initializeAccountAndHideLoading(true)
 })
 
 watch(
@@ -178,11 +201,15 @@ watch(
       return
     }
     chatStore.currentUserId = accountId
-    await Promise.all([
-      chatStore.initializeConversation(),
-      modelsStore.loadModels(),
-      modelsStore.loadActiveModel(),
-    ])
+
+    // 等待账号数据完全加载后再初始化对话和模型
+    if (accountStore.isInitialized) {
+      await Promise.all([
+        chatStore.initializeConversation(),
+        modelsStore.loadModels(),
+        modelsStore.loadActiveModel(),
+      ])
+    }
   },
   { immediate: true }
 )

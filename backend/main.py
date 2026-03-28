@@ -12,8 +12,7 @@ from .core.lifecycle import get_lifecycle_manager
 from .core.logging import YumiLogger, get_logger
 from .core.middleware import RequestTracingMiddleware, SlowRequestMiddleware
 from .core.security_middleware import SecurityHeadersMiddleware
-from .database import init_db, init_log_db
-from .database_sqlmodel import init_db as init_sqlmodel_db, init_log_db as init_sqlmodel_log_db, close_engines
+from .database_sqlmodel import init_db, init_log_db, close_engines
 from .routers import auth, cache, character_cards, chat, logs, memory, models, storage, user
 from .routers import settings as settings_router
 from .services.async_storage import get_async_storage_service
@@ -50,14 +49,13 @@ async def lifespan(app: FastAPI):
 
     await init_db()
     await init_log_db()
-    await init_sqlmodel_db()
-    await init_sqlmodel_log_db()
 
     lifecycle_manager = get_lifecycle_manager()
     await lifecycle_manager.start()
     app.state.lifecycle_manager = lifecycle_manager
 
     memory_engine = MemoryEngine()
+    await memory_engine.initialize()
     emotion_engine = EmotionEngine()
     await emotion_engine.initialize()
 

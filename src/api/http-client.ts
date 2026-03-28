@@ -1,5 +1,6 @@
 import axios, { type AxiosError, type AxiosInstance, type AxiosRequestConfig } from 'axios'
 import { error } from '@/composables/useToast'
+import router from '@/router'
 
 export interface ApiError {
   code: string
@@ -11,6 +12,19 @@ export interface ApiError {
 export interface ApiErrorResponse {
   success: false
   error: ApiError
+}
+
+// 处理未授权跳转
+function handleUnauthorized(): void {
+  // 清除本地存储的认证信息
+  localStorage.removeItem('yumi_access_token')
+  localStorage.removeItem('yumi_refresh_token')
+  localStorage.removeItem('yumi_user_id')
+
+  // 如果当前不在登录页，则跳转到登录页
+  if (router.currentRoute.value.path !== '/login') {
+    router.push('/login')
+  }
 }
 
 export class HttpClient {
@@ -49,15 +63,49 @@ export class HttpClient {
       },
       (error: AxiosError<ApiErrorResponse>) => {
         const apiError = this.normalizeError(error)
+
+        // 处理 401 未授权和 403 拒绝访问，自动跳转到登录页
+        if (error.response?.status === 401 || error.response?.status === 403) {
+          handleUnauthorized()
+        }
+
         this.handleGlobalError(apiError)
         return Promise.reject(apiError)
       }
     )
   }
 
-  private normalizeError(error: AxiosError<ApiErrorResponse>): ApiError {
+  private normalizeError(error: AxiosError<ApiErrorResponse | any>): ApiError {
+    // 处理标准错误格式 { error: { message, code } }
     if (error.response?.data?.error) {
       return error.response.data.error
+    }
+
+    // 处理后端直接返回的错误格式 { message, code } 或 { detail: { message, code } }
+    const responseData = error.response?.data
+    if (responseData) {
+      // FastAPI 的 HTTPException 可能返回 { detail: ... }
+      if (responseData.detail) {
+        if (typeof responseData.detail === 'string') {
+          return {
+            code: 'HTTP_ERROR',
+            message: responseData.detail,
+          }
+        }
+        if (responseData.detail.message) {
+          return {
+            code: responseData.detail.code || 'HTTP_ERROR',
+            message: responseData.detail.message,
+          }
+        }
+      }
+      // 直接返回的对象格式
+      if (responseData.message) {
+        return {
+          code: responseData.code || 'HTTP_ERROR',
+          message: responseData.message,
+        }
+      }
     }
 
     if (error.response) {

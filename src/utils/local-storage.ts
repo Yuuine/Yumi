@@ -74,4 +74,12 @@ export function clearAllCache(): void {
   })
 }
 
+/**
+ * 清除聊天缓存，不影响登录身份
+ */
+export function clearMessageCache(): void {
+  removeFromStorage(KEYS.CACHED_MESSAGES)
+  removeFromStorage(KEYS.LAST_SYNC)
+}
+
 export { KEYS, MAX_CACHED_MESSAGES }

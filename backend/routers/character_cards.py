@@ -1,5 +1,6 @@
 """
-Character cards API — 与前端本地角色库同步（user_id 为账号 id）
+Character cards API — 角色卡管理 API
+基于新数据库设计重构，移除 conversation_id 字段
 """
 
 from __future__ import annotations
@@ -10,7 +11,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..core import get_logger
-from ..database import get_db
+from ..database_sqlmodel import get_session
 from ..services.character_card import (
     CharacterCard,
     delete_character_card_by_id,
@@ -23,10 +24,10 @@ logger = get_logger(__name__)
 
 
 def _card_to_response(card: CharacterCard) -> dict[str, Any]:
+    """将角色卡转换为响应格式"""
     return {
         "id": card.id,
         "userId": card.user_id,
-        "conversationId": card.conversation_id,
         "roleOverview": card.role_overview,
         "formalName": card.formal_name,
         "nickname": card.nickname,
@@ -52,8 +53,7 @@ def _card_to_response(card: CharacterCard) -> dict[str, Any]:
 
 
 class CharacterCardUpsertBody(BaseModel):
-    """与前端 CharacterCardFlat 对齐（camelCase）。"""
-
+    """角色卡创建/更新请求体（与前端 CharacterCardFlat 对齐）"""
     model_config = ConfigDict(populate_by_name=True)
 
     role_overview: str = Field("", alias="roleOverview")
@@ -80,18 +80,20 @@ class CharacterCardUpsertBody(BaseModel):
 
 
 class BatchCardItem(CharacterCardUpsertBody):
+    """批量操作的角色卡项"""
     id: str
 
 
 class BatchUpsertBody(BaseModel):
+    """批量更新请求体"""
     cards: list[BatchCardItem]
 
 
 def _body_to_character(card_id: str, user_id: str, body: CharacterCardUpsertBody) -> CharacterCard:
+    """将请求体转换为角色卡数据类"""
     return CharacterCard(
         id=card_id,
         user_id=user_id,
-        conversation_id=None,
         role_overview=body.role_overview,
         formal_name=body.formal_name,
         nickname=body.nickname,
@@ -117,6 +119,7 @@ def _body_to_character(card_id: str, user_id: str, body: CharacterCardUpsertBody
 
 
 def _clear_prompt_cache(req: Request, user_id: str) -> None:
+    """清除用户的角色卡缓存"""
     prompt_builder = getattr(req.app.state, "prompt_builder", None)
     if prompt_builder and hasattr(prompt_builder, "clear_character_card_cache_for_user"):
         prompt_builder.clear_character_card_cache_for_user(user_id)
@@ -126,8 +129,11 @@ def _clear_prompt_cache(req: Request, user_id: str) -> None:
 async def list_character_cards(
     userId: str = Query(..., min_length=1),
 ) -> list[dict[str, Any]]:
-    async with get_db() as db:
-        cards = await list_character_cards_for_user(db, userId)
+    """
+    获取用户的所有角色卡
+    """
+    async with get_session() as session:
+        cards = await list_character_cards_for_user(session, userId)
     return [_card_to_response(c) for c in cards]
 
 
@@ -138,12 +144,15 @@ async def upsert_one_character_card(
     body: CharacterCardUpsertBody,
     userId: str = Query(..., min_length=1),
 ) -> dict[str, Any]:
+    """
+    创建或更新单个角色卡
+    """
     if len(card_id) < 1:
         raise HTTPException(status_code=400, detail="Invalid card id")
 
     card = _body_to_character(card_id, userId, body)
-    async with get_db() as db:
-        await upsert_character_card(db, card)
+    async with get_session() as session:
+        await upsert_character_card(session, card)
 
     _clear_prompt_cache(req, userId)
 
@@ -156,15 +165,18 @@ async def upsert_character_cards_batch(
     payload: BatchUpsertBody,
     userId: str = Query(..., min_length=1),
 ) -> dict[str, Any]:
+    """
+    批量创建或更新角色卡
+    """
     if not payload.cards:
         return {"success": True, "count": 0}
 
-    async with get_db() as db:
+    async with get_session() as session:
         for item in payload.cards:
             flat = item.model_dump(exclude={"id"})
             body = CharacterCardUpsertBody(**flat)
             card = _body_to_character(item.id, userId, body)
-            await upsert_character_card(db, card)
+            await upsert_character_card(session, card)
 
     _clear_prompt_cache(req, userId)
     return {"success": True, "count": len(payload.cards)}
@@ -176,8 +188,11 @@ async def delete_character_card_endpoint(
     req: Request,
     userId: str = Query(..., min_length=1),
 ) -> dict[str, Any]:
-    async with get_db() as db:
-        ok = await delete_character_card_by_id(db, userId, card_id)
+    """
+    删除角色卡
+    """
+    async with get_session() as session:
+        ok = await delete_character_card_by_id(session, userId, card_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Character card not found")
     _clear_prompt_cache(req, userId)

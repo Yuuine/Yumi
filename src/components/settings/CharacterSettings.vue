@@ -218,11 +218,10 @@ async function loadCharacter(targetCharacterId?: string): Promise<void> {
     char = list[0]
     await accountStore.setActiveCharacterId(char.id)
   }
+  // 允许账号没有角色卡
   if (!char && list.length === 0) {
-    logger.warn(
-      'CharacterSettings',
-      'No characters found, this should not happen - account should have at least one character'
-    )
+    logger.info('CharacterSettings', 'No characters found, user can create one later')
+    draft.value = null
     return
   }
 

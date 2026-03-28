@@ -4,9 +4,12 @@
       <div class="login-header">
         <div class="logo-container">
           <svg class="logo-icon" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect width="64" height="64" rx="16" fill="#6366f1"/>
-            <path d="M20 22C20 19.7909 21.7909 18 24 18H40C42.2091 18 44 19.7909 44 22V42C44 44.2091 42.2091 46 40 46H24C21.7909 46 20 44.2091 20 42V22Z" fill="white"/>
-            <circle cx="32" cy="40" r="3" fill="#6366f1"/>
+            <rect width="64" height="64" rx="16" fill="#6366f1" />
+            <path
+              d="M20 22C20 19.7909 21.7909 18 24 18H40C42.2091 18 44 19.7909 44 22V42C44 44.2091 42.2091 46 40 46H24C21.7909 46 20 44.2091 20 42V22Z"
+              fill="white"
+            />
+            <circle cx="32" cy="40" r="3" fill="#6366f1" />
           </svg>
         </div>
         <h1 class="app-title">Yumi</h1>
@@ -78,13 +81,27 @@
               tabindex="-1"
               :aria-label="showPassword ? '隐藏密码' : '显示密码'"
             >
-              <svg v-if="!showPassword" class="toggle-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
-                <path d="M1 10s3-6 9-6 9 6 9 6-3 6-9 6-9-6-9-6z"/>
-                <circle cx="10" cy="10" r="2.5"/>
+              <svg
+                v-if="!showPassword"
+                class="toggle-icon"
+                viewBox="0 0 20 20"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+              >
+                <path d="M1 10s3-6 9-6 9 6 9 6-3 6-9 6-9-6-9-6z" />
+                <circle cx="10" cy="10" r="2.5" />
               </svg>
-              <svg v-else class="toggle-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
-                <path d="M15 15a6 6 0 01-10 0M5 5a6 6 0 0110 0"/>
-                <line x1="1" y1="1" x2="19" y2="19"/>
+              <svg
+                v-else
+                class="toggle-icon"
+                viewBox="0 0 20 20"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+              >
+                <path d="M15 15a6 6 0 01-10 0M5 5a6 6 0 0110 0" />
+                <line x1="1" y1="1" x2="19" y2="19" />
               </svg>
             </button>
           </div>
@@ -114,25 +131,34 @@
                 tabindex="-1"
                 :aria-label="showConfirmPassword ? '隐藏密码' : '显示密码'"
               >
-                <svg v-if="!showConfirmPassword" class="toggle-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
-                  <path d="M1 10s3-6 9-6 9 6 9 6-3 6-9 6-9-6-9-6z"/>
-                  <circle cx="10" cy="10" r="2.5"/>
+                <svg
+                  v-if="!showConfirmPassword"
+                  class="toggle-icon"
+                  viewBox="0 0 20 20"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                >
+                  <path d="M1 10s3-6 9-6 9 6 9 6-3 6-9 6-9-6-9-6z" />
+                  <circle cx="10" cy="10" r="2.5" />
                 </svg>
-                <svg v-else class="toggle-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
-                  <path d="M15 15a6 6 0 01-10 0M5 5a6 6 0 0110 0"/>
-                  <line x1="1" y1="1" x2="19" y2="19"/>
+                <svg
+                  v-else
+                  class="toggle-icon"
+                  viewBox="0 0 20 20"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                >
+                  <path d="M15 15a6 6 0 01-10 0M5 5a6 6 0 0110 0" />
+                  <line x1="1" y1="1" x2="19" y2="19" />
                 </svg>
               </button>
             </div>
           </div>
         </Transition>
 
-        <button
-          type="submit"
-          class="submit-button"
-          :disabled="isLoading"
-          :aria-busy="isLoading"
-        >
+        <button type="submit" class="submit-button" :disabled="isLoading" :aria-busy="isLoading">
           <span v-if="isLoading" class="loading-spinner" aria-hidden="true"></span>
           <span v-else>{{ activeTab === 'login' ? '登录' : '注册' }}</span>
         </button>
@@ -163,11 +189,13 @@
 import { ref, reactive, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from '@/composables/useToast'
+import { useAuthStore } from '@/stores'
 import { authApi } from '@/api/auth'
 import { logger } from '@/utils/logger'
 
 const router = useRouter()
 const toast = useToast()
+const authStore = useAuthStore()
 
 const activeTab = ref<'login' | 'register'>('login')
 const showPassword = ref(false)
@@ -177,14 +205,14 @@ const isLoading = ref(false)
 const formData = reactive({
   nickname: '',
   password: '',
-  confirmPassword: ''
+  confirmPassword: '',
 })
 
 const indicatorStyle = computed(() => {
   const left = activeTab.value === 'login' ? '4px' : 'calc(50% + 2px)'
   return {
     left,
-    width: 'calc(50% - 6px)'
+    width: 'calc(50% - 6px)',
   }
 })
 
@@ -234,35 +262,64 @@ async function handleSubmit(): Promise<void> {
 
   try {
     let response
+    const isRegister = activeTab.value === 'register'
 
-    if (activeTab.value === 'login') {
-      response = await authApi.login({
-        nickname: formData.nickname,
-        password: formData.password
-      })
-    } else {
+    if (isRegister) {
+      // 注册流程
       response = await authApi.register({
         nickname: formData.nickname,
-        password: formData.password
+        password: formData.password,
       })
+
+      // 注册成功后，设置 token
+      authStore.setTokens(
+        response.accessToken,
+        response.refreshToken,
+        response.userId,
+        response.nickname
+      )
+
+      toast.success('注册成功')
+      logger.info('LoginView', 'Registration successful', { userId: response.userId })
+    } else {
+      // 登录流程
+      response = await authApi.login({
+        nickname: formData.nickname,
+        password: formData.password,
+      })
+
+      // 设置 token
+      authStore.setTokens(
+        response.accessToken,
+        response.refreshToken,
+        response.userId,
+        response.nickname
+      )
+
+      toast.success('登录成功')
+      logger.info('LoginView', 'Login successful', { userId: response.userId })
     }
 
-    localStorage.setItem('yumi_access_token', response.accessToken)
-    localStorage.setItem('yumi_refresh_token', response.refreshToken)
-    localStorage.setItem('yumi_user_id', response.userId)
-
-    toast.success(activeTab.value === 'login' ? '登录成功' : '注册成功')
-    logger.info('LoginView', 'Authentication successful', { userId: response.userId })
-
+    // 跳转到首页
     await router.push('/')
   } catch (error: unknown) {
     logger.error('LoginView', 'Authentication failed', error as Record<string, unknown>)
-    
-    if (error instanceof Error) {
-      toast.error(error.message || (activeTab.value === 'login' ? '登录失败，请检查昵称和密码' : '注册失败，请稍后重试'))
-    } else {
-      toast.error(activeTab.value === 'login' ? '登录失败，请检查昵称和密码' : '注册失败，请稍后重试')
+
+    // 提取错误消息
+    let errorMessage = ''
+    if (error && typeof error === 'object') {
+      const err = error as any
+      // 优先使用后端返回的错误消息
+      errorMessage = err.message || err.detail?.message || err.detail || ''
     }
+
+    // 根据错误消息内容或操作类型显示不同的提示
+    if (!errorMessage) {
+      errorMessage =
+        activeTab.value === 'login' ? '登录失败，请检查昵称和密码' : '注册失败，请稍后重试'
+    }
+
+    toast.error(errorMessage)
   } finally {
     isLoading.value = false
   }
@@ -316,7 +373,8 @@ async function handleSubmit(): Promise<void> {
 }
 
 @keyframes logoFloat {
-  0%, 100% {
+  0%,
+  100% {
     transform: translateY(0);
   }
   50% {
@@ -587,11 +645,19 @@ async function handleSubmit(): Promise<void> {
 }
 
 .confirm-password-enter-active {
-  transition: opacity 0.35s ease-out, transform 0.35s ease-out, max-height 0.4s ease-out, margin-bottom 0.4s ease-out;
+  transition:
+    opacity 0.35s ease-out,
+    transform 0.35s ease-out,
+    max-height 0.4s ease-out,
+    margin-bottom 0.4s ease-out;
 }
 
 .confirm-password-leave-active {
-  transition: opacity 0.25s ease-in, transform 0.25s ease-in, max-height 0.3s ease-in, margin-bottom 0.3s ease-in;
+  transition:
+    opacity 0.25s ease-in,
+    transform 0.25s ease-in,
+    max-height 0.3s ease-in,
+    margin-bottom 0.3s ease-in;
 }
 
 .confirm-password-enter-from {

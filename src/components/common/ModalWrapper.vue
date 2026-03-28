@@ -54,10 +54,7 @@ const emit = defineEmits<{
 }>()
 
 const containerClass = computed(() => {
-  return [
-    `modal-wrapper-${props.size}`,
-    props.customClass,
-  ]
+  return [`modal-wrapper-${props.size}`, props.customClass]
 })
 
 function handleClose() {

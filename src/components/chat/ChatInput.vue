@@ -86,7 +86,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
-import { useModelsStore } from '@/stores'
+import { useModelsStore, useAccountStore } from '@/stores'
 import { PROVIDER_NAMES, supportsDeepThinking } from '@/constants'
 import { IconArrowUp, IconCheck } from '@/components/icons'
 import { logger } from '@/utils/logger'
@@ -110,6 +110,7 @@ const emit = defineEmits<{
 const isDeepThinking = defineModel<boolean>('deepThinking', { default: false })
 
 const modelsStore = useModelsStore()
+const accountStore = useAccountStore()
 
 const inputText = ref('')
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
@@ -200,10 +201,25 @@ watch(
 )
 
 onMounted(async () => {
-  await modelsStore.loadModels()
-  await modelsStore.loadActiveModel()
   document.addEventListener('click', handleClickOutside)
+
+  // 等待账号初始化完成后再加载模型
+  if (accountStore.isInitialized && accountStore.currentAccountId) {
+    await modelsStore.loadModels()
+    await modelsStore.loadActiveModel()
+  }
 })
+
+// 监听账号初始化状态，初始化完成后加载模型
+watch(
+  () => accountStore.isInitialized,
+  async isInitialized => {
+    if (isInitialized && accountStore.currentAccountId) {
+      await modelsStore.loadModels()
+      await modelsStore.loadActiveModel()
+    }
+  }
+)
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)

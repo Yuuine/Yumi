@@ -1,17 +1,22 @@
 """
 Dialogue Log Service - 对话交互日志服务
 专门记录完整的用户与AI对话交互
+基于 SQLModel 重构
 """
 
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
+from sqlmodel import select, func
+
 from ..core.logging import get_logger, request_id_var
-from ..database import get_log_db
+from ..database_sqlmodel import get_log_session
+from ..models import DialogueInteractionLog
 
 logger = get_logger(__name__)
 
@@ -52,29 +57,23 @@ class DialogueInteraction:
 
     trace_id: str | None = None
 
-    def to_dict(self) -> dict[str, Any]:
-        """转换为字典"""
-        return {
-            "conversation_id": self.conversation_id,
-            "user_id": self.user_id,
-            "character_id": self.character_id,
-            "request_detail": self.request_detail,
-            "response_detail": self.response_detail,
-            "start_time": self.start_time,
-            "end_time": self.end_time,
-            "duration_ms": self.duration_ms,
-            "is_normal_end": 1 if self.is_normal_end else 0,
-            "end_reason": self.end_reason,
-            "user_emotion": (
-                json.dumps(self.user_emotion, ensure_ascii=False) if self.user_emotion else None
-            ),
-            "assistant_emotion": (
-                json.dumps(self.assistant_emotion, ensure_ascii=False)
-                if self.assistant_emotion
-                else None
-            ),
-            "trace_id": self.trace_id,
-        }
+    def to_model(self) -> DialogueInteractionLog:
+        """转换为 SQLModel"""
+        return DialogueInteractionLog(
+            conversation_id=self.conversation_id,
+            user_id=self.user_id,
+            character_id=self.character_id,
+            request_detail=json.loads(self.request_detail) if self.request_detail else {},
+            response_detail=json.loads(self.response_detail) if self.response_detail else None,
+            start_time=datetime.fromisoformat(self.start_time) if self.start_time else datetime.now(timezone.utc),
+            end_time=datetime.fromisoformat(self.end_time) if self.end_time else None,
+            duration_ms=self.duration_ms,
+            is_normal_end=self.is_normal_end,
+            end_reason=self.end_reason,
+            user_emotion=self.user_emotion,
+            assistant_emotion=self.assistant_emotion,
+            trace_id=self.trace_id,
+        )
 
 
 class DialogueLogService:
@@ -101,34 +100,12 @@ class DialogueLogService:
         """
         interaction.trace_id = interaction.trace_id or DialogueLogService._get_trace_id()
 
-        data = interaction.to_dict()
-
         try:
-            async with get_log_db() as db:
-                cursor = await db.execute(
-                    """INSERT INTO dialogue_interaction_logs
-                       (conversation_id, user_id, character_id, request_detail, response_detail,
-                        start_time, end_time, duration_ms, is_normal_end, end_reason,
-                        user_emotion, assistant_emotion, trace_id)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        data["conversation_id"],
-                        data["user_id"],
-                        data["character_id"],
-                        data["request_detail"],
-                        data["response_detail"],
-                        data["start_time"],
-                        data["end_time"],
-                        data["duration_ms"],
-                        data["is_normal_end"],
-                        data["end_reason"],
-                        data["user_emotion"],
-                        data["assistant_emotion"],
-                        data["trace_id"],
-                    ),
-                )
-                await db.commit()
-                log_id = cursor.lastrowid
+            async with get_log_session() as session:
+                log_entry = interaction.to_model()
+                session.add(log_entry)
+                await session.commit()
+                await session.refresh(log_entry)
 
                 logger.info(
                     "Dialogue interaction logged: user=%s, conversation=%s, duration=%sms, normal=%s",
@@ -138,7 +115,7 @@ class DialogueLogService:
                     interaction.is_normal_end,
                 )
 
-                return log_id
+                return log_entry.id
 
         except Exception as e:
             logger.error("Failed to log dialogue interaction: %s", e)
@@ -160,26 +137,36 @@ class DialogueLogService:
             offset: 偏移量
             include_details: 是否包含详细信息（request_detail, response_detail）
         """
-        select_fields = """id, conversation_id, user_id, character_id,
-                          start_time, end_time, duration_ms,
-                          is_normal_end, end_reason, created_at"""
+        async with get_log_session() as session:
+            query = select(DialogueInteractionLog).where(
+                DialogueInteractionLog.user_id == user_id
+            ).order_by(DialogueInteractionLog.start_time.desc()).limit(limit).offset(offset)
 
-        if include_details:
-            select_fields += ", request_detail, response_detail, user_emotion, assistant_emotion"
+            result = await session.exec(query)
+            logs = result.all()
 
-        async with get_log_db() as db:
-            cursor = await db.execute(
-                f"""SELECT {select_fields}
-                    FROM dialogue_interaction_logs
-                    WHERE user_id = ?
-                    ORDER BY start_time DESC
-                    LIMIT ? OFFSET ?""",
-                (user_id, limit, offset),
-            )
-            rows = await cursor.fetchall()
+            items = []
+            for log in logs:
+                item = {
+                    "id": log.id,
+                    "conversation_id": log.conversation_id,
+                    "user_id": log.user_id,
+                    "character_id": log.character_id,
+                    "start_time": log.start_time.isoformat() if log.start_time else None,
+                    "end_time": log.end_time.isoformat() if log.end_time else None,
+                    "duration_ms": log.duration_ms,
+                    "is_normal_end": log.is_normal_end,
+                    "end_reason": log.end_reason,
+                    "created_at": log.created_at.isoformat() if log.created_at else None,
+                }
+                if include_details:
+                    item["request_detail"] = log.request_detail
+                    item["response_detail"] = log.response_detail
+                    item["user_emotion"] = log.user_emotion
+                    item["assistant_emotion"] = log.assistant_emotion
+                items.append(item)
 
-            columns = [desc[0] for desc in cursor.description]
-            return [dict(zip(columns, row)) for row in rows]
+            return items
 
     @staticmethod
     async def get_interactions_by_conversation(
@@ -197,39 +184,64 @@ class DialogueLogService:
             offset: 偏移量
             include_details: 是否包含详细信息
         """
-        select_fields = """id, conversation_id, user_id, character_id,
-                          start_time, end_time, duration_ms,
-                          is_normal_end, end_reason, created_at"""
+        async with get_log_session() as session:
+            query = select(DialogueInteractionLog).where(
+                DialogueInteractionLog.conversation_id == conversation_id
+            ).order_by(DialogueInteractionLog.start_time.asc()).limit(limit).offset(offset)
 
-        if include_details:
-            select_fields += ", request_detail, response_detail, user_emotion, assistant_emotion"
+            result = await session.exec(query)
+            logs = result.all()
 
-        async with get_log_db() as db:
-            cursor = await db.execute(
-                f"""SELECT {select_fields}
-                    FROM dialogue_interaction_logs
-                    WHERE conversation_id = ?
-                    ORDER BY start_time ASC
-                    LIMIT ? OFFSET ?""",
-                (conversation_id, limit, offset),
-            )
-            rows = await cursor.fetchall()
+            items = []
+            for log in logs:
+                item = {
+                    "id": log.id,
+                    "conversation_id": log.conversation_id,
+                    "user_id": log.user_id,
+                    "character_id": log.character_id,
+                    "start_time": log.start_time.isoformat() if log.start_time else None,
+                    "end_time": log.end_time.isoformat() if log.end_time else None,
+                    "duration_ms": log.duration_ms,
+                    "is_normal_end": log.is_normal_end,
+                    "end_reason": log.end_reason,
+                    "created_at": log.created_at.isoformat() if log.created_at else None,
+                }
+                if include_details:
+                    item["request_detail"] = log.request_detail
+                    item["response_detail"] = log.response_detail
+                    item["user_emotion"] = log.user_emotion
+                    item["assistant_emotion"] = log.assistant_emotion
+                items.append(item)
 
-            columns = [desc[0] for desc in cursor.description]
-            return [dict(zip(columns, row)) for row in rows]
+            return items
 
     @staticmethod
     async def get_interaction_by_id(log_id: int) -> dict[str, Any] | None:
         """根据ID查询单条对话交互记录"""
-        async with get_log_db() as db:
-            cursor = await db.execute(
-                """SELECT * FROM dialogue_interaction_logs WHERE id = ?""",
-                (log_id,),
+        async with get_log_session() as session:
+            result = await session.exec(
+                select(DialogueInteractionLog).where(DialogueInteractionLog.id == log_id)
             )
-            row = await cursor.fetchone()
-            if row:
-                columns = [desc[0] for desc in cursor.description]
-                return dict(zip(columns, row))
+            log = result.first()
+
+            if log:
+                return {
+                    "id": log.id,
+                    "conversation_id": log.conversation_id,
+                    "user_id": log.user_id,
+                    "character_id": log.character_id,
+                    "request_detail": log.request_detail,
+                    "response_detail": log.response_detail,
+                    "start_time": log.start_time.isoformat() if log.start_time else None,
+                    "end_time": log.end_time.isoformat() if log.end_time else None,
+                    "duration_ms": log.duration_ms,
+                    "is_normal_end": log.is_normal_end,
+                    "end_reason": log.end_reason,
+                    "user_emotion": log.user_emotion,
+                    "assistant_emotion": log.assistant_emotion,
+                    "trace_id": log.trace_id,
+                    "created_at": log.created_at.isoformat() if log.created_at else None,
+                }
             return None
 
     @staticmethod
@@ -243,16 +255,22 @@ class DialogueLogService:
         Returns:
             删除的记录数
         """
-        async with get_log_db() as db:
+        async with get_log_session() as session:
             if user_id:
-                cursor = await db.execute(
-                    "DELETE FROM dialogue_interaction_logs WHERE user_id = ?",
-                    (user_id,),
+                result = await session.exec(
+                    select(DialogueInteractionLog).where(DialogueInteractionLog.user_id == user_id)
                 )
+                logs = result.all()
+                for log in logs:
+                    await session.delete(log)
             else:
-                cursor = await db.execute("DELETE FROM dialogue_interaction_logs")
-            await db.commit()
-            deleted_count = cursor.rowcount
+                result = await session.exec(select(DialogueInteractionLog))
+                logs = result.all()
+                for log in logs:
+                    await session.delete(log)
+
+            await session.commit()
+            deleted_count = len(logs)
             logger.info(
                 "Cleared %d dialogue interaction logs for user=%s", deleted_count, user_id or "all"
             )
@@ -269,26 +287,27 @@ class DialogueLogService:
         Returns:
             统计信息字典
         """
-        async with get_log_db() as db:
+        async with get_log_session() as session:
             if user_id:
-                cursor = await db.execute(
-                    "SELECT COUNT(*) FROM dialogue_interaction_logs WHERE user_id = ?",
-                    (user_id,),
+                count_result = await session.exec(
+                    select(func.count(DialogueInteractionLog.id)).where(
+                        DialogueInteractionLog.user_id == user_id
+                    )
                 )
-            else:
-                cursor = await db.execute("SELECT COUNT(*) FROM dialogue_interaction_logs")
-            row = await cursor.fetchone()
-            total_count = row[0] if row else 0
+                total_count = count_result.one()
 
-            if user_id:
-                cursor = await db.execute(
-                    "SELECT SUM(duration_ms) FROM dialogue_interaction_logs WHERE user_id = ?",
-                    (user_id,),
+                duration_result = await session.exec(
+                    select(func.sum(DialogueInteractionLog.duration_ms)).where(
+                        DialogueInteractionLog.user_id == user_id
+                    )
                 )
+                total_duration_ms = duration_result.one() or 0
             else:
-                cursor = await db.execute("SELECT SUM(duration_ms) FROM dialogue_interaction_logs")
-            row = await cursor.fetchone()
-            total_duration_ms = row[0] if row and row[0] else 0
+                count_result = await session.exec(select(func.count(DialogueInteractionLog.id)))
+                total_count = count_result.one()
+
+                duration_result = await session.exec(select(func.sum(DialogueInteractionLog.duration_ms)))
+                total_duration_ms = duration_result.one() or 0
 
             return {
                 "total_interactions": total_count,

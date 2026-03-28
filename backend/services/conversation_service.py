@@ -27,7 +27,8 @@ class ConversationService:
         user_id: str,
         character_id: str | None = None,
         title: str | None = None,
-    ) -> str:
+        conversation_id: str | None = None,
+    ) -> dict[str, Any]:
         """
         创建新会话
 
@@ -35,18 +36,20 @@ class ConversationService:
             user_id: 用户ID
             character_id: 绑定的角色卡ID
             title: 会话标题（可选）
+            conversation_id: 指定会话ID（可选，默认自动生成）
 
         Returns:
-            新创建的会话ID
+            新创建的会话对象
         """
-        conversation_id = str(uuid.uuid4())
+        if not conversation_id:
+            conversation_id = str(uuid.uuid4())
 
         async with get_session() as session:
             new_conversation = Conversation(
                 id=conversation_id,
                 user_id=user_id,
                 character_id=character_id,
-                title=title,
+                title=title or "新对话",
                 is_active=True
             )
             session.add(new_conversation)
@@ -59,7 +62,15 @@ class ConversationService:
             character_id,
         )
 
-        return conversation_id
+        return {
+            "id": conversation_id,
+            "user_id": user_id,
+            "character_id": character_id,
+            "title": title or "新对话",
+            "is_active": True,
+            "created_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat(),
+        }
 
     @staticmethod
     async def get_or_create_conversation(
@@ -90,13 +101,18 @@ class ConversationService:
                 if conversation:
                     return conversation_id
 
-        return await ConversationService.create_conversation(user_id, character_id)
+        result = await ConversationService.create_conversation(user_id, character_id)
+        return result["id"]
 
     @staticmethod
     async def get_conversation(conversation_id: str) -> dict[str, Any] | None:
-        """获取单个会话详情"""
+        """获取单个会话详情（仅返回活跃会话）"""
         async with get_session() as session:
-            result = await session.exec(select(Conversation).where(Conversation.id == conversation_id))
+            result = await session.exec(
+                select(Conversation)
+                .where(Conversation.id == conversation_id)
+                .where(Conversation.is_active == True)
+            )
             conversation = result.first()
             if conversation:
                 return {
@@ -191,7 +207,7 @@ class ConversationService:
                 await session.commit()
 
     @staticmethod
-    async def update_conversation_title(conversation_id: str, title: str) -> None:
+    async def update_conversation_title(conversation_id: str, title: str) -> dict[str, Any] | None:
         """更新会话标题"""
         async with get_session() as session:
             result = await session.exec(select(Conversation).where(Conversation.id == conversation_id))
@@ -200,6 +216,16 @@ class ConversationService:
                 conversation.title = title
                 conversation.updated_at = datetime.now(UTC)
                 await session.commit()
+                return {
+                    "id": conversation.id,
+                    "user_id": conversation.user_id,
+                    "character_id": conversation.character_id,
+                    "title": conversation.title,
+                    "created_at": conversation.created_at.isoformat() if conversation.created_at else None,
+                    "updated_at": conversation.updated_at.isoformat() if conversation.updated_at else None,
+                    "is_active": conversation.is_active
+                }
+            return None
 
     @staticmethod
     async def deactivate_conversation(conversation_id: str) -> None:
@@ -211,6 +237,44 @@ class ConversationService:
                 conversation.is_active = False
                 conversation.updated_at = datetime.now(UTC)
                 await session.commit()
+
+    @staticmethod
+    async def delete_conversations_by_character(character_id: str) -> int:
+        """
+        删除特定角色卡关联的所有会话及其消息日志（级联删除）
+
+        Args:
+            character_id: 角色卡ID
+
+        Returns:
+            被删除的会话数量
+        """
+        async with get_session() as session:
+            result = await session.exec(
+                select(Conversation).where(Conversation.character_id == character_id)
+            )
+            conversations = result.all()
+
+            deleted_count = 0
+            for conv in conversations:
+                await session.execute(
+                    text("DELETE FROM conversation_logs WHERE conversation_id = :conv_id"),
+                    {"conv_id": conv.id}
+                )
+                await session.execute(
+                    text("DELETE FROM dialogue_interaction_logs WHERE conversation_id = :conv_id"),
+                    {"conv_id": conv.id}
+                )
+                await session.delete(conv)
+                deleted_count += 1
+
+            await session.commit()
+            logger.info(
+                "Deleted %d conversations cascade by character_id=%s",
+                deleted_count,
+                character_id,
+            )
+            return deleted_count
 
     @staticmethod
     async def delete_conversation(conversation_id: str) -> None:

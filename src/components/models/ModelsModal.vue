@@ -96,8 +96,6 @@
       </div>
     </Transition>
 
-
-
     <TestResultDialog
       :visible="testDialogVisible"
       :result="modelsStore.testResult"

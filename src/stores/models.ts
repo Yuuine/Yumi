@@ -88,9 +88,15 @@ export const useModelsStore = defineStore('models', () => {
   async function loadModels(): Promise<void> {
     if (isLoading.value) return
 
+    // 检查账号是否可用，不可用则静默返回
+    const accountId = accountStore.currentAccountId
+    if (!accountId) {
+      logger.warn('ModelsStore', 'No current account available, skipping loadModels')
+      return
+    }
+
     await executeWithLoading(async () => {
       try {
-        const accountId = getRequiredAccountId()
         models.value = await modelsApi.getModels(accountId)
       } catch (error) {
         logger.error('ModelsStore', 'Failed to load models', error)
@@ -103,8 +109,14 @@ export const useModelsStore = defineStore('models', () => {
    * 加载当前活动的模型
    */
   async function loadActiveModel(): Promise<void> {
+    // 检查账号是否可用，不可用则静默返回
+    const accountId = accountStore.currentAccountId
+    if (!accountId) {
+      logger.warn('ModelsStore', 'No current account available, skipping loadActiveModel')
+      return
+    }
+
     try {
-      const accountId = getRequiredAccountId()
       activeModel.value = await modelsApi.getActiveModel(accountId)
     } catch (error) {
       logger.error('ModelsStore', 'Failed to load active model', error)

@@ -46,7 +46,7 @@ export interface AccountCharacter {
 export interface CharacterCardFlat {
   id: string
   userId: string
-  conversationId?: string | null
+  conversationId: string | null
   roleOverview: string
   formalName: string
   nickname: string

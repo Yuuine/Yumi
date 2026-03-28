@@ -1,6 +1,10 @@
 import type { AccountCharacter, CharacterCardFlat } from '@/types/character'
+import { toCamelCase } from './field-mapper'
 
-/** 嵌套结构 → 扁平 DTO（camelCase，供前端 API 层转 JSON） */
+/**
+ * 嵌套结构 AccountCharacter → 扁平 DTO CharacterCardFlat
+ * 用于前端内部数据转换为 API 请求格式
+ */
 export function nestedCharacterToFlat(char: AccountCharacter, userId: string): CharacterCardFlat {
   return {
     id: char.id,
@@ -30,64 +34,57 @@ export function nestedCharacterToFlat(char: AccountCharacter, userId: string): C
   }
 }
 
-/** 后端返回的 snake_case 或扁平 camelCase → 嵌套 AccountCharacter */
+/**
+ * 扁平 DTO CharacterCardFlat → 嵌套结构 AccountCharacter
+ * 用于后端响应数据转换为前端内部格式
+ *
+ * 兼容后端返回的 snake_case 和前端使用的 camelCase 字段名
+ */
 export function flatToNestedCharacter(
-  flat: CharacterCardFlat & Record<string, unknown>,
+  flat: Record<string, unknown>,
   existing?: Partial<AccountCharacter>
 ): AccountCharacter {
-  const g = (k: string) => {
-    const v = flat[k as keyof typeof flat]
-    return typeof v === 'string' ? v : ''
-  }
-  const roleOverview = g('roleOverview') || g('role_overview')
-  const formalName = g('formalName') || g('formal_name')
-  const raceOrForm = g('raceOrForm') || g('race_or_form')
-  const visualAge = g('visualAge') || g('visual_age')
-  const actualAge = g('actualAge') || g('actual_age')
-  const appearanceDesc = g('appearanceDesc') || g('appearance_desc')
-  const corePersonality = g('corePersonality') || g('core_personality')
-  const selfPerception = g('selfPerception') || g('self_perception')
-  const attitudeToUser = g('attitudeToUser') || g('attitude_to_user')
-  const toneBase = g('toneBase') || g('tone_base')
-  const wordHabits = g('wordHabits') || g('word_habits')
-  const emotionRules = g('emotionRules') || g('emotion_rules')
-  const lengthPref = g('lengthPref') || g('length_pref')
-  const specialLogicList = g('specialLogicList') || g('special_logic_list')
-  const fewShotExamples = g('fewShotExamples') || g('few_shot_examples')
+  // 统一转换为 camelCase
+  const data = toCamelCase(flat) as Record<string, unknown>
 
-  const id = String(flat.id || existing?.id || '')
+  const g = (key: string, fallback = ''): string => {
+    const v = data[key]
+    return typeof v === 'string' ? v : fallback
+  }
+
+  const id = String(data.id || existing?.id || '')
   const now = new Date().toISOString()
 
   return {
     id,
     accountId: existing?.accountId,
-    name: formalName || existing?.name || '',
+    name: g('formalName') || existing?.name || '',
     nickname: g('nickname') || existing?.nickname || '',
-    isActive: flat.isActive ?? existing?.isActive ?? true,
-    roleOverview: roleOverview || existing?.roleOverview || '',
+    isActive: (data.isActive as boolean) ?? existing?.isActive ?? true,
+    roleOverview: g('roleOverview') || existing?.roleOverview || '',
     appearance: {
-      race: raceOrForm || existing?.appearance?.race || '',
+      race: g('raceOrForm') || existing?.appearance?.race || '',
       gender: g('gender') || existing?.appearance?.gender || '',
-      visualAge: visualAge || existing?.appearance?.visualAge || '',
-      actualAge: actualAge || existing?.appearance?.actualAge || '',
+      visualAge: g('visualAge') || existing?.appearance?.visualAge || '',
+      actualAge: g('actualAge') || existing?.appearance?.actualAge || '',
       location: g('location') || existing?.appearance?.location || '',
-      description: appearanceDesc || existing?.appearance?.description || '',
+      description: g('appearanceDesc') || existing?.appearance?.description || '',
     },
     personality: {
-      core: corePersonality || existing?.personality?.core || '',
-      selfPerception: selfPerception || existing?.personality?.selfPerception || '',
-      attitudeToUser: attitudeToUser || existing?.personality?.attitudeToUser || '',
+      core: g('corePersonality') || existing?.personality?.core || '',
+      selfPerception: g('selfPerception') || existing?.personality?.selfPerception || '',
+      attitudeToUser: g('attitudeToUser') || existing?.personality?.attitudeToUser || '',
       likes: g('likes') || existing?.personality?.likes || '',
       dislikes: g('dislikes') || existing?.personality?.dislikes || '',
     },
     communication: {
-      toneBase: toneBase || existing?.communication?.toneBase || '',
-      wordHabits: wordHabits || existing?.communication?.wordHabits || '',
-      emotionRules: emotionRules || existing?.communication?.emotionRules || '',
-      lengthPref: lengthPref || existing?.communication?.lengthPref || '',
+      toneBase: g('toneBase') || existing?.communication?.toneBase || '',
+      wordHabits: g('wordHabits') || existing?.communication?.wordHabits || '',
+      emotionRules: g('emotionRules') || existing?.communication?.emotionRules || '',
+      lengthPref: g('lengthPref') || existing?.communication?.lengthPref || '',
     },
-    specialLogic: specialLogicList || existing?.specialLogic || '',
-    fewShotExamples: fewShotExamples || existing?.fewShotExamples || '',
+    specialLogic: g('specialLogicList') || existing?.specialLogic || '',
+    fewShotExamples: g('fewShotExamples') || existing?.fewShotExamples || '',
     createdAt: (existing?.createdAt as string) || now,
     updatedAt: now,
   }

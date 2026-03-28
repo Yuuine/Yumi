@@ -11,7 +11,8 @@
     />
 
     <div :class="['toggle-button', { 'sidebar-open': sidebarExpanded }]" @click="toggleSidebar">
-      <IconSidebar />
+      <IconSidebarCollapse v-if="sidebarExpanded" />
+      <IconSidebarExpand v-else />
     </div>
 
     <div class="chat-main" :class="{ 'sidebar-collapsed': !sidebarExpanded }">
@@ -40,7 +41,7 @@ import { ref, nextTick, onMounted } from 'vue'
 import { useChatStore, useAccountStore } from '@/stores'
 import { SidebarNav } from '@/components/sidebar'
 import { MessageList, ChatInput } from '@/components/chat'
-import { IconSidebar } from '@/components/icons'
+import { IconSidebarCollapse, IconSidebarExpand } from '@/components/icons'
 import ModelsModal from '@/components/models/ModelsModal.vue'
 import CharacterModal from '@/components/settings/CharacterModal.vue'
 import SettingsModal from '@/components/settings/SettingsModal.vue'
@@ -75,6 +76,8 @@ function toggleSidebar() {
 }
 
 onMounted(async () => {
+  // 初始化账号信息
+  await accountStore.initialize()
   await checkConversations()
   nextTick(() => {
     messageListRef.value?.scrollToBottom()

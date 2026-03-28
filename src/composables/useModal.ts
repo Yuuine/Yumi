@@ -48,7 +48,7 @@ interface UseConfirmDialogReturn {
   ) => void
 }
 
-export function useConfirmDialog(): UseConfirmDialogReturn {
+function createConfirmDialogState(): UseConfirmDialogReturn {
   const visible = ref(false)
   const title = ref('')
   const message = ref('')
@@ -95,4 +95,11 @@ export function useConfirmDialog(): UseConfirmDialogReturn {
     cancel,
     showDialog,
   }
+}
+
+// 全局单例状态，确保整个应用共享同一个确认对话框状态
+const globalConfirmDialogState = createConfirmDialogState()
+
+export function useConfirmDialog(): UseConfirmDialogReturn {
+  return globalConfirmDialogState
 }

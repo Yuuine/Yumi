@@ -9,6 +9,9 @@ from sqlmodel import Field, SQLModel
 
 class MemorySummaryBase(SQLModel):
     """记忆摘要基础模型"""
+    model_config = {
+        'protected_namespaces': ()
+    }
     user_id: str = Field(index=True)
     conversation_id: Optional[str] = Field(default=None, index=True)
     summary: str

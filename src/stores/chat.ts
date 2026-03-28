@@ -2,11 +2,12 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { ChatMessage, ChatRequest, ChatResponse, EmotionData } from '@/types'
 import { chatApi } from '@/api/chat'
+import { conversationsApi } from '@/api/conversations'
 import { useAccountStore, type AccountConversation } from './account'
 import type { ApiError } from '@/api/http-client'
 import dayjs from 'dayjs'
 import { logger } from '@/utils/logger'
-import { clearAllCache, saveToStorage, loadFromStorage } from '@/utils/local-storage'
+import { clearMessageCache, saveToStorage, loadFromStorage } from '@/utils/local-storage'
 import { sortMessages, mergeMessageHistory, dedupeMessagesById } from '@/utils/message'
 import { generateConversationId } from '@/utils'
 
@@ -37,6 +38,21 @@ export const useChatStore = defineStore('chat', () => {
   const abortController = ref<AbortController | null>(null)
   const historyPage = ref(0)
   const hasMoreHistory = ref(true)
+
+  function ensureCurrentUserId(): string {
+    if (currentUserId.value && currentUserId.value !== 'default') {
+      return currentUserId.value
+    }
+
+    const accountStore = useAccountStore()
+    const accountId = accountStore.currentAccountId
+    if (!accountId) {
+      throw new Error('当前账号未初始化，无法发送消息')
+    }
+
+    currentUserId.value = accountId
+    return accountId
+  }
 
   async function initializeConversation(): Promise<void> {
     const accountStore = useAccountStore()
@@ -120,11 +136,23 @@ export const useChatStore = defineStore('chat', () => {
     hasMoreHistory.value = true
 
     const accountStore = useAccountStore()
+    ensureCurrentUserId()
     const targetCharacterId =
       characterId ?? accountStore.currentConfig?.activeCharacterId ?? undefined
 
     if (characterId) {
       await accountStore.setActiveCharacterId(characterId)
+    }
+
+    const userId = accountStore.currentAccount?.id
+    if (userId) {
+      try {
+        await conversationsApi.createConversation(userId, targetCharacterId, newId, '新对话')
+      } catch (error) {
+        logger.warn('ChatStore', 'Failed to create conversation in backend, using local only', {
+          error,
+        })
+      }
     }
 
     await accountStore.saveConversation({
@@ -165,9 +193,10 @@ export const useChatStore = defineStore('chat', () => {
 
     try {
       const characterId = accountStore.currentConfig?.activeCharacterId ?? undefined
+      const userId = ensureCurrentUserId()
 
       const request: ChatRequest = {
-        userId: currentUserId.value,
+        userId,
         conversationId: currentConversationId.value ?? undefined,
         message: content.trim(),
         temperature: 0.85,
@@ -268,9 +297,11 @@ export const useChatStore = defineStore('chat', () => {
   ): Promise<ReadableStreamDefaultReader<Uint8Array> | null> {
     const accountStore = useAccountStore()
     const characterId = accountStore.currentConfig?.activeCharacterId
+    const userId = ensureCurrentUserId()
+    const accessToken = localStorage.getItem('yumi_access_token')
 
     const params = new URLSearchParams({
-      userId: currentUserId.value,
+      userId,
       message: content.trim(),
       temperature: '0.85',
     })
@@ -283,7 +314,10 @@ export const useChatStore = defineStore('chat', () => {
 
     const response = await fetch(`/api/chat/stream?${params}`, {
       signal: abortController.value!.signal,
-      headers: { Accept: 'text/event-stream' },
+      headers: {
+        Accept: 'text/event-stream',
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
     })
 
     if (!response.ok) {
@@ -426,7 +460,7 @@ export const useChatStore = defineStore('chat', () => {
 
     try {
       const history = await chatApi.getHistory(
-        currentUserId.value,
+        ensureCurrentUserId(),
         limit,
         0,
         currentConversationId.value
@@ -447,7 +481,7 @@ export const useChatStore = defineStore('chat', () => {
       historyPage.value++
       const offset = INITIAL_LOAD_LIMIT + (historyPage.value - 1) * LOAD_MORE_LIMIT
       const history = await chatApi.getHistory(
-        currentUserId.value,
+        ensureCurrentUserId(),
         LOAD_MORE_LIMIT,
         offset,
         currentConversationId.value
@@ -485,7 +519,7 @@ export const useChatStore = defineStore('chat', () => {
 
   function clearMessages(): void {
     resetConversationState()
-    clearAllCache()
+    clearMessageCache()
   }
 
   function clearError(): void {

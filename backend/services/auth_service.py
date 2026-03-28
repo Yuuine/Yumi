@@ -333,7 +333,7 @@ class AuthService:
                 id=user_id,
                 nickname=nickname,
                 password_hash=password_hash,
-                role_name="Yumi",
+                role_name=nickname,
                 preferences_json='{"communication_style": "warm", "topics_of_interest": ["生活", "工作", "情感"], "emotional_support_level": "high", "response_length": "medium"}'
             )
             session.add(new_user)

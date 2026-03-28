@@ -1,5 +1,6 @@
 """
 Model Management API Router
+基于新数据库设计重构，使用 SQLModel
 """
 
 from __future__ import annotations
@@ -15,9 +16,12 @@ import httpx
 from cryptography.fernet import Fernet
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
+from sqlmodel import select
 
 from ..core import clear_active_model, get_logger, set_active_model
 from ..core.model_state import get_active_model as get_active_model_state
+from ..database_sqlmodel import get_session
+from ..models import ModelConfig as ModelConfigModel, ModelProvider
 from ..services.log_service import AuditAction, log_service
 
 router = APIRouter()
@@ -140,47 +144,42 @@ def mask_api_key(api_key: str) -> str:
     return f"{api_key[:4]}****{api_key[-4:]}"
 
 
+def _model_to_response(model: ModelConfigModel) -> ModelConfig:
+    """将数据库模型转换为响应模型"""
+    return ModelConfig(
+        id=model.id,
+        providerId=model.provider_id,
+        name=model.name,
+        baseUrl=model.base_url,
+        apiKey=mask_api_key(decrypt_api_key(model.api_key)) if model.api_key else "",
+        modelName=model.model_name,
+        customModelName=model.custom_model_name,
+        modelType=model.model_type or "text",
+        maxTokens=model.max_tokens or 4096,
+        temperature=model.temperature or 0.85,
+        isEnabled=bool(model.is_enabled),
+        isTested=bool(model.is_tested),
+        testStatus=model.test_status or "untested",
+        lastTestAt=model.last_test_at.isoformat() if model.last_test_at else None,
+        lastTestMessage=model.last_test_message,
+        editCount=model.edit_count or 0,
+        createdAt=model.created_at.isoformat() if model.created_at else None,
+        updatedAt=model.updated_at.isoformat() if model.updated_at else None,
+    )
+
+
 @router.get("/models", response_model=list[ModelConfig])
 async def get_models(accountId: str = Query(..., min_length=1)):
-    from ..database import get_db
-
+    """获取用户的所有模型配置"""
     try:
-        async with get_db() as db:
-            cursor = await db.execute(
-                """SELECT id, provider_id, name, base_url, api_key, model_name,
-                          custom_model_name, model_type, max_tokens, temperature,
-                          is_enabled, is_tested, test_status, last_test_at,
-                          last_test_message, edit_count, created_at, updated_at
-                   FROM model_configs
-                   WHERE account_id = ?
-                   ORDER BY created_at DESC""",
-                (accountId,),
+        async with get_session() as session:
+            result = await session.exec(
+                select(ModelConfigModel)
+                .where(ModelConfigModel.account_id == accountId)
+                .order_by(ModelConfigModel.created_at.desc())
             )
-            rows = await cursor.fetchall()
-
-            return [
-                ModelConfig(
-                    id=row[0],
-                    providerId=row[1],
-                    name=row[2],
-                    baseUrl=row[3],
-                    apiKey=mask_api_key(decrypt_api_key(row[4])) if row[4] else "",
-                    modelName=row[5],
-                    customModelName=row[6],
-                    modelType=row[7] or "text",
-                    maxTokens=row[8],
-                    temperature=row[9],
-                    isEnabled=bool(row[10]),
-                    isTested=bool(row[11]),
-                    testStatus=row[12] or "untested",
-                    lastTestAt=row[13],
-                    lastTestMessage=row[14],
-                    editCount=row[15] or 0,
-                    createdAt=row[16],
-                    updatedAt=row[17],
-                )
-                for row in rows
-            ]
+            models = result.all()
+            return [_model_to_response(m) for m in models]
     except Exception as e:
         logger.error("Failed to get models: %s", e)
         return []
@@ -188,50 +187,38 @@ async def get_models(accountId: str = Query(..., min_length=1)):
 
 @router.post("/models", response_model=ModelConfig)
 async def create_model(config: ModelConfig, accountId: str = Query(..., min_length=1)):
-    from ..database import get_db
-
+    """创建新模型配置"""
     model_id = str(uuid.uuid4())
-    now = datetime.utcnow().isoformat()
+    now = datetime.utcnow()
 
     display_name = config.name.strip() if config.name and config.name.strip() else None
-
     if not display_name:
         display_name = await _generate_unique_name(config.modelName, accountId)
 
     try:
-        async with get_db() as db:
-            await db.execute(
-                """INSERT INTO model_configs
-                   (id, account_id, provider_id, name, base_url, api_key, model_name,
-                    custom_model_name, model_type, max_tokens, temperature,
-                    is_enabled, is_tested, test_status, edit_count, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    model_id,
-                    accountId,
-                    config.providerId,
-                    display_name,
-                    _clean_base_url(config.baseUrl),
-                    encrypt_api_key(config.apiKey),
-                    config.modelName,
-                    config.customModelName,
-                    config.modelType,
-                    config.maxTokens,
-                    config.temperature,
-                    1 if config.isEnabled and config.apiKey else 0,
-                    0,
-                    "untested",
-                    0,
-                    now,
-                    now,
-                ),
+        async with get_session() as session:
+            new_model = ModelConfigModel(
+                id=model_id,
+                account_id=accountId,
+                provider_id=config.providerId,
+                name=display_name,
+                base_url=_clean_base_url(config.baseUrl),
+                api_key=encrypt_api_key(config.apiKey),
+                model_name=config.modelName,
+                custom_model_name=config.customModelName,
+                model_type=config.modelType,
+                max_tokens=config.maxTokens,
+                temperature=config.temperature,
+                is_enabled=1 if config.isEnabled and config.apiKey else 0,
+                is_tested=False,
+                test_status="untested",
+                edit_count=0,
+                created_at=now,
+                updated_at=now,
             )
-            await db.commit()
-
-            config.id = model_id
-            config.name = display_name
-            config.createdAt = now
-            config.updatedAt = now
+            session.add(new_model)
+            await session.commit()
+            await session.refresh(new_model)
 
             await log_service.log_audit(
                 action=AuditAction.MODEL_KEY_ADD,
@@ -241,7 +228,7 @@ async def create_model(config: ModelConfig, accountId: str = Query(..., min_leng
                 details={"provider": config.providerId, "name": display_name},
             )
 
-            return config
+            return _model_to_response(new_model)
     except Exception as e:
         logger.error("Failed to create model: %s", e)
         await log_service.log_audit(
@@ -256,21 +243,16 @@ async def create_model(config: ModelConfig, accountId: str = Query(..., min_leng
 
 async def _generate_unique_name(base_name: str, account_id: str) -> str:
     """生成唯一的显示名称，如果重复则添加数字编号"""
-    from ..database import get_db
-
     try:
-        async with get_db() as db:
-            cursor = await db.execute(
-                "SELECT name FROM model_configs WHERE account_id = ? AND name LIKE ?",
-                (account_id, f"{base_name}%"),
+        async with get_session() as session:
+            result = await session.exec(
+                select(ModelConfigModel.name)
+                .where(ModelConfigModel.account_id == account_id)
+                .where(ModelConfigModel.name.like(f"{base_name}%"))
             )
-            rows = await cursor.fetchall()
+            existing_names = {row for row in result.all()}
 
-            if not rows:
-                return base_name
-
-            existing_names = {row[0] for row in rows}
-            if base_name not in existing_names:
+            if not existing_names or base_name not in existing_names:
                 return base_name
 
             counter = 2
@@ -287,62 +269,49 @@ async def _generate_unique_name(base_name: str, account_id: str) -> str:
 async def update_model(
     model_id: str, config: ModelConfig, accountId: str = Query(..., min_length=1)
 ):
-    from ..database import get_db
-
-    now = datetime.utcnow().isoformat()
+    """更新模型配置"""
+    now = datetime.utcnow()
 
     display_name = config.name.strip() if config.name and config.name.strip() else None
-
     if not display_name:
         display_name = await _generate_unique_name_for_update(model_id, config.modelName, accountId)
 
     try:
-        async with get_db() as db:
-            cursor = await db.execute(
-                "SELECT edit_count, api_key FROM model_configs WHERE id = ? AND account_id = ?",
-                (model_id, accountId),
+        async with get_session() as session:
+            result = await session.exec(
+                select(ModelConfigModel)
+                .where(ModelConfigModel.id == model_id)
+                .where(ModelConfigModel.account_id == accountId)
             )
-            row = await cursor.fetchone()
-            if row is None:
+            existing_model = result.first()
+
+            if not existing_model:
                 raise HTTPException(status_code=404, detail="模型不存在")
-            current_edit_count = row[0] if row else 0
-            existing_api_key = row[1] if row else ""
 
-            if config.apiKeyUnchanged:
-                api_key_to_save = existing_api_key
-            else:
-                api_key_to_save = encrypt_api_key(config.apiKey)
+            # 更新字段
+            existing_model.provider_id = config.providerId
+            existing_model.name = display_name
+            existing_model.base_url = _clean_base_url(config.baseUrl)
+            existing_model.model_name = config.modelName
+            existing_model.custom_model_name = config.customModelName
+            existing_model.model_type = config.modelType
+            existing_model.max_tokens = config.maxTokens
+            existing_model.temperature = config.temperature
+            existing_model.edit_count = (existing_model.edit_count or 0) + 1
+            existing_model.updated_at = now
 
-            await db.execute(
-                """UPDATE model_configs
-                   SET provider_id = ?, name = ?, base_url = ?, api_key = ?,
-                       model_name = ?, custom_model_name = ?, model_type = ?,
-                       max_tokens = ?, temperature = ?, is_enabled = ?,
-                       edit_count = ?, updated_at = ?
-                   WHERE id = ? AND account_id = ?""",
-                (
-                    config.providerId,
-                    display_name,
-                    _clean_base_url(config.baseUrl),
-                    api_key_to_save,
-                    config.modelName,
-                    config.customModelName,
-                    config.modelType,
-                    config.maxTokens,
-                    config.temperature,
-                    1 if config.isEnabled and api_key_to_save else 0,
-                    current_edit_count + 1,
-                    now,
-                    model_id,
-                    accountId,
-                ),
-            )
-            await db.commit()
+            # 处理 API Key
+            if not config.apiKeyUnchanged:
+                existing_model.api_key = encrypt_api_key(config.apiKey)
 
-            config.id = model_id
-            config.name = display_name
-            config.editCount = current_edit_count + 1
-            config.updatedAt = now
+            # 更新启用状态（必须有 API Key）
+            if config.isEnabled and existing_model.api_key:
+                existing_model.is_enabled = True
+            elif not config.isEnabled:
+                existing_model.is_enabled = False
+
+            await session.commit()
+            await session.refresh(existing_model)
 
             await log_service.log_audit(
                 action=AuditAction.MODEL_KEY_UPDATE,
@@ -352,7 +321,7 @@ async def update_model(
                 details={"name": display_name, "api_key_changed": not config.apiKeyUnchanged},
             )
 
-            return config
+            return _model_to_response(existing_model)
     except Exception as e:
         logger.error("Failed to update model: %s", e)
         await log_service.log_audit(
@@ -367,21 +336,17 @@ async def update_model(
 
 async def _generate_unique_name_for_update(exclude_id: str, base_name: str, account_id: str) -> str:
     """生成唯一的显示名称（更新时排除当前记录）"""
-    from ..database import get_db
-
     try:
-        async with get_db() as db:
-            cursor = await db.execute(
-                "SELECT name FROM model_configs WHERE account_id = ? AND name LIKE ? AND id != ?",
-                (account_id, f"{base_name}%", exclude_id),
+        async with get_session() as session:
+            result = await session.exec(
+                select(ModelConfigModel.name)
+                .where(ModelConfigModel.account_id == account_id)
+                .where(ModelConfigModel.name.like(f"{base_name}%"))
+                .where(ModelConfigModel.id != exclude_id)
             )
-            rows = await cursor.fetchall()
+            existing_names = {row for row in result.all()}
 
-            if not rows:
-                return base_name
-
-            existing_names = {row[0] for row in rows}
-            if base_name not in existing_names:
+            if not existing_names or base_name not in existing_names:
                 return base_name
 
             counter = 2
@@ -396,21 +361,22 @@ async def _generate_unique_name_for_update(exclude_id: str, base_name: str, acco
 
 @router.delete("/models/{model_id}")
 async def delete_model(model_id: str, accountId: str = Query(..., min_length=1)):
-    from ..database import get_db
-
+    """删除模型配置"""
     try:
-        async with get_db() as db:
-            cursor = await db.execute(
-                "SELECT name FROM model_configs WHERE id = ? AND account_id = ?",
-                (model_id, accountId),
+        async with get_session() as session:
+            result = await session.exec(
+                select(ModelConfigModel)
+                .where(ModelConfigModel.id == model_id)
+                .where(ModelConfigModel.account_id == accountId)
             )
-            row = await cursor.fetchone()
-            model_name = row[0] if row else None
+            model = result.first()
 
-            await db.execute(
-                "DELETE FROM model_configs WHERE id = ? AND account_id = ?", (model_id, accountId)
-            )
-            await db.commit()
+            if not model:
+                raise HTTPException(status_code=404, detail="模型不存在")
+
+            model_name = model.name
+            await session.delete(model)
+            await session.commit()
 
             await log_service.log_audit(
                 action=AuditAction.MODEL_KEY_DELETE,
@@ -435,17 +401,17 @@ async def delete_model(model_id: str, accountId: str = Query(..., min_length=1))
 
 @router.post("/models/{model_id}/enable")
 async def enable_model(model_id: str, accountId: str = Query(..., min_length=1)):
-    from ..database import get_db
-
+    """启用模型"""
     try:
-        async with get_db() as db:
-            cursor = await db.execute(
-                "SELECT api_key, name, provider_id, base_url, model_name FROM model_configs WHERE id = ? AND account_id = ?",
-                (model_id, accountId),
+        async with get_session() as session:
+            result = await session.exec(
+                select(ModelConfigModel)
+                .where(ModelConfigModel.id == model_id)
+                .where(ModelConfigModel.account_id == accountId)
             )
-            row = await cursor.fetchone()
+            model = result.first()
 
-            if not row:
+            if not model:
                 await log_service.log_audit(
                     action=AuditAction.MODEL_ENABLE,
                     resource_type="model",
@@ -455,31 +421,26 @@ async def enable_model(model_id: str, accountId: str = Query(..., min_length=1))
                 )
                 return {"success": False, "message": "模型不存在"}
 
-            api_key, name, provider_id, base_url, model_name = row
-
-            if not api_key:
+            if not model.api_key:
                 await log_service.log_audit(
                     action=AuditAction.MODEL_ENABLE,
                     resource_type="model",
                     resource_id=model_id,
                     result="FAIL",
-                    details={"reason": "no_api_key", "name": name},
+                    details={"reason": "no_api_key", "name": model.name},
                 )
                 return {"success": False, "message": "请先配置 API 密钥"}
 
-            now = datetime.now(timezone.utc).isoformat()
-            await db.execute(
-                "UPDATE model_configs SET is_enabled = 1, updated_at = ? WHERE id = ? AND account_id = ?",
-                (now, model_id, accountId),
-            )
-            await db.commit()
+            model.is_enabled = True
+            model.updated_at = datetime.utcnow()
+            await session.commit()
 
             await log_service.log_audit(
                 action=AuditAction.MODEL_ENABLE,
                 resource_type="model",
                 resource_id=model_id,
                 result="SUCCESS",
-                details={"name": name},
+                details={"name": model.name},
             )
 
             return {"success": True, "message": "模型已启用"}
@@ -497,23 +458,24 @@ async def enable_model(model_id: str, accountId: str = Query(..., min_length=1))
 
 @router.post("/models/{model_id}/disable")
 async def disable_model(model_id: str, accountId: str = Query(..., min_length=1)):
-    from ..database import get_db
-
+    """禁用模型"""
     try:
-        async with get_db() as db:
-            cursor = await db.execute(
-                "SELECT name FROM model_configs WHERE id = ? AND account_id = ?",
-                (model_id, accountId),
+        async with get_session() as session:
+            result = await session.exec(
+                select(ModelConfigModel)
+                .where(ModelConfigModel.id == model_id)
+                .where(ModelConfigModel.account_id == accountId)
             )
-            row = await cursor.fetchone()
-            model_name = row[0] if row else None
+            model = result.first()
 
-            await db.execute(
-                "UPDATE model_configs SET is_enabled = 0, updated_at = ? WHERE id = ? AND account_id = ?",
-                (datetime.utcnow().isoformat(), model_id, accountId),
-            )
-            await db.commit()
+            if not model:
+                return {"success": False, "message": "模型不存在"}
 
+            model.is_enabled = False
+            model.updated_at = datetime.utcnow()
+            await session.commit()
+
+            # 清除活动模型缓存
             active_model = get_active_model_state(accountId)
             if active_model and active_model.get("model_id") == model_id:
                 clear_active_model(accountId)
@@ -523,7 +485,7 @@ async def disable_model(model_id: str, accountId: str = Query(..., min_length=1)
                 resource_type="model",
                 resource_id=model_id,
                 result="SUCCESS",
-                details={"name": model_name},
+                details={"name": model.name},
             )
 
             return {"success": True, "message": "模型已禁用"}
@@ -541,34 +503,32 @@ async def disable_model(model_id: str, accountId: str = Query(..., min_length=1)
 
 @router.post("/models/{model_id}/set_active")
 async def set_active_model_endpoint(model_id: str, accountId: str = Query(..., min_length=1)):
-    from ..database import get_db
-
+    """设置活动模型"""
     try:
-        async with get_db() as db:
-            cursor = await db.execute(
-                "SELECT api_key, name, provider_id, base_url, model_name, is_enabled FROM model_configs WHERE id = ? AND account_id = ?",
-                (model_id, accountId),
+        async with get_session() as session:
+            result = await session.exec(
+                select(ModelConfigModel)
+                .where(ModelConfigModel.id == model_id)
+                .where(ModelConfigModel.account_id == accountId)
             )
-            row = await cursor.fetchone()
+            model = result.first()
 
-            if not row:
+            if not model:
                 return {"success": False, "message": "模型不存在"}
 
-            api_key, name, provider_id, base_url, model_name, is_enabled = row
-
-            if not api_key:
+            if not model.api_key:
                 return {"success": False, "message": "请先配置 API 密钥"}
 
-            if not is_enabled:
+            if not model.is_enabled:
                 return {"success": False, "message": "请先启用该模型"}
 
             model_config = {
                 "model_id": model_id,
-                "provider_id": provider_id,
-                "base_url": base_url,
-                "api_key": decrypt_api_key(api_key),
-                "model_name": model_name,
-                "display_name": name,
+                "provider_id": model.provider_id,
+                "base_url": model.base_url,
+                "api_key": decrypt_api_key(model.api_key),
+                "model_name": model.model_name,
+                "display_name": model.name,
             }
             set_active_model(accountId, model_config)
 
@@ -577,10 +537,10 @@ async def set_active_model_endpoint(model_id: str, accountId: str = Query(..., m
                 resource_type="model",
                 resource_id=model_id,
                 result="SUCCESS",
-                details={"action": "set_active", "name": name},
+                details={"action": "set_active", "name": model.name},
             )
 
-            return {"success": True, "message": f"已切换到模型: {name}"}
+            return {"success": True, "message": f"已切换到模型: {model.name}"}
     except Exception as e:
         logger.error("Failed to set active model: %s", e)
         raise
@@ -588,6 +548,7 @@ async def set_active_model_endpoint(model_id: str, accountId: str = Query(..., m
 
 @router.post("/test", response_model=ModelTestResponse)
 async def test_model(request: ModelTestRequest):
+    """测试模型连接"""
     from ..services.llm import LLMService
 
     llm_service = LLMService()
@@ -630,50 +591,39 @@ class ModelTestByIdRequest(BaseModel):
 @router.post("/models/{model_id}/test")
 async def test_model_by_id(
     model_id: str,
-    request: ModelTestByIdRequest = None,  # type: ignore[assignment]
+    request: ModelTestByIdRequest = None,
     accountId: str = Query(..., min_length=1),
 ):
-    from ..database import get_db
-
+    """通过ID测试模型"""
     verbose = request.verbose if request else True
     logger.info("Testing model by id: %s, verbose: %s", model_id, verbose)
 
     try:
-        async with get_db() as db:
-            cursor = await db.execute(
-                "SELECT base_url, api_key, model_name FROM model_configs WHERE id = ? AND account_id = ?",
-                (model_id, accountId),
+        async with get_session() as session:
+            result = await session.exec(
+                select(ModelConfigModel)
+                .where(ModelConfigModel.id == model_id)
+                .where(ModelConfigModel.account_id == accountId)
             )
-            row = await cursor.fetchone()
+            model = result.first()
 
-            if not row:
+            if not model:
                 return {"success": False, "message": "模型不存在"}
 
-            base_url, encrypted_key, model_name = row
-            api_key = decrypt_api_key(encrypted_key) if encrypted_key else ""
-
+            api_key = decrypt_api_key(model.api_key) if model.api_key else ""
             if not api_key:
                 return {"success": False, "message": "请先配置 API 密钥"}
 
-            test_result = await _perform_test(base_url, api_key, model_name, verbose)
-            now = datetime.utcnow().isoformat()
+            test_result = await _perform_test(model.base_url, api_key, model.model_name, verbose)
+            now = datetime.utcnow()
 
-            await db.execute(
-                """UPDATE model_configs
-                   SET is_tested = ?, test_status = ?, last_test_at = ?,
-                       last_test_message = ?, updated_at = ?
-                   WHERE id = ? AND account_id = ?""",
-                (
-                    1 if test_result["success"] else 0,
-                    "passed" if test_result["success"] else "failed",
-                    now,
-                    test_result["message"],
-                    now,
-                    model_id,
-                    accountId,
-                ),
-            )
-            await db.commit()
+            model.is_tested = test_result["success"]
+            model.test_status = "passed" if test_result["success"] else "failed"
+            model.last_test_at = now
+            model.last_test_message = test_result["message"]
+            model.updated_at = now
+
+            await session.commit()
 
             return test_result
     except Exception as e:
@@ -682,6 +632,7 @@ async def test_model_by_id(
 
 
 async def _perform_test(base_url: str, api_key: str, model_name: str, verbose: bool = True) -> dict:
+    """执行模型测试"""
     cleaned_url = _clean_base_url(base_url)
     url = f"{cleaned_url}/chat/completions"
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
@@ -744,13 +695,7 @@ async def _perform_test(base_url: str, api_key: str, model_name: str, verbose: b
                     "reasoning": None,
                 }
     except httpx.TimeoutException as e:
-        logger.error(
-            "Model test timeout: url=%s, error=%s (type=%s)",
-            url,
-            str(e),
-            type(e).__name__,
-            exc_info=True,
-        )
+        logger.error("Model test timeout: url=%s, error=%s", url, str(e))
         return {
             "success": False,
             "message": "测试失败: 连接超时",
@@ -758,13 +703,7 @@ async def _perform_test(base_url: str, api_key: str, model_name: str, verbose: b
             "reasoning": None,
         }
     except httpx.ConnectError as e:
-        logger.error(
-            "Model test ConnectError: url=%s, error=%s (type=%s)",
-            url,
-            str(e),
-            type(e).__name__,
-            exc_info=True,
-        )
+        logger.error("Model test ConnectError: url=%s, error=%s", url, str(e))
         return {
             "success": False,
             "message": "测试失败: 无法连接服务器，请检查网络或代理配置",
@@ -772,13 +711,7 @@ async def _perform_test(base_url: str, api_key: str, model_name: str, verbose: b
             "reasoning": None,
         }
     except Exception as e:
-        logger.error(
-            "Model test error: url=%s, error=%s (type=%s)",
-            url,
-            str(e),
-            type(e).__name__,
-            exc_info=True,
-        )
+        logger.error("Model test error: url=%s, error=%s", url, str(e))
         return {
             "success": False,
             "message": f"测试失败: {str(e)}",
@@ -789,43 +722,19 @@ async def _perform_test(base_url: str, api_key: str, model_name: str, verbose: b
 
 @router.get("/active", response_model=ModelConfig | None)
 async def get_active_model(accountId: str = Query(..., min_length=1)):
-    from ..database import get_db
-
+    """获取当前活动模型"""
     try:
-        async with get_db() as db:
-            cursor = await db.execute(
-                """SELECT id, provider_id, name, base_url, api_key, model_name,
-                          custom_model_name, model_type, max_tokens, temperature,
-                          is_enabled, is_tested, test_status, last_test_at,
-                          last_test_message, edit_count, created_at, updated_at
-                   FROM model_configs
-                   WHERE account_id = ? AND is_enabled = 1
-                   LIMIT 1""",
-                (accountId,),
+        async with get_session() as session:
+            result = await session.exec(
+                select(ModelConfigModel)
+                .where(ModelConfigModel.account_id == accountId)
+                .where(ModelConfigModel.is_enabled == True)
+                .limit(1)
             )
-            row = await cursor.fetchone()
+            model = result.first()
 
-            if row:
-                return ModelConfig(
-                    id=row[0],
-                    providerId=row[1],
-                    name=row[2],
-                    baseUrl=row[3],
-                    apiKey=mask_api_key(decrypt_api_key(row[4])) if row[4] else "",
-                    modelName=row[5],
-                    customModelName=row[6],
-                    modelType=row[7] or "text",
-                    maxTokens=row[8],
-                    temperature=row[9],
-                    isEnabled=bool(row[10]),
-                    isTested=bool(row[11]),
-                    testStatus=row[12] or "untested",
-                    lastTestAt=row[13],
-                    lastTestMessage=row[14],
-                    editCount=row[15] or 0,
-                    createdAt=row[16],
-                    updatedAt=row[17],
-                )
+            if model:
+                return _model_to_response(model)
             return None
     except Exception as e:
         logger.error("Failed to get active model: %s", e)

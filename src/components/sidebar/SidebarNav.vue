@@ -8,24 +8,67 @@
         </button>
       </div>
 
-      <div class="conversation-list">
+      <div class="character-list">
         <div
-          v-for="group in groupedConversations"
-          :key="group.characterId || 'default'"
-          class="time-group"
+          v-for="group in characterGroups"
+          :key="group.characterId"
+          class="character-card"
+          :class="{ expanded: expandedCharacters.has(group.characterId) }"
         >
-          <div class="time-label">{{ getTimeLabel(group) }}</div>
-          <div class="conversation-items">
-            <div
-              v-for="conv in group.conversations"
-              :key="conv.id"
-              class="conversation-item"
-              :class="{ active: currentConversationId === conv.id }"
-              @click="handleSelectConversation(conv.id)"
-            >
-              <span class="conversation-title">{{ conv.title || '新对话' }}</span>
+          <!-- 角色卡头部 -->
+          <div class="character-header" @click="toggleCharacter(group.characterId)">
+            <div class="character-avatar">
+              {{ group.characterName.charAt(0).toUpperCase() }}
+            </div>
+            <div class="character-info">
+              <span class="character-name">{{ group.characterName }}</span>
+              <span class="conversation-count">{{ group.conversations.length }} 个对话</span>
+            </div>
+            <div class="character-actions">
+              <IconChevronDown
+                class="expand-icon"
+                :class="{ rotated: expandedCharacters.has(group.characterId) }"
+              />
             </div>
           </div>
+
+          <!-- 对话列表 -->
+          <Transition name="expand">
+            <div v-show="expandedCharacters.has(group.characterId)" class="conversation-list">
+              <div
+                v-for="conv in group.conversations"
+                :key="conv.id"
+                class="conversation-item"
+                :class="{ active: currentConversationId === conv.id }"
+                @click.stop="handleSelectConversation(conv.id)"
+              >
+                <div class="conversation-content">
+                  <IconChat class="conversation-icon" />
+                  <span v-if="editingConversationId !== conv.id" class="conversation-title">
+                    {{ conv.title || '新对话' }}
+                  </span>
+                  <input
+                    v-else
+                    v-model="editingTitle"
+                    class="conversation-title-input"
+                    @blur="saveTitle(conv.id)"
+                    @keyup.enter="saveTitle(conv.id)"
+                    @keyup.esc="cancelEdit"
+                    ref="titleInputRef"
+                    v-focus
+                  />
+                </div>
+                <div class="conversation-actions" v-if="currentConversationId === conv.id">
+                  <button class="action-btn" @click.stop="startEdit(conv)" title="重命名">
+                    <IconEdit />
+                  </button>
+                  <button class="action-btn delete" @click.stop="confirmDelete(conv)" title="删除">
+                    <IconDelete />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </Transition>
         </div>
       </div>
     </div>
@@ -47,32 +90,56 @@
         <IconMore class="user-menu-icon" />
       </button>
     </div>
+
+    <!-- 角色选择对话框 -->
+    <CharacterSelectDialog
+      :visible="showCharacterSelect"
+      :characters="characters"
+      @close="showCharacterSelect = false"
+      @confirm="handleCharacterSelect"
+      @create-character="handleCreateCharacter"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useAccountStore, useChatStore } from '@/stores'
-import { IconAdd, IconMore, IconModels, IconCharacter } from '@/components/icons'
+import type { AccountCharacter } from '@/types/character'
+import {
+  IconAdd,
+  IconMore,
+  IconModels,
+  IconCharacter,
+  IconChevronDown,
+  IconChat,
+  IconEdit,
+  IconDelete,
+} from '@/components/icons'
+import { CharacterSelectDialog } from '@/components/common'
 import { conversationsApi } from '@/api'
 import { logger } from '@/utils/logger'
+import { useConfirmDialog } from '@/composables/useModal'
 
 interface Conversation {
   id: string
   title: string | null
-  character_id: string | null
-  created_at: string
-  updated_at: string
+  characterId: string | null
+  createdAt: string
+  updatedAt: string
+  characterName?: string | null
+  formalName?: string | null
 }
 
-interface ConversationGroup {
-  characterId: string | null
-  characterName: string | null
+interface CharacterGroup {
+  characterId: string
+  characterName: string
   conversations: Conversation[]
 }
 
 const accountStore = useAccountStore()
 const chatStore = useChatStore()
+const confirmDialog = useConfirmDialog()
 
 interface Props {
   isExpanded?: boolean
@@ -89,9 +156,25 @@ const emit = defineEmits<{
   createConversation: [characterId: string | null]
   selectConversation: [conversationId: string]
   newChat: []
+  deleteConversation: [conversationId: string]
 }>()
 
 const conversations = ref<Conversation[]>([])
+const characters = ref<AccountCharacter[]>([])
+const expandedCharacters = ref<Set<string>>(new Set())
+const editingConversationId = ref<string | null>(null)
+const editingTitle = ref('')
+const titleInputRef = ref<HTMLInputElement | null>(null)
+const showCharacterSelect = ref(false)
+
+const vFocus = {
+  mounted: (el: HTMLInputElement) => {
+    nextTick(() => {
+      el.focus()
+      el.select()
+    })
+  },
+}
 
 const userDisplayName = computed(() => {
   return accountStore.currentAccount?.displayName || '用户'
@@ -104,62 +187,134 @@ const userAvatar = computed(() => {
 
 const currentConversationId = computed(() => chatStore.currentConversationId)
 
-const groupedConversations = computed<ConversationGroup[]>(() => {
+// 按角色卡分组对话
+const characterGroups = computed<CharacterGroup[]>(() => {
   const groups = new Map<string, Conversation[]>()
-  const now = new Date()
-  
-  for (const conv of conversations.value) {
-    const updated = new Date(conv.updated_at)
-    const diffDays = Math.floor((now.getTime() - updated.getTime()) / (1000 * 60 * 60 * 24))
-    
-    let key: string
-    if (diffDays === 0) {
-      key = 'today'
-    } else if (diffDays < 7) {
-      key = '7days'
-    } else if (diffDays < 30) {
-      key = '30days'
-    } else {
-      key = updated.getFullYear().toString()
-    }
-    
-    if (!groups.has(key)) {
-      groups.set(key, [])
-    }
-    groups.get(key)!.push(conv)
+
+  // 初始化所有角色卡（包括没有对话的）
+  for (const char of characters.value) {
+    groups.set(char.id, [])
   }
 
-  return [
-    { characterId: 'today', characterName: null, conversations: groups.get('today') || [] },
-    { characterId: '7days', characterName: null, conversations: groups.get('7days') || [] },
-    { characterId: '30days', characterName: null, conversations: groups.get('30days') || [] },
-    ...Array.from(groups.entries())
-      .filter(([key]) => !['today', '7days', '30days'].includes(key))
-      .map(([key, convs]) => ({
-        characterId: key,
-        characterName: key,
+  // 将对话分配到对应的角色卡
+  const singleCharacterId = characters.value.length === 1 ? characters.value[0].id : null
+  for (const conv of conversations.value) {
+    const charId = conv.characterId || singleCharacterId || 'default'
+    if (!groups.has(charId)) {
+      groups.set(charId, [])
+    }
+    groups.get(charId)!.push(conv)
+  }
+
+  // 转换为数组并排序
+  return Array.from(groups.entries())
+    .map(([charId, convs]) => {
+      const char = characters.value.find((c: AccountCharacter) => c.id === charId)
+      const fallbackName =
+        convs[0]?.characterName ||
+        convs[0]?.formalName ||
+        (charId === 'default' ? '未分配角色' : '未命名角色')
+      return {
+        characterId: charId,
+        characterName: char?.name || fallbackName,
         conversations: convs.sort(
-          (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+          (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
         ),
-      })),
-  ].filter(g => g.conversations.length > 0)
+      }
+    })
+    .sort((a, b) => {
+      // 有对话的角色卡排在前面
+      if (a.conversations.length === 0 && b.conversations.length > 0) return 1
+      if (a.conversations.length > 0 && b.conversations.length === 0) return -1
+      return a.characterName.localeCompare(b.characterName)
+    })
 })
 
-function getTimeLabel(group: ConversationGroup): string {
-  const labels: Record<string, string> = {
-    'today': '昨天',
-    '7days': '7天内',
-    '30days': '30天内'
+function toggleCharacter(characterId: string) {
+  if (expandedCharacters.value.has(characterId)) {
+    expandedCharacters.value.delete(characterId)
+  } else {
+    expandedCharacters.value.add(characterId)
   }
-  return labels[group.characterId || ''] || group.characterName || ''
 }
 
 function handleNewChat() {
-  emit('newChat')
+  // 如果有多个角色卡，显示选择对话框
+  if (characters.value.length > 1) {
+    showCharacterSelect.value = true
+  } else if (characters.value.length === 1) {
+    // 只有一个角色卡，直接使用该角色
+    emit('createConversation', characters.value[0].id)
+  } else {
+    // 没有角色卡，跳转到角色创建
+    emit('openCharacter')
+  }
+}
+
+function handleCharacterSelect(characterId: string) {
+  emit('createConversation', characterId)
+}
+
+function handleCreateCharacter() {
+  emit('openCharacter')
 }
 
 function handleSelectConversation(conversationId: string) {
   emit('selectConversation', conversationId)
+}
+
+function startEdit(conv: Conversation) {
+  editingConversationId.value = conv.id
+  editingTitle.value = conv.title || '新对话'
+}
+
+function saveTitle(conversationId: string) {
+  if (editingTitle.value.trim()) {
+    // 调用 API 更新标题
+    updateConversationTitle(conversationId, editingTitle.value.trim())
+  }
+  editingConversationId.value = null
+  editingTitle.value = ''
+}
+
+function cancelEdit() {
+  editingConversationId.value = null
+  editingTitle.value = ''
+}
+
+async function updateConversationTitle(conversationId: string, title: string) {
+  try {
+    await conversationsApi.updateTitle(conversationId, title)
+    const conv = conversations.value.find(c => c.id === conversationId)
+    if (conv) {
+      conv.title = title
+      await accountStore.saveConversation(conv)
+    }
+    await loadConversations()
+    logger.info('SidebarNav', 'Conversation title updated', { conversationId, title })
+  } catch (error) {
+    logger.error('SidebarNav', 'Failed to update conversation title', error)
+  }
+}
+
+function confirmDelete(conv: Conversation) {
+  confirmDialog.showDialog(
+    '删除对话',
+    `确定要删除对话 "${conv.title || '新对话'}" 吗？此操作不可恢复。`,
+    'warning',
+    true,
+    async () => {
+      try {
+        await conversationsApi.deleteConversation(conv.id)
+        await accountStore.deleteConversation(conv.id)
+        await loadConversations()
+        emit('deleteConversation', conv.id)
+        logger.info('SidebarNav', 'Conversation deleted', { conversationId: conv.id })
+      } catch (error) {
+        logger.error('SidebarNav', 'Failed to delete conversation', error)
+      }
+    }
+  )
 }
 
 function handleOpenModels() {
@@ -176,27 +331,99 @@ function handleUserClick() {
 
 async function loadConversations() {
   try {
+    // 检查当前账号是否可用
+    if (!accountStore.currentAccount) {
+      logger.warn('SidebarNav', 'No current account available, skipping conversation load')
+      return
+    }
+
+    // 先加载角色卡
+    characters.value = await accountStore.loadCharacters()
+
     const result = await conversationsApi.getConversations(
-      accountStore.currentAccount!.id,
+      accountStore.currentAccount.id,
       undefined,
       100,
       0
     )
-    conversations.value = result.conversations.map(conv => ({
-      id: conv.id,
-      title: conv.title || null,
-      character_id: conv.characterId || null,
-      created_at: conv.createdAt || '',
-      updated_at: conv.updatedAt || '',
-    }))
+
+    const backendConversations = result.conversations.map(
+      (conv): Conversation => ({
+        id: conv.id,
+        title: conv.title || null,
+        characterId: conv.characterId || null,
+        createdAt: conv.createdAt || '',
+        updatedAt: conv.updatedAt || '',
+      })
+    )
+    const localConversations = (await accountStore.loadConversations()).map(
+      (conv): Conversation => ({
+        id: conv.id,
+        title: conv.title || null,
+        characterId: conv.characterId || null,
+        createdAt: conv.createdAt || '',
+        updatedAt: conv.updatedAt || '',
+      })
+    )
+
+    const merged = new Map<string, Conversation>()
+    backendConversations.forEach(conv => merged.set(conv.id, conv))
+    localConversations.forEach(conv => {
+      if (!merged.has(conv.id)) {
+        merged.set(conv.id, conv)
+      }
+    })
+
+    conversations.value = Array.from(merged.values()).sort(
+      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    )
+
+    // 默认展开有对话的角色卡
+    characterGroups.value.forEach(group => {
+      if (group.conversations.length > 0) {
+        expandedCharacters.value.add(group.characterId)
+      }
+    })
   } catch (error) {
     logger.error('SidebarNav', 'Failed to load conversations', error)
   }
 }
 
 onMounted(() => {
-  loadConversations()
+  // 如果账号已初始化，立即加载对话
+  if (accountStore.isInitialized && accountStore.currentAccount) {
+    loadConversations()
+  }
 })
+
+// 监听账号初始化状态，初始化完成后加载对话
+watch(
+  () => accountStore.isInitialized,
+  isInitialized => {
+    if (isInitialized && accountStore.currentAccount) {
+      loadConversations()
+    }
+  }
+)
+
+// 监听当前账号变化，切换账号时重新加载对话
+watch(
+  () => accountStore.currentAccountId,
+  (newAccountId, oldAccountId) => {
+    if (newAccountId && newAccountId !== oldAccountId) {
+      loadConversations()
+    }
+  }
+)
+
+watch(
+  () => chatStore.currentConversationId,
+  newConversationId => {
+    if (newConversationId) {
+      loadConversations()
+    }
+  }
+)
 </script>
 
 <style lang="scss" scoped>
@@ -258,12 +485,12 @@ onMounted(() => {
   }
 }
 
-.conversation-list {
+.character-list {
   flex: 1;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 8px;
   padding-right: 4px;
 
   &::-webkit-scrollbar {
@@ -284,27 +511,102 @@ onMounted(() => {
   }
 }
 
-.time-group {
+.character-card {
+  background: #f9fafb;
+  border-radius: 12px;
+  overflow: hidden;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid transparent;
+
+  &:hover {
+    background: #f3f4f6;
+    border-color: #e5e7eb;
+  }
+
+  &.expanded {
+    background: #ffffff;
+    border-color: #e5e7eb;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  }
+}
+
+.character-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    background: rgba(124, 58, 237, 0.05);
+  }
+}
+
+.character-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 600;
+  flex-shrink: 0;
+  box-shadow: 0 2px 6px rgba(124, 58, 237, 0.3);
+}
+
+.character-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.character-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2937;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.conversation-count {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.character-actions {
+  display: flex;
+  align-items: center;
+}
+
+.expand-icon {
+  width: 20px;
+  height: 20px;
+  color: #9ca3af;
+  transition: transform 0.2s;
+
+  &.rotated {
+    transform: rotate(180deg);
+  }
+}
+
+.conversation-list {
+  padding: 0 12px 12px;
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.time-label {
-  font-size: 13px;
-  font-weight: 600;
-  color: #9ca3af;
-  padding: 4px 8px;
-  letter-spacing: 0.2px;
-}
-
-.conversation-items {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
 .conversation-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding: 10px 12px;
   border-radius: 8px;
   cursor: pointer;
@@ -312,20 +614,114 @@ onMounted(() => {
 
   &:hover {
     background: #f3f4f6;
+
+    .conversation-actions {
+      opacity: 1;
+    }
   }
 
   &.active {
-    background: #f3f4f6;
+    background: #ede9fe;
+
+    .conversation-title {
+      color: #7c3aed;
+      font-weight: 500;
+    }
+
+    .conversation-icon {
+      color: #7c3aed;
+    }
   }
 }
 
+.conversation-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.conversation-icon {
+  width: 16px;
+  height: 16px;
+  color: #9ca3af;
+  flex-shrink: 0;
+}
+
 .conversation-title {
-  font-size: 14px;
-  color: #374151;
+  font-size: 13px;
+  color: #4b5563;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   line-height: 1.4;
+}
+
+.conversation-title-input {
+  flex: 1;
+  font-size: 13px;
+  padding: 4px 8px;
+  border: 1px solid #7c3aed;
+  border-radius: 4px;
+  outline: none;
+  background: white;
+  color: #1f2937;
+
+  &:focus {
+    box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.2);
+  }
+}
+
+.conversation-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.action-btn {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #6b7280;
+  transition: all 0.15s;
+
+  &:hover {
+    background: #e5e7eb;
+    color: #374151;
+  }
+
+  &.delete:hover {
+    background: #fee2e2;
+    color: #ef4444;
+  }
+
+  svg {
+    width: 14px;
+    height: 14px;
+  }
+}
+
+// 展开动画
+.expand-enter-active,
+.expand-leave-active {
+  transition: all 0.2s ease;
+  max-height: 500px;
+  overflow: hidden;
+}
+
+.expand-enter-from,
+.expand-leave-to {
+  max-height: 0;
+  opacity: 0;
 }
 
 .sidebar-footer {
@@ -393,7 +789,9 @@ onMounted(() => {
       rgba(148, 163, 184, 0.1) 50%,
       rgba(148, 163, 184, 0.25) 100%
     );
-    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
     -webkit-mask-composite: xor;
     mask-composite: exclude;
     z-index: 0;

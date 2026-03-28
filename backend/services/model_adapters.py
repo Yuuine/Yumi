@@ -250,7 +250,8 @@ class OpenAICompatibleAdapter:
     def _get_proxy_urls(self) -> list[str]:
         """获取代理URL列表"""
         if (
-            self.config.proxy_config
+            hasattr(self.config, 'proxy_config')
+            and self.config.proxy_config
             and self.config.proxy_config.enabled
             and self.config.proxy_config.mode == "smart"
         ):
@@ -416,7 +417,8 @@ class OpenAICompatibleAdapter:
 
         clients: list[tuple[httpx.AsyncClient, bool]] = [(self.client, False)]
         if (
-            self.config.proxy_config
+            hasattr(self.config, 'proxy_config')
+            and self.config.proxy_config
             and self.config.proxy_config.enabled
             and self.config.proxy_config.mode == "smart"
         ):

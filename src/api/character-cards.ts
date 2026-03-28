@@ -1,11 +1,13 @@
 import type { CharacterCardFlat } from '@/types/character'
 import { httpClient } from './http-client'
+import { toCharacterCardListDTO, characterCardToBackend } from '@/utils/field-mapper'
 
 export const characterCardsApi = {
   async list(userId: string): Promise<CharacterCardFlat[]> {
-    return httpClient.get<CharacterCardFlat[]>('/character-cards', {
+    const response = await httpClient.get<Record<string, unknown>[]>('/character-cards', {
       params: { userId },
     })
+    return toCharacterCardListDTO(response) as CharacterCardFlat[]
   },
 
   async upsert(
@@ -15,7 +17,7 @@ export const characterCardsApi = {
   ): Promise<{ success: boolean }> {
     return httpClient.put<{ success: boolean }>(
       `/character-cards/${encodeURIComponent(cardId)}`,
-      body,
+      characterCardToBackend(body),
       {
         params: { userId },
       }
@@ -28,7 +30,7 @@ export const characterCardsApi = {
   ): Promise<{ success: boolean; count: number }> {
     return httpClient.put<{ success: boolean; count: number }>(
       '/character-cards/batch',
-      { cards },
+      { cards: cards.map(card => characterCardToBackend(card)) },
       { params: { userId } }
     )
   },

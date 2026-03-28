@@ -13,7 +13,9 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
 from ..core import get_logger
+from ..database_sqlmodel import get_session
 from ..services import ValidationError, auth_service
+from ..services.character_card import insert_character_card
 from ..services.log_service import AuditAction, log_service
 
 router = APIRouter()
@@ -38,6 +40,7 @@ class TokenResponse(BaseModel):
     userId: str = Field(..., alias="userId")
     accessToken: str = Field(..., alias="accessToken")
     refreshToken: str = Field(..., alias="refreshToken")
+    nickname: str = Field(..., alias="nickname")
 
     class Config:
         populate_by_name = True
@@ -88,13 +91,26 @@ async def register(request: RegisterRequest, req: Request):
     """
     用户注册
 
-    创建新用户账号，返回访问令牌和刷新令牌
+    创建新用户账号，自动创建默认角色"艾拉"，返回访问令牌和刷新令牌
     """
     try:
         user_id, access_token, refresh_token = await auth_service.register_user(
             nickname=request.nickname,
             password=request.password
         )
+
+        # 自动为新用户创建默认角色"艾拉"
+        try:
+            async with get_session() as session:
+                await insert_character_card(
+                    session=session,
+                    user_id=user_id,
+                    card_data=None  # 使用默认艾拉角色数据
+                )
+                logger.info("Default character 'Aira' created for user: %s", user_id)
+        except Exception as char_error:
+            # 角色创建失败不影响注册成功，记录日志即可
+            logger.error("Failed to create default character for user %s: %s", user_id, char_error)
 
         await log_service.log_audit(
             action=AuditAction.USER_REGISTER,
@@ -108,7 +124,8 @@ async def register(request: RegisterRequest, req: Request):
         return TokenResponse(
             userId=user_id,
             accessToken=access_token,
-            refreshToken=refresh_token
+            refreshToken=refresh_token,
+            nickname=request.nickname
         )
 
     except ValidationError as e:
@@ -122,7 +139,7 @@ async def register(request: RegisterRequest, req: Request):
         )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
+            detail={"message": str(e), "code": "VALIDATION_ERROR"}
         ) from e
 
     except Exception as e:
@@ -181,7 +198,8 @@ async def login(request: LoginRequest, req: Request):
     return TokenResponse(
         userId=user_id,
         accessToken=access_token,
-        refreshToken=refresh_token
+        refreshToken=refresh_token,
+        nickname=request.nickname
     )
 
 
@@ -230,7 +248,8 @@ async def refresh_token(request: RefreshTokenRequest, req: Request):
     return TokenResponse(
         userId=user_id,
         accessToken=new_access_token,
-        refreshToken=new_refresh_token
+        refreshToken=new_refresh_token,
+        nickname=nickname
     )
 
 
@@ -242,7 +261,6 @@ async def get_current_user_info(
     获取当前登录用户信息
     """
     user_id, nickname = user_credentials
-
     from ..database_sqlmodel import get_session
     from sqlmodel import select
     from ..models import User

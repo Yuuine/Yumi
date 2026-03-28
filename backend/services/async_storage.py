@@ -2,6 +2,7 @@
 Async Storage Service - 异步存储服务
 实现消息的异步存储，包括数据库存储和向量存储
 支持重试机制和状态追踪
+基于 SQLModel 重构
 """
 
 from __future__ import annotations
@@ -14,8 +15,11 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
+from sqlmodel import select
+
 from ..core import get_logger
-from ..database import get_db
+from ..database_sqlmodel import get_session
+from ..models import ConversationLog
 from .log_service import log_service
 
 logger = get_logger(__name__)
@@ -98,13 +102,10 @@ class AsyncStorageService:
             "total_completed": 0,
             "total_failed": 0,
             "total_retries": 0,
-            "total_db_stored": 0,
-            "total_vector_stored": 0,
-            "total_latency_ms": 0.0,
         }
 
     async def start(self) -> None:
-        """启动后台工作协程"""
+        """启动异步存储服务"""
         if self._running:
             return
 
@@ -112,187 +113,112 @@ class AsyncStorageService:
         self._worker_task = asyncio.create_task(self._worker())
         logger.info("Async storage service started")
 
+        # 处理之前未完成的记录
+        pending_count = await self.process_pending_records()
+        if pending_count > 0:
+            logger.info("Processed %d pending records", pending_count)
+
     async def stop(self) -> None:
-        """优雅关闭工作协程"""
+        """停止异步存储服务"""
+        if not self._running:
+            return
+
         self._running = False
 
+        # 等待队列中的任务完成
         if self._worker_task:
             self._worker_task.cancel()
             try:
                 await self._worker_task
             except asyncio.CancelledError:
                 pass
-            self._worker_task = None
 
-        logger.info(
-            "Async storage service stopped - completed: %d, failed: %d",
-            self._stats["total_completed"],
-            self._stats["total_failed"],
-        )
+        logger.info("Async storage service stopped")
 
-    async def enqueue(self, task: StorageTask) -> str:
+    async def enqueue(self, task: StorageTask) -> None:
         """将任务加入队列
 
         Args:
             task: 存储任务
-
-        Returns:
-            任务ID
         """
-        await self._queue.put(task)
         self._tasks[task.task_id] = task
+        await self._queue.put(task)
         self._stats["total_enqueued"] += 1
+        logger.debug("Enqueued storage task: %s", task.task_id)
 
-        logger.debug(
-            "Enqueued storage task %s for message %s",
-            task.task_id,
-            task.message_id,
-        )
-
-        return task.task_id
-
-    async def get_status(self, task_id: str) -> StorageTask | None:
-        """获取任务状态
-
-        Args:
-            task_id: 任务ID
-
-        Returns:
-            任务对象，不存在则返回 None
-        """
-        return self._tasks.get(task_id)
-
-    async def get_stats(self) -> dict[str, Any]:
-        """获取统计信息
-
-        Returns:
-            统计信息字典
-        """
-        stats = self._stats.copy()
-        stats["queue_size"] = self._queue.qsize()
-        stats["pending_tasks"] = len(
-            [t for t in self._tasks.values() if t.status == StorageTaskStatus.PENDING]
-        )
-
-        if self._stats["total_completed"] > 0:
-            stats["avg_latency_ms"] = (
-                self._stats["total_latency_ms"] / self._stats["total_completed"]
-            )
-        else:
-            stats["avg_latency_ms"] = 0.0
-
-        return stats
-
-    def set_memory_engine(self, memory_engine: Any) -> None:
-        """设置记忆引擎实例
-
-        Args:
-            memory_engine: 记忆引擎实例
-        """
-        self._memory_engine = memory_engine
+    def get_stats(self) -> dict[str, Any]:
+        """获取统计信息"""
+        return {
+            **self._stats,
+            "queue_size": self._queue.qsize(),
+            "pending_tasks": len(self._tasks),
+        }
 
     async def _worker(self) -> None:
-        """后台工作协程，持续处理队列中的任务"""
+        """工作线程，处理队列中的任务"""
         while self._running:
             try:
-                task = await asyncio.wait_for(
-                    self._queue.get(),
-                    timeout=1.0,
-                )
+                task = await self._queue.get()
                 await self._process_task(task)
-            except asyncio.TimeoutError:
-                continue
+                self._queue.task_done()
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error("Worker error: %s", e)
 
     async def _process_task(self, task: StorageTask) -> None:
-        """处理单个存储任务
-
-        并行执行数据库存储和向量存储
+        """处理单个任务
 
         Args:
             task: 存储任务
         """
-        start_time = datetime.now(timezone.utc)
         task.attempts += 1
-
-        logger.debug(
-            "Processing task %s (attempt %d/%d)",
-            task.task_id,
-            task.attempts,
-            self.MAX_RETRIES,
-        )
+        start_time = time.time()
 
         try:
-            db_result, vector_result = await asyncio.gather(
-                self._store_to_db(task),
-                self._store_to_vector(task),
-                return_exceptions=True,
-            )
+            # 1. 存储到数据库
+            if not task.db_stored:
+                success = await self._store_to_db(task)
+                if success:
+                    task.db_stored = True
+                    task.status = StorageTaskStatus.DB_STORED
 
-            if isinstance(db_result, Exception):
-                logger.error("DB storage failed: %s", db_result)
-                task.db_stored = False
-            else:
-                task.db_stored = bool(db_result)
+            # 2. 存储到向量数据库
+            if task.db_stored and not task.vector_stored:
+                memory_id = await self._store_to_vector(task)
+                if memory_id:
+                    task.vector_stored = True
+                    task.status = StorageTaskStatus.VECTOR_STORED
 
-            if isinstance(vector_result, Exception):
-                logger.error("Vector storage failed: %s", vector_result)
-                task.vector_stored = False
-                task.error = str(vector_result)
-            elif vector_result:
-                task.vector_stored = True
-
-            if task.db_stored and task.vector_stored:
+            # 3. 更新状态
+            if task.db_stored and (task.vector_stored or not self._memory_engine):
                 task.status = StorageTaskStatus.COMPLETED
                 task.stored_at = datetime.now(timezone.utc)
                 self._stats["total_completed"] += 1
-                self._stats["total_db_stored"] += 1
-                self._stats["total_vector_stored"] += 1
 
-                latency = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
-                self._stats["total_latency_ms"] += latency
-
+                latency_ms = (time.time() - start_time) * 1000
                 logger.debug(
-                    "Task %s completed in %.2fms",
+                    "Task completed: %s (latency=%.2fms)",
                     task.task_id,
-                    latency,
+                    latency_ms,
                 )
-            elif task.db_stored:
-                task.status = StorageTaskStatus.DB_STORED
-                self._stats["total_db_stored"] += 1
 
-                if task.attempts < self.MAX_RETRIES:
-                    await self._retry_task(task)
-                else:
-                    task.status = StorageTaskStatus.FAILED
-                    self._stats["total_failed"] += 1
-                    logger.warning(
-                        "Task %s failed after %d attempts: %s",
-                        task.task_id,
-                        task.attempts,
-                        task.error,
-                    )
-            else:
-                if task.attempts < self.MAX_RETRIES:
-                    await self._retry_task(task)
-                else:
-                    task.status = StorageTaskStatus.FAILED
-                    self._stats["total_failed"] += 1
-                    logger.warning(
-                        "Task %s failed after %d attempts: %s",
-                        task.task_id,
-                        task.attempts,
-                        task.error,
-                    )
-
+            # 4. 更新数据库状态
             await self._update_db_status(task)
 
+            # 5. 清理完成的任务
+            if task.status == StorageTaskStatus.COMPLETED:
+                del self._tasks[task.task_id]
+
         except Exception as e:
-            logger.error("Task %s processing error: %s", task.task_id, e)
             task.error = str(e)
+            logger.error(
+                "Task failed: %s, attempt %d/%d, error: %s",
+                task.task_id,
+                task.attempts,
+                self.MAX_RETRIES,
+                e,
+            )
 
             if task.attempts < self.MAX_RETRIES:
                 await self._retry_task(task)
@@ -328,25 +254,20 @@ class AsyncStorageService:
         """
         start_time = time.time()
         try:
-            async with get_db() as db:
-                await db.execute(
-                    """INSERT INTO conversation_logs
-                       (conversation_id, user_id, role, content, timestamp,
-                        emotion_valence, emotion_arousal, storage_status, storage_attempts)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        task.conversation_id,
-                        task.user_id,
-                        task.role,
-                        task.content,
-                        task.timestamp.isoformat(),
-                        task.emotion.get("valence") if task.emotion else None,
-                        task.emotion.get("arousal") if task.emotion else None,
-                        StorageTaskStatus.PENDING.value,
-                        task.attempts,
-                    ),
+            async with get_session() as session:
+                log_entry = ConversationLog(
+                    conversation_id=task.conversation_id,
+                    user_id=task.user_id,
+                    role=task.role,
+                    content=task.content,
+                    timestamp=task.timestamp,
+                    emotion_valence=task.emotion.get("valence") if task.emotion else None,
+                    emotion_arousal=task.emotion.get("arousal") if task.emotion else None,
+                    storage_status=StorageTaskStatus.PENDING.value,
+                    storage_attempts=task.attempts,
                 )
-                await db.commit()
+                session.add(log_entry)
+                await session.commit()
 
             latency_ms = (time.time() - start_time) * 1000
 
@@ -438,25 +359,21 @@ class AsyncStorageService:
         """
         start_time = time.time()
         try:
-            async with get_db() as db:
-                await db.execute(
-                    """UPDATE conversation_logs
-                       SET storage_status = ?,
-                           storage_attempts = ?,
-                           storage_error = ?,
-                           stored_at = ?
-                       WHERE conversation_id = ?
-                         AND timestamp = ?""",
-                    (
-                        task.status.value,
-                        task.attempts,
-                        task.error,
-                        task.stored_at.isoformat() if task.stored_at else None,
-                        task.conversation_id,
-                        task.timestamp.isoformat(),
-                    ),
+            async with get_session() as session:
+                result = await session.exec(
+                    select(ConversationLog)
+                    .where(ConversationLog.conversation_id == task.conversation_id)
+                    .where(ConversationLog.timestamp == task.timestamp)
+                    .order_by(ConversationLog.id.desc())
                 )
-                await db.commit()
+                log_entry = result.first()
+
+                if log_entry:
+                    log_entry.storage_status = task.status.value
+                    log_entry.storage_attempts = task.attempts
+                    log_entry.storage_error = task.error
+                    log_entry.stored_at = task.stored_at
+                    await session.commit()
 
             latency_ms = (time.time() - start_time) * 1000
             await log_service.log_db_operation(
@@ -497,47 +414,42 @@ class AsyncStorageService:
             处理的记录数量
         """
         try:
-            async with get_db() as db:
-                cursor = await db.execute(
-                    """SELECT conversation_id, user_id, role, content, timestamp,
-                              emotion_valence, emotion_arousal, storage_attempts
-                       FROM conversation_logs
-                       WHERE storage_status = 'pending'
-                         AND storage_attempts < ?
-                       ORDER BY timestamp ASC
-                       LIMIT ?""",
-                    (self.MAX_RETRIES, limit),
+            async with get_session() as session:
+                result = await session.exec(
+                    select(ConversationLog)
+                    .where(ConversationLog.storage_status == StorageTaskStatus.PENDING.value)
+                    .where(ConversationLog.storage_attempts < self.MAX_RETRIES)
+                    .order_by(ConversationLog.timestamp.asc())
+                    .limit(limit)
                 )
-                rows = list(await cursor.fetchall())
+                logs = result.all()
 
-                for row in rows:
+                for log_entry in logs:
                     emotion = None
-                    if row[5] is not None or row[6] is not None:
+                    if log_entry.emotion_valence is not None or log_entry.emotion_arousal is not None:
                         emotion = {
-                            "valence": row[5] or 0.5,
-                            "arousal": row[6] or 0.5,
+                            "valence": log_entry.emotion_valence or 0.5,
+                            "arousal": log_entry.emotion_arousal or 0.5,
                         }
 
                     task = StorageTask(
                         task_id=str(uuid.uuid4()),
                         message_id=str(uuid.uuid4()),
-                        conversation_id=row[0],
-                        user_id=row[1],
-                        role=row[2],
-                        content=row[3],
+                        conversation_id=log_entry.conversation_id,
+                        user_id=log_entry.user_id,
+                        role=log_entry.role,
+                        content=log_entry.content,
                         emotion=emotion,
-                        timestamp=(
-                            datetime.fromisoformat(row[4]) if isinstance(row[4], str) else row[4]
-                        ),
-                        attempts=row[7] or 0,
+                        timestamp=log_entry.timestamp,
+                        attempts=log_entry.storage_attempts or 0,
                     )
 
                     await self.enqueue(task)
 
-                if rows:
-                    logger.info("Enqueued %d pending records for processing", len(rows))
+                if logs:
+                    logger.info("Enqueued %d pending records for processing", len(logs))
 
-                return len(rows)
+                return len(logs)
 
         except Exception as e:
             logger.error("Failed to process pending records: %s", e)
@@ -547,13 +459,9 @@ class AsyncStorageService:
 _async_storage_service: AsyncStorageService | None = None
 
 
-def get_async_storage_service() -> AsyncStorageService:
-    """获取异步存储服务单例
-
-    Returns:
-        异步存储服务实例
-    """
+def get_async_storage_service(memory_engine: Any = None) -> AsyncStorageService:
+    """获取异步存储服务实例（单例）"""
     global _async_storage_service
     if _async_storage_service is None:
-        _async_storage_service = AsyncStorageService()
+        _async_storage_service = AsyncStorageService(memory_engine)
     return _async_storage_service
