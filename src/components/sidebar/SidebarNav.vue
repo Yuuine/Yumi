@@ -18,7 +18,11 @@
           <!-- 角色卡头部 -->
           <div class="character-header" @click="toggleCharacter(group.characterId)">
             <div class="character-avatar">
-              {{ group.characterName.charAt(0).toUpperCase() }}
+              <img 
+                :src="getCharacterAvatar(group.characterId)" 
+                :alt="group.characterName"
+                class="avatar-image"
+              />
             </div>
             <div class="character-info">
               <span class="character-name">{{ group.characterName }}</span>
@@ -34,7 +38,10 @@
 
           <!-- 对话列表 -->
           <Transition name="expand">
-            <div v-show="expandedCharacters.has(group.characterId)" class="conversation-list">
+            <div 
+              v-if="expandedCharacters.has(group.characterId) && group.conversations.length > 0" 
+              class="conversation-list"
+            >
               <div
                 v-for="conv in group.conversations"
                 :key="conv.id"
@@ -85,7 +92,9 @@
         </button>
       </div>
       <button class="user-item" @click="handleUserClick">
-        <div class="user-avatar">{{ userAvatar }}</div>
+        <div class="user-avatar">
+          <img :src="DEFAULT_AVATAR_PATH" alt="用户头像" class="user-avatar-image" />
+        </div>
         <span class="user-name">{{ userDisplayName }}</span>
         <IconMore class="user-menu-icon" />
       </button>
@@ -106,6 +115,7 @@
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useAccountStore, useChatStore } from '@/stores'
 import type { AccountCharacter } from '@/types/character'
+import { getAvatarPath, DEFAULT_AVATAR_PATH } from '@/utils/avatar-manager'
 import {
   IconAdd,
   IconMore,
@@ -180,12 +190,27 @@ const userDisplayName = computed(() => {
   return accountStore.currentAccount?.displayName || '用户'
 })
 
-const userAvatar = computed(() => {
-  const name = userDisplayName.value
-  return name.charAt(0).toUpperCase()
-})
-
 const currentConversationId = computed(() => chatStore.currentConversationId)
+
+function getCharacterAvatar(characterId: string): string {
+  const char = characters.value.find((c: AccountCharacter) => c.id === characterId)
+  if (char && char.avatar) {
+    return getAvatarPath(char.avatar)
+  }
+  const avatarIndex = Math.abs(hashCode(characterId)) % 5
+  const avatarId = `avatar${avatarIndex + 1}`
+  return getAvatarPath(avatarId)
+}
+
+function hashCode(str: string): number {
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i)
+    hash = ((hash << 5) - hash) + char
+    hash = hash & hash
+  }
+  return hash
+}
 
 // 按角色卡分组对话
 const characterGroups = computed<CharacterGroup[]>(() => {
@@ -556,6 +581,14 @@ watch(
   font-weight: 600;
   flex-shrink: 0;
   box-shadow: 0 2px 6px rgba(124, 58, 237, 0.3);
+  overflow: hidden;
+}
+
+.avatar-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .character-info {
@@ -875,6 +908,14 @@ watch(
   font-size: 14px;
   font-weight: 600;
   flex-shrink: 0;
+  overflow: hidden;
+}
+
+.user-avatar-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .user-name {

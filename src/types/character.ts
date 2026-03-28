@@ -32,6 +32,7 @@ export interface AccountCharacter {
   name: string
   nickname: string
   isActive?: boolean
+  avatar?: string
   roleOverview: string
   appearance: CharacterAppearance
   personality: CharacterPersonality
@@ -47,6 +48,7 @@ export interface CharacterCardFlat {
   id: string
   userId: string
   conversationId: string | null
+  avatar?: string
   roleOverview: string
   formalName: string
   nickname: string
