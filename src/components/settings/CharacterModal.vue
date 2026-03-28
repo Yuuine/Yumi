@@ -88,6 +88,32 @@
         </div>
       </div>
     </Transition>
+    <Transition name="modal">
+      <div
+        v-if="showResetConfirm"
+        class="character-modal-overlay"
+        @click.self="showResetConfirm = false"
+      >
+        <div class="character-modal confirm-modal">
+          <div class="modal-header">
+            <h2 class="modal-title">确认重置</h2>
+          </div>
+          <div class="modal-body">
+            <p class="confirm-message">
+              是否确认重置该角色卡为默认配置，此操作不可撤销。
+            </p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="toolbar-btn" @click="showResetConfirm = false">
+              取消
+            </button>
+            <button type="button" class="toolbar-btn delete-btn" @click="confirmReset">
+              确认重置
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
   </Teleport>
 </template>
 
@@ -116,7 +142,7 @@ const isDropdownOpen = ref(false)
 const allCharacters = ref<AccountCharacter[]>([])
 const currentCharacterId = ref<string | null>(null)
 const showDeleteConfirm = ref(false)
-const hasConversationsForCharacter = ref(false)
+const showResetConfirm = ref(false)
 const deleteConversationCount = ref(0)
 
 const currentCharacterName = computed(() => {
@@ -124,21 +150,29 @@ const currentCharacterName = computed(() => {
   return char?.name || '未命名角色'
 })
 
-async function checkConversationsForCharacter(): Promise<void> {
-  if (!currentCharacterId.value) {
-    hasConversationsForCharacter.value = false
-    return
-  }
-  try {
-    const conversations = await accountStore.loadConversations()
-    hasConversationsForCharacter.value = conversations.some(
-      conv =>
-        (conv.characterId || (conv as { character_id?: string }).character_id) ===
-        currentCharacterId.value
-    )
-  } catch {
-    hasConversationsForCharacter.value = false
-  }
+async function getRelatedConversationIds(characterId: string): Promise<Set<string>> {
+  if (!accountStore.currentAccount) return new Set()
+  
+  const [backendResult, localConversations] = await Promise.all([
+    conversationsApi.getConversations(
+      accountStore.currentAccount.id,
+      characterId,
+      200,
+      0
+    ),
+    accountStore.loadConversations(),
+  ])
+
+  const localMatches = localConversations.filter(
+    conv =>
+      (conv.characterId || (conv as { character_id?: string }).character_id) ===
+      characterId
+  )
+  
+  return new Set<string>([
+    ...backendResult.conversations.map(conv => conv.id),
+    ...localMatches.map(conv => conv.id),
+  ])
 }
 
 function handleClose(): void {
@@ -152,7 +186,20 @@ async function handleSave(): Promise<void> {
 }
 
 function handleReset(): void {
-  settingsRef.value?.reset()
+  showResetConfirm.value = true
+}
+
+async function confirmReset(): Promise<void> {
+  try {
+    await settingsRef.value?.resetToDefault()
+    await loadCharacters()
+    toast.success('已重置为系统默认配置')
+  } catch (error) {
+    logger.error('CharacterModal', 'Failed to reset character', error)
+    toast.error('重置失败')
+  } finally {
+    showResetConfirm.value = false
+  }
 }
 
 function handleExport(): void {
@@ -168,25 +215,8 @@ function handleDelete(): void {
   const deletingCharacterId = currentCharacterId.value
   void (async () => {
     try {
-      const [backendResult, localConversations] = await Promise.all([
-        conversationsApi.getConversations(
-          accountStore.currentAccount!.id,
-          deletingCharacterId,
-          200,
-          0
-        ),
-        accountStore.loadConversations(),
-      ])
-
-      const localMatches = localConversations.filter(
-        conv =>
-          (conv.characterId || (conv as { character_id?: string }).character_id) ===
-          deletingCharacterId
-      )
-      deleteConversationCount.value = new Set<string>([
-        ...backendResult.conversations.map(conv => conv.id),
-        ...localMatches.map(conv => conv.id),
-      ]).size
+      const conversationIds = await getRelatedConversationIds(deletingCharacterId)
+      deleteConversationCount.value = conversationIds.size
     } catch (error) {
       logger.warn('CharacterModal', 'Failed to pre-calculate related conversations count', {
         error: error as Error,
@@ -206,41 +236,21 @@ async function confirmDelete(): Promise<void> {
     const charName = currentCharacterName.value
     let deletedConversationCount = 0
 
-    if (accountStore.currentAccount) {
-      const [backendResult, localConversations] = await Promise.all([
-        conversationsApi.getConversations(
-          accountStore.currentAccount.id,
-          deletingCharacterId,
-          200,
-          0
-        ),
-        accountStore.loadConversations(),
-      ])
+    const conversationIds = await getRelatedConversationIds(deletingCharacterId)
+    deleteConversationCount.value = conversationIds.size
 
-      const localMatches = localConversations.filter(
-        conv =>
-          (conv.characterId || (conv as { character_id?: string }).character_id) ===
-          deletingCharacterId
-      )
-      const allConversationIds = new Set<string>([
-        ...backendResult.conversations.map(conv => conv.id),
-        ...localMatches.map(conv => conv.id),
-      ])
-      deleteConversationCount.value = allConversationIds.size
-
-      for (const conversationId of allConversationIds) {
-        try {
-          await conversationsApi.deleteConversation(conversationId)
-        } catch (error) {
-          logger.warn(
-            'CharacterModal',
-            'Failed to delete conversation from backend, continuing local cleanup',
-            { conversationId, error }
-          )
-        }
-        await accountStore.deleteConversation(conversationId)
-        deletedConversationCount += 1
+    for (const conversationId of conversationIds) {
+      try {
+        await conversationsApi.deleteConversation(conversationId)
+      } catch (error) {
+        logger.warn(
+          'CharacterModal',
+          'Failed to delete conversation from backend, continuing local cleanup',
+          { conversationId, error }
+        )
       }
+      await accountStore.deleteConversation(conversationId)
+      deletedConversationCount += 1
     }
 
     await accountStore.deleteCharacter(deletingCharacterId)
@@ -301,20 +311,12 @@ function onCharacterLoaded(charId: string): void {
 }
 
 watch(
-  () => currentCharacterId.value,
-  () => {
-    void checkConversationsForCharacter()
-  }
-)
-
-watch(
   () => props.visible,
   async v => {
     if (v) {
       await loadCharacters()
       await nextTick()
       await settingsRef.value?.loadCharacter()
-      await checkConversationsForCharacter()
     }
   }
 )

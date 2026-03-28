@@ -8,12 +8,14 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     AccountSettings: typeof import('./components/settings/AccountSettings.vue')['default']
+    AutoResizeTextarea: typeof import('./components/common/AutoResizeTextarea.vue')['default']
     CharacterModal: typeof import('./components/settings/CharacterModal.vue')['default']
     CharacterSelectDialog: typeof import('./components/common/CharacterSelectDialog.vue')['default']
     CharacterSelectorModal: typeof import('./components/chat/CharacterSelectorModal.vue')['default']
     CharacterSettings: typeof import('./components/settings/CharacterSettings.vue')['default']
     ChatInput: typeof import('./components/chat/ChatInput.vue')['default']
     ConfirmDialog: typeof import('./components/common/ConfirmDialog.vue')['default']
+    ConversationPairInput: typeof import('./components/common/ConversationPairInput.vue')['default']
     DataSyncDialog: typeof import('./components/common/DataSyncDialog.vue')['default']
     DeepThinkingModal: typeof import('./components/chat/DeepThinkingModal.vue')['default']
     ElButton: typeof import('element-plus/es')['ElButton']
@@ -68,6 +70,7 @@ declare module 'vue' {
     SettingsModal: typeof import('./components/settings/SettingsModal.vue')['default']
     SidebarNav: typeof import('./components/sidebar/SidebarNav.vue')['default']
     StarryBackground: typeof import('./components/common/StarryBackground.vue')['default']
+    TagsInput: typeof import('./components/common/TagsInput.vue')['default']
     TestResultDialog: typeof import('./components/models/TestResultDialog.vue')['default']
     Toast: typeof import('./components/common/Toast.vue')['default']
   }
