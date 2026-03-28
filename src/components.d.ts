@@ -61,11 +61,13 @@ declare module 'vue' {
     ModelCard: typeof import('./components/models/ModelCard.vue')['default']
     ModelForm: typeof import('./components/models/ModelForm.vue')['default']
     ModelsModal: typeof import('./components/models/ModelsModal.vue')['default']
+    PasswordInput: typeof import('./components/common/PasswordInput.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     ScrollToBottom: typeof import('./components/chat/ScrollToBottom.vue')['default']
     SettingsModal: typeof import('./components/settings/SettingsModal.vue')['default']
     SidebarNav: typeof import('./components/sidebar/SidebarNav.vue')['default']
+    StarryBackground: typeof import('./components/common/StarryBackground.vue')['default']
     TestResultDialog: typeof import('./components/models/TestResultDialog.vue')['default']
     Toast: typeof import('./components/common/Toast.vue')['default']
   }

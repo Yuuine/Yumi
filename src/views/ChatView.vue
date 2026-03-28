@@ -38,23 +38,24 @@
 
 <script setup lang="ts">
 import { ref, nextTick, onMounted } from 'vue'
-import { useChatStore, useAccountStore } from '@/stores'
+import { useChatStore, useAccountStore, useModelsStore } from '@/stores'
 import { SidebarNav } from '@/components/sidebar'
 import { MessageList, ChatInput } from '@/components/chat'
 import { IconSidebarCollapse, IconSidebarExpand } from '@/components/icons'
 import ModelsModal from '@/components/models/ModelsModal.vue'
 import CharacterModal from '@/components/settings/CharacterModal.vue'
 import SettingsModal from '@/components/settings/SettingsModal.vue'
-import { useToast } from '@/composables/useToast'
+import { useToast, useModalState } from '@/composables'
 import { logger } from '@/utils/logger'
 
 const chatStore = useChatStore()
 const accountStore = useAccountStore()
+const modelsStore = useModelsStore()
 const toast = useToast()
 const messageListRef = ref<InstanceType<typeof MessageList> | null>(null)
-const showModelsModal = ref(false)
-const showCharacterModal = ref(false)
-const showSettingsModal = ref(false)
+const { visible: showModelsModal, open: openModelsModal, close: closeModelsModal } = useModalState()
+const { visible: showCharacterModal, open: openCharacterModal, close: closeCharacterModal } = useModalState()
+const { visible: showSettingsModal, open: openSettingsModal, close: closeSettingsModal } = useModalState()
 const isDeepThinking = ref(false)
 const hasConversations = ref(false)
 const sidebarExpanded = ref(true)
@@ -76,7 +77,6 @@ function toggleSidebar() {
 }
 
 onMounted(async () => {
-  // 初始化账号信息
   await accountStore.initialize()
   await checkConversations()
   nextTick(() => {
@@ -85,7 +85,12 @@ onMounted(async () => {
 })
 
 async function handleSend(content: string) {
-  await checkConversations()
+  const enabledModels = modelsStore.models.filter(m => m.isEnabled && m.apiKey)
+  if (enabledModels.length === 0) {
+    toast.warning('暂无可用模型')
+    return
+  }
+
   if (!hasConversations.value && !chatStore.currentConversationId) {
     toast.warning('请先创建一个对话')
     return
@@ -101,8 +106,6 @@ async function handleSend(content: string) {
   } finally {
     await messageListRef.value?.completeStickyFollowSession()
   }
-
-  await checkConversations()
 }
 
 function handleCopy(content: string) {
@@ -117,34 +120,9 @@ async function handleLoadMore() {
   }
 }
 
-function openModelsModal() {
-  showModelsModal.value = true
-}
-
-function closeModelsModal() {
-  showModelsModal.value = false
-}
-
-function openCharacterModal() {
-  showCharacterModal.value = true
-}
-
-function closeCharacterModal() {
-  showCharacterModal.value = false
-}
-
-function openSettingsModal() {
-  showSettingsModal.value = true
-}
-
-function closeSettingsModal() {
-  showSettingsModal.value = false
-}
-
 async function handleNewChat() {
   try {
     await chatStore.startNewConversation()
-    await checkConversations()
     nextTick(() => {
       messageListRef.value?.scrollToBottom()
     })
@@ -156,7 +134,6 @@ async function handleNewChat() {
 async function handleCreateConversation(characterId: string | null) {
   try {
     await chatStore.startNewConversation(characterId || undefined)
-    await checkConversations()
     nextTick(() => {
       messageListRef.value?.scrollToBottom()
     })
@@ -168,7 +145,6 @@ async function handleCreateConversation(characterId: string | null) {
 async function selectConversation(conversationId: string) {
   try {
     await chatStore.switchConversation(conversationId)
-    await checkConversations()
     nextTick(() => {
       messageListRef.value?.scrollToBottom()
     })

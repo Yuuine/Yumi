@@ -73,7 +73,8 @@
             class="send-btn"
             @click="handleSend"
             :disabled="disabled"
-            title="发送消息"
+            :class="{ 'no-model': !hasAvailableModels }"
+            :title="hasAvailableModels ? '发送消息' : '暂无可用模型'"
             type="button"
           >
             <IconArrowUp class="send-icon" />
@@ -90,6 +91,7 @@ import { useModelsStore, useAccountStore } from '@/stores'
 import { PROVIDER_NAMES, supportsDeepThinking } from '@/constants'
 import { IconArrowUp, IconCheck } from '@/components/icons'
 import { logger } from '@/utils/logger'
+import { useToast } from '@/composables'
 import type { ModelConfig } from '@/types'
 
 interface Props {
@@ -111,6 +113,7 @@ const isDeepThinking = defineModel<boolean>('deepThinking', { default: false })
 
 const modelsStore = useModelsStore()
 const accountStore = useAccountStore()
+const toast = useToast()
 
 const inputText = ref('')
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
@@ -120,6 +123,8 @@ const showMenu = ref(false)
 const switchingModelId = ref<string | null>(null)
 
 const hasContent = computed(() => inputText.value.trim().length > 0)
+
+const hasAvailableModels = computed(() => enabledModels.value.length > 0)
 
 const deepThinkingAvailable = computed(() => {
   const active = modelsStore.activeModel
@@ -144,6 +149,10 @@ function adjustHeight() {
 
 function handleSend() {
   if (props.disabled) return
+  if (!hasAvailableModels.value) {
+    toast.warning('暂无可用模型')
+    return
+  }
   const content = inputText.value.trim()
   if (!content) return
 
@@ -362,6 +371,13 @@ onUnmounted(() => {
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  &.no-model {
+    background: #9ca3af;
+    &:hover:not(:disabled) {
+      background: #6b7280;
+    }
   }
 }
 

@@ -19,10 +19,15 @@
           <header class="section-header">
             <h3 class="section-heading">基础档案</h3>
             <p class="section-desc">定义角色的基本身份与外貌信息</p>
+            <p class="section-required-note">
+              <span class="required-mark">*</span> 为必填项
+            </p>
           </header>
           <div class="form-grid">
             <div class="form-group">
-              <label class="form-label">正式名</label>
+              <label class="form-label">
+                正式名 <span class="required-mark">*</span>
+              </label>
               <input v-model="draft.name" class="form-input" type="text" maxlength="30" />
             </div>
             <div class="form-group">
@@ -30,7 +35,9 @@
               <input v-model="draft.nickname" class="form-input" type="text" />
             </div>
             <div class="form-group full-width">
-              <label class="form-label">角色概述</label>
+              <label class="form-label">
+                角色概述 <span class="required-mark">*</span>
+              </label>
               <textarea v-model="draft.roleOverview" class="form-textarea" rows="3" />
             </div>
             <div class="form-group">
@@ -165,7 +172,6 @@ const toast = useToast()
 const draft = ref<AccountCharacter | null>(null)
 const saving = ref(false)
 const isSaving = computed(() => saving.value)
-/** 上次加载或保存成功后的快照，用于重置 */
 const baselineJson = ref<string | null>(null)
 
 const scrollEl = ref<HTMLElement | null>(null)
@@ -179,8 +185,8 @@ const sectionNav = [
   { id: 'examples', label: '示例对话' },
 ]
 
-function cloneChar(c: AccountCharacter): AccountCharacter {
-  return JSON.parse(JSON.stringify(c)) as AccountCharacter
+function cloneChar<T>(obj: T): T {
+  return JSON.parse(JSON.stringify(obj)) as T
 }
 
 function captureBaseline(): void {
@@ -196,9 +202,20 @@ async function syncToServer(char: AccountCharacter): Promise<void> {
   await characterCardsApi.upsert(uid, char.id, flat)
 }
 
-/**
- * 加载指定角色，或者加载当前活跃角色
- */
+async function findCharacter(targetCharacterId?: string): Promise<AccountCharacter | null> {
+  const list = await accountStore.loadCharacters()
+  const aid = targetCharacterId ?? accountStore.currentConfig?.activeCharacterId
+
+  let char: AccountCharacter | null = aid ? ((await accountStore.getCharacter(aid)) as AccountCharacter | null) : null
+
+  if (!char && list.length > 0) {
+    char = list[0]
+    await accountStore.setActiveCharacterId(char.id)
+  }
+
+  return char
+}
+
 async function loadCharacter(targetCharacterId?: string): Promise<void> {
   if (!accountStore.currentAccount) {
     draft.value = null
@@ -206,26 +223,10 @@ async function loadCharacter(targetCharacterId?: string): Promise<void> {
   }
 
   await accountStore.loadCurrentAccountData()
-
-  const list = await accountStore.loadCharacters()
-  let char: AccountCharacter | null = null
-  const aid = targetCharacterId || accountStore.currentConfig?.activeCharacterId
-
-  if (aid) {
-    char = (await accountStore.getCharacter(aid)) as AccountCharacter | null
-  }
-  if (!char && list.length > 0) {
-    char = list[0]
-    await accountStore.setActiveCharacterId(char.id)
-  }
-  // 允许账号没有角色卡
-  if (!char && list.length === 0) {
-    logger.info('CharacterSettings', 'No characters found, user can create one later')
-    draft.value = null
-    return
-  }
+  const char = await findCharacter(targetCharacterId)
 
   if (!char) {
+    logger.info('CharacterSettings', 'No characters found, user can create one later')
     draft.value = null
     return
   }
@@ -235,8 +236,29 @@ async function loadCharacter(targetCharacterId?: string): Promise<void> {
   emit('character-loaded', char.id)
 }
 
+function validateCharacter(): string | null {
+  if (!draft.value) return '角色数据未加载'
+
+  if (!draft.value.name?.trim()) {
+    return '请填写正式名'
+  }
+
+  if (!draft.value.roleOverview?.trim() || draft.value.roleOverview.trim().length < 10) {
+    return '角色概述至少需要 10 个字符'
+  }
+
+  return null
+}
+
 async function save(): Promise<void> {
   if (!draft.value || !accountStore.currentAccount) return
+
+  const validationError = validateCharacter()
+  if (validationError) {
+    toast.error(validationError)
+    return
+  }
+
   saving.value = true
   try {
     draft.value.updatedAt = new Date().toISOString()
@@ -270,6 +292,7 @@ function reset(): void {
 
 function exportJson(): void {
   if (!draft.value || !accountStore.currentAccount) return
+
   const payload = {
     version: '1',
     exportedAt: new Date().toISOString(),
@@ -307,7 +330,7 @@ watch(
 
 watch(
   () => props.characterId,
-  newId => {
+  (newId) => {
     if (newId) {
       void loadCharacter(newId)
     }
@@ -411,6 +434,21 @@ defineExpose({
   font-size: 12px;
   color: #6b7280;
   line-height: 1.5;
+}
+
+.section-required-note {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: #ef4444;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.required-mark {
+  color: #ef4444;
+  font-weight: 700;
+  font-size: 14px;
 }
 
 .form-grid {

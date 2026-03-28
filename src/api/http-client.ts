@@ -75,35 +75,36 @@ export class HttpClient {
     )
   }
 
-  private normalizeError(error: AxiosError<ApiErrorResponse | any>): ApiError {
+  private normalizeError(error: AxiosError<unknown>): ApiError {
     // 处理标准错误格式 { error: { message, code } }
-    if (error.response?.data?.error) {
-      return error.response.data.error
+    const data = error.response?.data as Record<string, unknown>
+    if (data?.error) {
+      return data.error as ApiError
     }
 
     // 处理后端直接返回的错误格式 { message, code } 或 { detail: { message, code } }
-    const responseData = error.response?.data
-    if (responseData) {
+    if (data) {
       // FastAPI 的 HTTPException 可能返回 { detail: ... }
-      if (responseData.detail) {
-        if (typeof responseData.detail === 'string') {
+      if (data.detail) {
+        if (typeof data.detail === 'string') {
           return {
             code: 'HTTP_ERROR',
-            message: responseData.detail,
+            message: data.detail,
           }
         }
-        if (responseData.detail.message) {
+        const detail = data.detail as Record<string, unknown>
+        if (detail.message) {
           return {
-            code: responseData.detail.code || 'HTTP_ERROR',
-            message: responseData.detail.message,
+            code: (detail.code as string) || 'HTTP_ERROR',
+            message: detail.message as string,
           }
         }
       }
       // 直接返回的对象格式
-      if (responseData.message) {
+      if (data.message) {
         return {
-          code: responseData.code || 'HTTP_ERROR',
-          message: responseData.message,
+          code: (data.code as string) || 'HTTP_ERROR',
+          message: data.message as string,
         }
       }
     }

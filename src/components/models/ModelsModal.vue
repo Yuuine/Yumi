@@ -55,8 +55,6 @@
               />
             </div>
           </div>
-
-          <LoadingState v-if="isTestingModel" :text="`正在测试「${testingModelName}」连接...`" />
         </div>
       </div>
     </Transition>
@@ -101,6 +99,8 @@
       :result="modelsStore.testResult"
       @close="testDialogVisible = false"
     />
+
+    <LoadingState :visible="isTestingModel" :text="`正在测试「${testingModelName}」连接...`" />
 
     <Toast />
   </Teleport>

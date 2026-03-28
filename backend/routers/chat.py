@@ -705,6 +705,9 @@ async def stream_chat(
 ) -> StreamingResponse:
     """流式聊天响应"""
     active_model = await _get_active_model_config(userId)
+    if not active_model:
+        raise NoActiveModelException()
+    
     start_time = time.time()
     start_datetime = datetime.now(timezone.utc).isoformat()
 

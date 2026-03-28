@@ -15,11 +15,10 @@
           class="character-card"
           :class="{ expanded: expandedCharacters.has(group.characterId) }"
         >
-          <!-- 角色卡头部 -->
           <div class="character-header" @click="toggleCharacter(group.characterId)">
             <div class="character-avatar">
-              <img 
-                :src="getCharacterAvatar(group.characterId)" 
+              <img
+                :src="getCharacterAvatar(group.characterId)"
                 :alt="group.characterName"
                 class="avatar-image"
               />
@@ -36,10 +35,9 @@
             </div>
           </div>
 
-          <!-- 对话列表 -->
           <Transition name="expand">
-            <div 
-              v-if="expandedCharacters.has(group.characterId) && group.conversations.length > 0" 
+            <div
+              v-if="expandedCharacters.has(group.characterId) && group.conversations.length > 0"
               class="conversation-list"
             >
               <div
@@ -65,7 +63,7 @@
                     v-focus
                   />
                 </div>
-                <div class="conversation-actions" v-if="currentConversationId === conv.id">
+                <div class="conversation-actions">
                   <button class="action-btn" @click.stop="startEdit(conv)" title="重命名">
                     <IconEdit />
                   </button>
@@ -100,12 +98,11 @@
       </button>
     </div>
 
-    <!-- 角色选择对话框 -->
     <CharacterSelectDialog
       :visible="showCharacterSelect"
       :characters="characters"
       @close="showCharacterSelect = false"
-      @confirm="handleCharacterSelect"
+      @confirm="handleCreateConversationLocal"
       @create-character="handleCreateCharacter"
     />
   </div>
@@ -130,6 +127,7 @@ import { CharacterSelectDialog } from '@/components/common'
 import { conversationsApi } from '@/api'
 import { logger } from '@/utils/logger'
 import { useConfirmDialog } from '@/composables/useModal'
+import { useToast } from '@/composables/useToast'
 
 interface Conversation {
   id: string
@@ -137,8 +135,6 @@ interface Conversation {
   characterId: string | null
   createdAt: string
   updatedAt: string
-  characterName?: string | null
-  formalName?: string | null
 }
 
 interface CharacterGroup {
@@ -150,6 +146,7 @@ interface CharacterGroup {
 const accountStore = useAccountStore()
 const chatStore = useChatStore()
 const confirmDialog = useConfirmDialog()
+const toast = useToast()
 
 interface Props {
   isExpanded?: boolean
@@ -165,7 +162,6 @@ const emit = defineEmits<{
   openModels: []
   createConversation: [characterId: string | null]
   selectConversation: [conversationId: string]
-  newChat: []
   deleteConversation: [conversationId: string]
 }>()
 
@@ -176,6 +172,7 @@ const editingConversationId = ref<string | null>(null)
 const editingTitle = ref('')
 const titleInputRef = ref<HTMLInputElement | null>(null)
 const showCharacterSelect = ref(false)
+const isLoadingConversations = ref(false)
 
 const vFocus = {
   mounted: (el: HTMLInputElement) => {
@@ -186,42 +183,51 @@ const vFocus = {
   },
 }
 
-const userDisplayName = computed(() => {
-  return accountStore.currentAccount?.displayName || '用户'
-})
+const userDisplayName = computed(() => accountStore.currentAccount?.displayName || '用户')
 
 const currentConversationId = computed(() => chatStore.currentConversationId)
-
-function getCharacterAvatar(characterId: string): string {
-  const char = characters.value.find((c: AccountCharacter) => c.id === characterId)
-  if (char && char.avatar) {
-    return getAvatarPath(char.avatar)
-  }
-  const avatarIndex = Math.abs(hashCode(characterId)) % 5
-  const avatarId = `avatar${avatarIndex + 1}`
-  return getAvatarPath(avatarId)
-}
 
 function hashCode(str: string): number {
   let hash = 0
   for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i)
-    hash = ((hash << 5) - hash) + char
+    hash = (hash << 5) - hash + char
     hash = hash & hash
   }
   return hash
 }
 
-// 按角色卡分组对话
+function getCharacterAvatar(characterId: string): string {
+  const char = characters.value.find((c) => c.id === characterId)
+  if (char?.avatar) {
+    return getAvatarPath(char.avatar)
+  }
+  const avatarIndex = Math.abs(hashCode(characterId)) % 5
+  return getAvatarPath(`avatar${avatarIndex + 1}`)
+}
+
+function mapToConversation(conv: any): Conversation {
+  return {
+    id: conv.id,
+    title: conv.title || null,
+    characterId: conv.characterId || null,
+    createdAt: conv.createdAt || '',
+    updatedAt: conv.updatedAt || '',
+  }
+}
+
+function sortByUpdatedAt(a: Conversation, b: Conversation): number {
+  return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+}
+
 const characterGroups = computed<CharacterGroup[]>(() => {
+  const charMap = new Map(characters.value.map((c) => [c.id, c]))
   const groups = new Map<string, Conversation[]>()
 
-  // 初始化所有角色卡（包括没有对话的）
   for (const char of characters.value) {
     groups.set(char.id, [])
   }
 
-  // 将对话分配到对应的角色卡
   const singleCharacterId = characters.value.length === 1 ? characters.value[0].id : null
   for (const conv of conversations.value) {
     const charId = conv.characterId || singleCharacterId || 'default'
@@ -231,24 +237,17 @@ const characterGroups = computed<CharacterGroup[]>(() => {
     groups.get(charId)!.push(conv)
   }
 
-  // 转换为数组并排序
   return Array.from(groups.entries())
     .map(([charId, convs]) => {
-      const char = characters.value.find((c: AccountCharacter) => c.id === charId)
-      const fallbackName =
-        convs[0]?.characterName ||
-        convs[0]?.formalName ||
-        (charId === 'default' ? '未分配角色' : '未命名角色')
+      const char = charMap.get(charId)
+      const fallbackName = charId === 'default' ? '未分配角色' : '未命名角色'
       return {
         characterId: charId,
         characterName: char?.name || fallbackName,
-        conversations: convs.sort(
-          (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-        ),
+        conversations: convs.sort(sortByUpdatedAt),
       }
     })
     .sort((a, b) => {
-      // 有对话的角色卡排在前面
       if (a.conversations.length === 0 && b.conversations.length > 0) return 1
       if (a.conversations.length > 0 && b.conversations.length === 0) return -1
       return a.characterName.localeCompare(b.characterName)
@@ -256,32 +255,55 @@ const characterGroups = computed<CharacterGroup[]>(() => {
 })
 
 function toggleCharacter(characterId: string) {
-  if (expandedCharacters.value.has(characterId)) {
-    expandedCharacters.value.delete(characterId)
-  } else {
-    expandedCharacters.value.add(characterId)
-  }
+  expandedCharacters.value.has(characterId)
+    ? expandedCharacters.value.delete(characterId)
+    : expandedCharacters.value.add(characterId)
 }
 
 function handleNewChat() {
-  // 如果有多个角色卡，显示选择对话框
   if (characters.value.length > 1) {
     showCharacterSelect.value = true
   } else if (characters.value.length === 1) {
-    // 只有一个角色卡，直接使用该角色
-    emit('createConversation', characters.value[0].id)
+    handleCreateConversationLocal(characters.value[0].id)
   } else {
-    // 没有角色卡，跳转到角色创建
     emit('openCharacter')
   }
 }
 
-function handleCharacterSelect(characterId: string) {
-  emit('createConversation', characterId)
-}
-
 function handleCreateCharacter() {
   emit('openCharacter')
+}
+
+async function handleCreateConversationLocal(characterId: string) {
+  emit('createConversation', characterId)
+
+  try {
+    const localConvs = await accountStore.loadConversations()
+    if (localConvs.length > 0) {
+      const sortedLocal = [...localConvs].sort(
+        (a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()
+      )
+      const newConv = mapToConversation(sortedLocal[0])
+
+      const existingIndex = conversations.value.findIndex((c) => c.id === newConv.id)
+      if (existingIndex === -1) {
+        conversations.value.unshift(newConv)
+      } else {
+        conversations.value[existingIndex] = newConv
+      }
+
+      const charId = newConv.characterId || characterId
+      if (charId) {
+        expandedCharacters.value.add(charId)
+      }
+
+      toast.success('对话已创建')
+    }
+  } catch (error) {
+    logger.warn('SidebarNav', 'Failed to add new conversation locally, falling back to full load', { error })
+    await loadConversations(true)
+    toast.success('对话已创建')
+  }
 }
 
 function handleSelectConversation(conversationId: string) {
@@ -295,11 +317,9 @@ function startEdit(conv: Conversation) {
 
 function saveTitle(conversationId: string) {
   if (editingTitle.value.trim()) {
-    // 调用 API 更新标题
     updateConversationTitle(conversationId, editingTitle.value.trim())
   }
-  editingConversationId.value = null
-  editingTitle.value = ''
+  cancelEdit()
 }
 
 function cancelEdit() {
@@ -310,7 +330,7 @@ function cancelEdit() {
 async function updateConversationTitle(conversationId: string, title: string) {
   try {
     await conversationsApi.updateTitle(conversationId, title)
-    const conv = conversations.value.find(c => c.id === conversationId)
+    const conv = conversations.value.find((c) => c.id === conversationId)
     if (conv) {
       conv.title = title
       await accountStore.saveConversation(conv)
@@ -335,6 +355,7 @@ function confirmDelete(conv: Conversation) {
         await loadConversations()
         emit('deleteConversation', conv.id)
         logger.info('SidebarNav', 'Conversation deleted', { conversationId: conv.id })
+        toast.success('对话已删除')
       } catch (error) {
         logger.error('SidebarNav', 'Failed to delete conversation', error)
       }
@@ -354,15 +375,20 @@ function handleUserClick() {
   emit('openSettings')
 }
 
-async function loadConversations() {
+async function loadConversations(force = false) {
+  if (isLoadingConversations.value && !force) {
+    logger.debug('SidebarNav', 'Already loading conversations, skipping')
+    return
+  }
+
   try {
-    // 检查当前账号是否可用
+    isLoadingConversations.value = true
+
     if (!accountStore.currentAccount) {
       logger.warn('SidebarNav', 'No current account available, skipping conversation load')
       return
     }
 
-    // 先加载角色卡
     characters.value = await accountStore.loadCharacters()
 
     const result = await conversationsApi.getConversations(
@@ -372,80 +398,51 @@ async function loadConversations() {
       0
     )
 
-    const backendConversations = result.conversations.map(
-      (conv): Conversation => ({
-        id: conv.id,
-        title: conv.title || null,
-        characterId: conv.characterId || null,
-        createdAt: conv.createdAt || '',
-        updatedAt: conv.updatedAt || '',
-      })
-    )
-    const localConversations = (await accountStore.loadConversations()).map(
-      (conv): Conversation => ({
-        id: conv.id,
-        title: conv.title || null,
-        characterId: conv.characterId || null,
-        createdAt: conv.createdAt || '',
-        updatedAt: conv.updatedAt || '',
-      })
-    )
+    const backendConversations = result.conversations.map(mapToConversation)
+    const localConversations = (await accountStore.loadConversations()).map(mapToConversation)
 
     const merged = new Map<string, Conversation>()
-    backendConversations.forEach(conv => merged.set(conv.id, conv))
-    localConversations.forEach(conv => {
+    backendConversations.forEach((conv) => merged.set(conv.id, conv))
+    localConversations.forEach((conv) => {
       if (!merged.has(conv.id)) {
         merged.set(conv.id, conv)
       }
     })
 
-    conversations.value = Array.from(merged.values()).sort(
-      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-    )
+    conversations.value = Array.from(merged.values()).sort(sortByUpdatedAt)
 
-    // 默认展开有对话的角色卡
-    characterGroups.value.forEach(group => {
+    characterGroups.value.forEach((group) => {
       if (group.conversations.length > 0) {
         expandedCharacters.value.add(group.characterId)
       }
     })
   } catch (error) {
     logger.error('SidebarNav', 'Failed to load conversations', error)
+  } finally {
+    isLoadingConversations.value = false
   }
 }
 
 onMounted(() => {
-  // 如果账号已初始化，立即加载对话
   if (accountStore.isInitialized && accountStore.currentAccount) {
     loadConversations()
   }
 })
 
-// 监听账号初始化状态，初始化完成后加载对话
 watch(
   () => accountStore.isInitialized,
-  isInitialized => {
+  (isInitialized) => {
     if (isInitialized && accountStore.currentAccount) {
       loadConversations()
     }
   }
 )
 
-// 监听当前账号变化，切换账号时重新加载对话
 watch(
   () => accountStore.currentAccountId,
   (newAccountId, oldAccountId) => {
     if (newAccountId && newAccountId !== oldAccountId) {
-      loadConversations()
-    }
-  }
-)
-
-watch(
-  () => chatStore.currentConversationId,
-  newConversationId => {
-    if (newConversationId) {
-      loadConversations()
+      loadConversations(true)
     }
   }
 )
@@ -743,7 +740,6 @@ watch(
   }
 }
 
-// 展开动画
 .expand-enter-active,
 .expand-leave-active {
   transition: all 0.2s ease;
@@ -861,14 +857,7 @@ watch(
     flex-shrink: 0;
   }
 
-  &.nav-btn-left {
-    color: #6366f1;
-
-    svg {
-      color: #6366f1;
-    }
-  }
-
+  &.nav-btn-left,
   &.nav-btn-right {
     color: #6366f1;
 

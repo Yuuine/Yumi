@@ -4,6 +4,7 @@ import type { ChatMessage, ChatRequest, ChatResponse, EmotionData } from '@/type
 import { chatApi } from '@/api/chat'
 import { conversationsApi } from '@/api/conversations'
 import { useAccountStore, type AccountConversation } from './account'
+import { useModelsStore } from './models'
 import type { ApiError } from '@/api/http-client'
 import dayjs from 'dayjs'
 import { logger } from '@/utils/logger'
@@ -170,79 +171,110 @@ export const useChatStore = defineStore('chat', () => {
     return newId
   }
 
-  async function sendMessage(content: string, deepThinking = false): Promise<ChatResponse | null> {
-    if (!content.trim() || isLoading.value) return null
-
-    lastError.value = null
-
-    const accountStore = useAccountStore()
-
-    if (!currentConversationId.value) {
-      await startNewConversation()
-    }
-
-    const userMessage: ChatMessage = {
+  function createUserMessage(content: string): ChatMessage {
+    return {
       id: `user-${Date.now()}`,
       role: 'user',
       content: content.trim(),
       timestamp: dayjs().toISOString(),
     }
+  }
 
+  function createAssistantMessage(reply: string, emotion?: EmotionData): ChatMessage {
+    return {
+      id: `assistant-${Date.now()}`,
+      role: 'assistant',
+      content: reply,
+      timestamp: dayjs().toISOString(),
+      emotion,
+    }
+  }
+
+  function createErrorMessage(): ChatMessage {
+    return {
+      id: `error-${Date.now()}`,
+      role: 'assistant',
+      content: '抱歉，我遇到了一些问题，请稍后再试。',
+      timestamp: dayjs().toISOString(),
+    }
+  }
+
+  async function buildChatRequest(content: string, deepThinking: boolean): Promise<ChatRequest> {
+    const accountStore = useAccountStore()
+    const characterId = accountStore.currentConfig?.activeCharacterId ?? undefined
+    const userId = ensureCurrentUserId()
+
+    return {
+      userId,
+      conversationId: currentConversationId.value ?? undefined,
+      message: content.trim(),
+      temperature: 0.85,
+      deepThinking,
+      ...(characterId ? { characterId } : {}),
+    }
+  }
+
+  async function updateConversationMetadata(content: string, characterId?: string): Promise<void> {
+    const accountStore = useAccountStore()
+    const conv = await accountStore.getConversation(currentConversationId.value!)
+    const title = content.slice(0, 30) + (content.length > 30 ? '...' : '')
+
+    if (!conv) {
+      await accountStore.saveConversation({
+        id: currentConversationId.value!,
+        characterId,
+        title,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      })
+    } else {
+      const convData = conv as AccountConversation
+      convData.updatedAt = new Date().toISOString()
+      if (!convData.title) {
+        convData.title = title
+      }
+      await accountStore.saveConversation(convData)
+    }
+  }
+
+  async function sendMessage(content: string, deepThinking = false): Promise<ChatResponse | null> {
+    if (!content.trim() || isLoading.value) return null
+
+    const modelsStore = useModelsStore()
+    const enabledModels = modelsStore.models.filter(m => m.isEnabled && m.apiKey)
+    if (enabledModels.length === 0) {
+      logger.error('ChatStore', 'No available models to send message')
+      return null
+    }
+
+    lastError.value = null
+
+    if (!currentConversationId.value) {
+      await startNewConversation()
+    }
+
+    const userMessage = createUserMessage(content)
     messages.value.push(userMessage)
     isLoading.value = true
 
     try {
-      const characterId = accountStore.currentConfig?.activeCharacterId ?? undefined
-      const userId = ensureCurrentUserId()
-
-      const request: ChatRequest = {
-        userId,
-        conversationId: currentConversationId.value ?? undefined,
-        message: content.trim(),
-        temperature: 0.85,
-        deepThinking,
-        ...(characterId ? { characterId } : {}),
-      }
-
       if (deepThinking) {
         logger.info('ChatStore', 'Sending with deep thinking enabled')
       }
 
+      const request = await buildChatRequest(content, deepThinking)
       const response: ChatResponse = await chatApi.sendMessage(request)
 
       if (response.conversationId) {
         currentConversationId.value = response.conversationId
       }
 
-      const assistantMessage: ChatMessage = {
-        id: `assistant-${Date.now()}`,
-        role: 'assistant',
-        content: response.reply,
-        timestamp: dayjs().toISOString(),
-        emotion: response.emotion,
-      }
-
+      const assistantMessage = createAssistantMessage(response.reply, response.emotion)
       messages.value.push(assistantMessage)
       conversationCount.value++
       saveCurrentConversationMessages()
 
-      const conv = await accountStore.getConversation(currentConversationId.value!)
-      if (!conv) {
-        await accountStore.saveConversation({
-          id: currentConversationId.value!,
-          characterId,
-          title: content.slice(0, 30) + (content.length > 30 ? '...' : ''),
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        })
-      } else {
-        const convData = conv as AccountConversation
-        convData.updatedAt = new Date().toISOString()
-        if (!convData.title) {
-          convData.title = content.slice(0, 30) + (content.length > 30 ? '...' : '')
-        }
-        await accountStore.saveConversation(convData)
-      }
+      await updateConversationMetadata(content, request.characterId)
 
       if (response.newSummary) {
         logger.info('ChatStore', 'Memory summary updated', { summary: response.newSummary })
@@ -250,17 +282,8 @@ export const useChatStore = defineStore('chat', () => {
 
       return response
     } catch (error) {
-      const apiError = error as ApiError
-      lastError.value = apiError
-
-      const errorMessage: ChatMessage = {
-        id: `error-${Date.now()}`,
-        role: 'assistant',
-        content: '抱歉，我遇到了一些问题，请稍后再试。',
-        timestamp: dayjs().toISOString(),
-      }
-      messages.value.push(errorMessage)
-
+      lastError.value = error as ApiError
+      messages.value.push(createErrorMessage())
       return null
     } finally {
       isLoading.value = false
@@ -419,6 +442,13 @@ export const useChatStore = defineStore('chat', () => {
 
   async function sendMessageStream(content: string): Promise<void> {
     if (!content.trim() || isLoading.value || isStreaming.value) return
+
+    const modelsStore = useModelsStore()
+    const enabledModels = modelsStore.models.filter(m => m.isEnabled && m.apiKey)
+    if (enabledModels.length === 0) {
+      logger.error('ChatStore', 'No available models to send message')
+      return
+    }
 
     initializeStreamState()
     createUserAndAssistantMessages(content)
