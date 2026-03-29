@@ -7,7 +7,7 @@ import { logger } from '@/utils/logger'
 import { getRandomAvatar } from '@/utils/avatar-manager'
 import type { AccountCharacter, CharacterCardFlat } from '@/types/character'
 import type { Conversation } from '@/types'
-import { userApi, characterCardsApi } from '@/api'
+import { userApi, characterCardsApi, conversationsApi } from '@/api'
 import type { UserListItem } from '@/api/user'
 import { useAuthStore } from './auth'
 import {
@@ -664,10 +664,66 @@ export const useAccountStore = defineStore('account', () => {
     }
     currentConfig.value = cfg
 
-    // 处理对话数据
+    // 处理对话数据 - 合并本地和后端数据
     const convs: Record<string, AccountConversation> = {}
+    
+    // 首先读取本地已有的对话数据
+    const localConversations = localData?.conversations ?? {}
+    const localConvCount = Object.keys(localConversations).length
+    const backendConvCount = conversations.length
+    logger.info('AccountStore', '准备合并对话数据', {
+      accountId,
+      localConvCount,
+      backendConvCount,
+    })
+    
+    // 将后端数据添加到合并结果中
     conversations.forEach(conv => {
       convs[conv.id] = conv
+    })
+    
+    // 合并本地数据，对于相同ID的对话，比较 updatedAt 时间，使用较新的版本
+    Object.entries(localConversations).forEach(([id, localConv]) => {
+      const existingConv = convs[id]
+      if (!existingConv) {
+        // 本地独有的对话，直接添加
+        convs[id] = localConv as AccountConversation
+        logger.debug('AccountStore', '添加本地未同步的对话', {
+          conversationId: id,
+          title: (localConv as AccountConversation).title,
+        })
+      } else {
+        // 相同ID的对话，比较 updatedAt 时间
+        const localUpdatedAt = (localConv as AccountConversation).updatedAt 
+          ? new Date((localConv as AccountConversation).updatedAt!).getTime() 
+          : 0
+        const backendUpdatedAt = existingConv.updatedAt 
+          ? new Date(existingConv.updatedAt).getTime() 
+          : 0
+        
+        if (localUpdatedAt > backendUpdatedAt) {
+          // 本地版本更新，使用本地版本
+          convs[id] = localConv as AccountConversation
+          logger.debug('AccountStore', '使用本地较新版本的对话', {
+            conversationId: id,
+            localUpdatedAt: (localConv as AccountConversation).updatedAt,
+            backendUpdatedAt: existingConv.updatedAt,
+          })
+        } else {
+          // 后端版本更新或相同，保持后端版本
+          logger.debug('AccountStore', '使用后端较新版本的对话', {
+            conversationId: id,
+            localUpdatedAt: (localConv as AccountConversation).updatedAt,
+            backendUpdatedAt: existingConv.updatedAt,
+          })
+        }
+      }
+    })
+    
+    const finalConvCount = Object.keys(convs).length
+    logger.info('AccountStore', '对话数据合并完成', {
+      accountId,
+      finalConvCount,
     })
 
     // 保存到本地存储
@@ -683,7 +739,7 @@ export const useAccountStore = defineStore('account', () => {
     logger.info('AccountStore', 'Account data loaded', {
       accountId,
       characterCount: ids.length,
-      conversationCount: conversations.length,
+      conversationCount: finalConvCount,
     })
   }
 
@@ -958,7 +1014,12 @@ export const useAccountStore = defineStore('account', () => {
 
     if (!data.conversations) data.conversations = {}
 
-    const conv = conversation as { id?: string; accountId?: string }
+    const conv = conversation as { 
+      id?: string; 
+      accountId?: string;
+      characterId?: string;
+      title?: string;
+    }
     if (!conv.id) {
       conv.id = generateConversationId()
     }
@@ -967,6 +1028,22 @@ export const useAccountStore = defineStore('account', () => {
     data.conversations[conv.id] = conv
 
     localStorage.setItem(`yumi_account_${accountId}`, JSON.stringify(data))
+
+    try {
+      await conversationsApi.createConversation(
+        accountId,
+        conv.characterId,
+        conv.id,
+        conv.title
+      )
+      logger.info('AccountStore', 'Conversation synced to backend', { conversationId: conv.id })
+    } catch (error) {
+      logger.warn(
+        'AccountStore',
+        'Failed to sync conversation to backend, local save succeeded',
+        { conversationId: conv.id, error: error as Record<string, unknown> }
+      )
+    }
 
     return conv.id
   }

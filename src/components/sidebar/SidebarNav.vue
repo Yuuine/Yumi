@@ -349,15 +349,36 @@ function confirmDelete(conv: Conversation) {
     'warning',
     true,
     async () => {
+      logger.info('SidebarNav', 'Starting conversation deletion', { conversationId: conv.id })
+      
+      const isActiveConversation = currentConversationId.value === conv.id
+      const conversationIndex = conversations.value.findIndex((c) => c.id === conv.id)
+      const backupConversation = { ...conv }
+
       try {
+        logger.debug('SidebarNav', 'Performing optimistic update', { conversationId: conv.id, isActiveConversation })
+        conversations.value.splice(conversationIndex, 1)
+
+        if (isActiveConversation) {
+          logger.info('SidebarNav', 'Deleted conversation is active, emitting delete event', { conversationId: conv.id })
+          emit('deleteConversation', conv.id)
+        }
+
+        logger.debug('SidebarNav', 'Calling delete API', { conversationId: conv.id })
         await conversationsApi.deleteConversation(conv.id)
+
+        logger.debug('SidebarNav', 'Deleting from local storage', { conversationId: conv.id })
         await accountStore.deleteConversation(conv.id)
-        await loadConversations()
-        emit('deleteConversation', conv.id)
-        logger.info('SidebarNav', 'Conversation deleted', { conversationId: conv.id })
+
+        logger.info('SidebarNav', 'Conversation deleted successfully', { conversationId: conv.id })
         toast.success('对话已删除')
       } catch (error) {
-        logger.error('SidebarNav', 'Failed to delete conversation', error)
+        logger.error('SidebarNav', 'Failed to delete conversation, rolling back', { conversationId: conv.id, error })
+        
+        conversations.value.splice(conversationIndex, 0, backupConversation)
+        
+        toast.error('删除对话失败，请重试')
+        logger.warn('SidebarNav', 'UI state rolled back', { conversationId: conv.id })
       }
     }
   )

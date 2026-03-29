@@ -2,7 +2,6 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { ChatMessage, ChatRequest, ChatResponse, EmotionData } from '@/types'
 import { chatApi } from '@/api/chat'
-import { conversationsApi } from '@/api/conversations'
 import { useAccountStore, type AccountConversation } from './account'
 import { useModelsStore } from './models'
 import type { ApiError } from '@/api/http-client'
@@ -143,17 +142,6 @@ export const useChatStore = defineStore('chat', () => {
 
     if (characterId) {
       await accountStore.setActiveCharacterId(characterId)
-    }
-
-    const userId = accountStore.currentAccount?.id
-    if (userId) {
-      try {
-        await conversationsApi.createConversation(userId, targetCharacterId, newId, '新对话')
-      } catch (error) {
-        logger.warn('ChatStore', 'Failed to create conversation in backend, using local only', {
-          error,
-        })
-      }
     }
 
     await accountStore.saveConversation({

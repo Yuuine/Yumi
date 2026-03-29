@@ -8,6 +8,7 @@
       @create-conversation="handleCreateConversation"
       @select-conversation="selectConversation"
       @new-chat="handleNewChat"
+      @delete-conversation="handleDeleteConversation"
     />
 
     <div :class="['toggle-button', { 'sidebar-open': sidebarExpanded }]" @click="toggleSidebar">
@@ -150,6 +151,32 @@ async function selectConversation(conversationId: string) {
     })
   } catch (error) {
     logger.error('ChatView', 'Failed to switch conversation', error)
+  }
+}
+
+async function handleDeleteConversation(deletedConversationId: string) {
+  try {
+    logger.info('ChatView', 'Handling deleted conversation', { deletedConversationId })
+    
+    const conversations = await accountStore.loadConversations()
+    
+    if (conversations.length > 0) {
+      const sortedConversations = [...conversations].sort(
+        (a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()
+      )
+      
+      const firstConversation = sortedConversations[0]
+      logger.info('ChatView', 'Switching to next conversation', { conversationId: firstConversation.id })
+      await chatStore.switchConversation(firstConversation.id)
+      nextTick(() => {
+        messageListRef.value?.scrollToBottom()
+      })
+    } else {
+      logger.info('ChatView', 'No conversations left, creating new chat')
+      await handleNewChat()
+    }
+  } catch (error) {
+    logger.error('ChatView', 'Failed to handle deleted conversation', error)
   }
 }
 </script>
