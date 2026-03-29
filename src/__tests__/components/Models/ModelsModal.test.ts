@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import ModelsModal from '@/components/Models/ModelsModal.vue'
-import type { ModelConfig } from '@/types'
 
 vi.mock('@/stores', () => ({
   useModelsStore: vi.fn(() => ({
@@ -58,22 +57,6 @@ vi.mock('@/components/icons', () => ({
   IconError: { template: '<span data-test="icon-error"></span>' },
   IconAdd: { template: '<span data-test="icon-add"></span>' },
 }))
-
-const mockModel: ModelConfig = {
-  id: 'model-1',
-  providerId: 'deepseek',
-  name: 'Test Model',
-  baseUrl: 'https://api.example.com',
-  apiKey: 'test-api-key',
-  modelName: 'deepseek-chat',
-  modelType: 'text',
-  maxTokens: 4096,
-  temperature: 0.7,
-  isEnabled: true,
-  isTested: true,
-  testStatus: 'passed',
-  editCount: 0,
-}
 
 describe('ModelsModal - 模型管理模态框', () => {
   beforeEach(() => {

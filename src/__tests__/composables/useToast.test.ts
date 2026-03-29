@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { useToast } from '@/composables/useToast'
 
 describe('useToast - Toast 通知', () => {

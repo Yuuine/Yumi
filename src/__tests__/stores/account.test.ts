@@ -214,7 +214,6 @@ describe('useAccountStore - 账户管理功能', () => {
 
     vi.mocked(await import('@/utils')).generateAccountId.mockReturnValue('test-account-id-2')
     await store.createAccount('账号2')
-    const account2Id = store.currentAccount!.id
 
     expect(store.accounts.length).toBe(2)
 

@@ -3,7 +3,6 @@ import { setActivePinia, createPinia } from 'pinia'
 import { useChatStore } from '@/stores/chat'
 import { chatApi } from '@/api/chat'
 import { conversationsApi } from '@/api/conversations'
-import { useModelsStore } from '@/stores/models'
 
 vi.mock('@/api/chat', () => ({
   chatApi: {
