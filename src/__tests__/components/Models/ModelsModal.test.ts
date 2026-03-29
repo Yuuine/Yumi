@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
-import ModelsModal from '@/components/Models/ModelsModal.vue'
+import ModelsModal from '@/components/models/ModelsModal.vue'
 
 vi.mock('@/stores', () => ({
   useModelsStore: vi.fn(() => ({

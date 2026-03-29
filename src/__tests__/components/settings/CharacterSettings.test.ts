@@ -36,7 +36,7 @@ vi.mock('@/components/common/ConversationPairInput', () => ({
 }))
 
 const mockAccountStore = {
-  currentAccount: null,
+  currentAccount: null as any,
   currentAccountId: null,
   currentConfig: { activeCharacterId: 'char-1' },
   loadCharacters: vi.fn(),

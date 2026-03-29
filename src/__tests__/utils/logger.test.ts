@@ -75,11 +75,11 @@ describe('logger - 日志系统', () => {
   it('过滤数组中的敏感信息', () => {
     const sensitiveArray = [{ apiKey: 'secret1' }, { apiKey: 'secret2' }, { normal: 'value' }]
 
-    logger.info('TestModule', 'Test with array', sensitiveArray)
+    logger.info('TestModule', 'Test with array', sensitiveArray as any)
 
     const { entries } = useLogger()
     const entry = entries.value.find(e => e.message === 'Test with array')
-    const data = entry?.data as Array<Record<string, unknown>>
+    const data = entry?.data as unknown as Array<Record<string, unknown>>
 
     expect(data[0].apiKey).toBe('***REDACTED***')
     expect(data[1].apiKey).toBe('***REDACTED***')

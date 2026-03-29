@@ -26,10 +26,8 @@ describe('chat.ts - 聊天 API', () => {
 
       const request = {
         userId: 'user-123',
-        model: 'gpt-4',
-        messages: [{ id: 'msg-1', role: 'user', content: 'Hi' } as any],
-        systemPrompt: 'You are helpful',
-      }
+        message: 'Hi',
+      } as any
 
       const result = await chatApi.sendMessage(request)
 

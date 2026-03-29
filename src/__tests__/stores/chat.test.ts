@@ -203,7 +203,8 @@ describe('useChatStore - 发送消息', () => {
       reply: 'Hello!',
       conversationId: 'conv-123',
       emotion: { valence: 0.5, arousal: 0.5 },
-    })
+      memoryUsed: 0,
+    } as any)
 
     const result = await store.sendMessage('Hi')
 
@@ -342,7 +343,8 @@ describe('useChatStore - 发送消息深度测试', () => {
       reply: 'Hello with deep thinking!',
       conversationId: 'conv-123',
       emotion: { valence: 0.5, arousal: 0.5 },
-    })
+      memoryUsed: 0,
+    } as any)
 
     const result = await store.sendMessage('Hi', true)
 
@@ -355,7 +357,9 @@ describe('useChatStore - 发送消息深度测试', () => {
     store.currentConversationId = null
     vi.mocked(chatApi.sendMessage).mockResolvedValue({
       reply: 'Hello!',
-    })
+      emotion: { valence: 0.5, arousal: 0.5 },
+      memoryUsed: 0,
+    } as any)
 
     await store.sendMessage('Hi')
 
@@ -368,7 +372,9 @@ describe('useChatStore - 发送消息深度测试', () => {
     vi.mocked(chatApi.sendMessage).mockResolvedValue({
       reply: 'Hello!',
       conversationId: 'new-conv-id',
-    })
+      emotion: { valence: 0.5, arousal: 0.5 },
+      memoryUsed: 0,
+    } as any)
 
     await store.sendMessage('Hi')
 
@@ -381,7 +387,9 @@ describe('useChatStore - 发送消息深度测试', () => {
     vi.mocked(chatApi.sendMessage).mockResolvedValue({
       reply: 'Hello!',
       newSummary: 'New summary',
-    })
+      emotion: { valence: 0.5, arousal: 0.5 },
+      memoryUsed: 0,
+    } as any)
 
     const result = await store.sendMessage('Hi')
 
@@ -467,7 +475,9 @@ describe('useChatStore - 组合场景测试', () => {
     vi.mocked(chatApi.sendMessage).mockResolvedValue({
       reply: 'First response',
       conversationId: 'conv-1',
-    })
+      emotion: { valence: 0.5, arousal: 0.5 },
+      memoryUsed: 0,
+    } as any)
 
     await store.startNewConversation('char-1')
     await store.sendMessage('Hello')
@@ -477,7 +487,9 @@ describe('useChatStore - 组合场景测试', () => {
 
     vi.mocked(chatApi.sendMessage).mockResolvedValue({
       reply: 'Second response',
-    })
+      emotion: { valence: 0.5, arousal: 0.5 },
+      memoryUsed: 0,
+    } as any)
 
     await store.sendMessage('How are you?')
 
@@ -519,7 +531,9 @@ describe('useChatStore - 组合场景测试', () => {
 
     vi.mocked(chatApi.sendMessage).mockResolvedValue({
       reply: 'Success!',
-    })
+      emotion: { valence: 0.5, arousal: 0.5 },
+      memoryUsed: 0,
+    } as any)
 
     const result = await store.sendMessage('Try again')
     expect(result).not.toBeNull()

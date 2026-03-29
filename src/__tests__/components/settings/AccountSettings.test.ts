@@ -31,7 +31,7 @@ vi.mock('@/components/icons', () => ({
 }))
 
 const mockAccountStore = {
-  currentAccount: null,
+  currentAccount: null as any,
   accounts: [],
   currentConfig: null,
   isInitialized: false,

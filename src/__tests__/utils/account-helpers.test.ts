@@ -208,7 +208,7 @@ describe('account-helpers.ts - 账户辅助工具', () => {
           id: '1',
           apiKey: 'encrypted-key',
           apiSecret: JSON.stringify({ iv: 'iv', salt: 'salt' }),
-        },
+        } as any,
       ]
 
       const result = await decryptModelSecrets(models, 'password')
@@ -224,7 +224,7 @@ describe('account-helpers.ts - 账户辅助工具', () => {
           id: '1',
           apiKey: 'plain-key',
           apiSecret: undefined,
-        },
+        } as any,
       ]
 
       const result = await decryptModelSecrets(models, 'password')
@@ -242,7 +242,7 @@ describe('account-helpers.ts - 账户辅助工具', () => {
           id: '1',
           apiKey: 'encrypted-key',
           apiSecret: JSON.stringify({ iv: 'iv', salt: 'salt' }),
-        },
+        } as any,
       ]
 
       const result = await decryptModelSecrets(models, 'password')
@@ -267,17 +267,17 @@ describe('account-helpers.ts - 账户辅助工具', () => {
           id: '1',
           apiKey: 'key1',
           apiSecret: JSON.stringify({ iv: 'iv1', salt: 'salt1' }),
-        },
+        } as any,
         {
           id: '2',
           apiKey: 'key2',
           apiSecret: JSON.stringify({ iv: 'iv2', salt: 'salt2' }),
-        },
+        } as any,
         {
           id: '3',
           apiKey: 'plain-key',
           apiSecret: undefined,
-        },
+        } as any,
       ]
 
       const result = await decryptModelSecrets(models, 'password')

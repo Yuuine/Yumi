@@ -31,7 +31,7 @@ describe('character-cards.ts - 角色卡 API', () => {
 
   describe('list', () => {
     it('列出角色卡', async () => {
-      const mockResponse = []
+      const mockResponse = [] as any
       vi.mocked(httpClient.get).mockResolvedValue(mockResponse)
 
       const result = await characterCardsApi.list('user-123')

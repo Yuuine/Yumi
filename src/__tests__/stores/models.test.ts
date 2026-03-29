@@ -315,7 +315,7 @@ describe('useModelsStore - 模型 Store', () => {
     it('成功切换到已启用的模型', async () => {
       const store = useModelsStore()
       store.models = [mockModel]
-      vi.mocked(modelsApi.setActiveModel).mockResolvedValue({ success: true })
+      vi.mocked(modelsApi.setActiveModel).mockResolvedValue({ success: true, message: '' } as any)
 
       const result = await store.switchModel(mockModel.id)
 
