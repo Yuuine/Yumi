@@ -1,4 +1,9 @@
 """
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 Integration Tests for Async Storage
 """
 
@@ -13,7 +18,7 @@ import pytest
 class TestMessageStorageIntegration:
     @pytest.mark.asyncio
     async def test_full_message_storage_flow(self):
-        from backend.services.async_storage import (
+        from services.async_storage import (
             AsyncStorageService,
             StorageTask,
             StorageTaskStatus,
@@ -50,7 +55,7 @@ class TestMessageStorageIntegration:
 
     @pytest.mark.asyncio
     async def test_storage_failure_recovery(self):
-        from backend.services.async_storage import (
+        from services.async_storage import (
             AsyncStorageService,
             StorageTask,
             StorageTaskStatus,
@@ -94,7 +99,7 @@ class TestMessageStorageIntegration:
 
     @pytest.mark.asyncio
     async def test_concurrent_storage_tasks(self):
-        from backend.services.async_storage import (
+        from services.async_storage import (
             AsyncStorageService,
             StorageTask,
             StorageTaskStatus,
@@ -136,7 +141,7 @@ class TestMessageStorageIntegration:
 
     @pytest.mark.asyncio
     async def test_worker_queue_processing(self):
-        from backend.services.async_storage import (
+        from services.async_storage import (
             AsyncStorageService,
             StorageTask,
         )
@@ -174,7 +179,7 @@ class TestMessageStorageIntegration:
 class TestStorageStatsIntegration:
     @pytest.mark.asyncio
     async def test_stats_tracking(self):
-        from backend.services.async_storage import AsyncStorageService, StorageTask
+        from services.async_storage import AsyncStorageService, StorageTask
 
         service = AsyncStorageService()
 
@@ -208,7 +213,7 @@ class TestStorageStatsIntegration:
 
     @pytest.mark.asyncio
     async def test_latency_tracking(self):
-        from backend.services.async_storage import AsyncStorageService, StorageTask
+        from services.async_storage import AsyncStorageService, StorageTask
 
         service = AsyncStorageService()
 

@@ -1,5 +1,10 @@
 """Character cards HTTP API and chat integration."""
 
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from __future__ import annotations
 
 import pytest
@@ -7,8 +12,8 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_upsert_and_get_by_id_for_prompt() -> None:
-    from backend.database import get_db, init_db
-    from backend.services.character_card import (
+    from database import get_db, init_db
+    from services.character_card import (
         CharacterCard,
         get_character_card_by_id,
         upsert_character_card,
@@ -55,8 +60,8 @@ async def test_upsert_and_get_by_id_for_prompt() -> None:
 
 @pytest.mark.asyncio
 async def test_get_character_card_for_chat_prefers_character_id() -> None:
-    from backend.database import get_db, init_db
-    from backend.services.character_card import (
+    from database import get_db, init_db
+    from services.character_card import (
         CharacterCard,
         get_character_card_for_chat,
         upsert_character_card,

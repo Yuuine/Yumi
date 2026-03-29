@@ -1,4 +1,9 @@
 """
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 Tests for Async Storage Service
 """
 
@@ -11,7 +16,7 @@ import pytest
 
 class TestStorageTaskStatus:
     def test_status_values(self):
-        from backend.services.async_storage import StorageTaskStatus
+        from services.async_storage import StorageTaskStatus
 
         assert StorageTaskStatus.PENDING.value == "pending"
         assert StorageTaskStatus.DB_STORED.value == "db_stored"
@@ -22,7 +27,7 @@ class TestStorageTaskStatus:
 
 class TestStorageTask:
     def test_create_task(self):
-        from backend.services.async_storage import StorageTask
+        from services.async_storage import StorageTask
 
         task = StorageTask.create(
             message_id="msg-123",
@@ -46,7 +51,7 @@ class TestStorageTask:
         assert task.task_id is not None
 
     def test_create_task_without_emotion(self):
-        from backend.services.async_storage import StorageTask
+        from services.async_storage import StorageTask
 
         task = StorageTask.create(
             message_id="msg-123",
@@ -62,7 +67,7 @@ class TestStorageTask:
 class TestAsyncStorageService:
     @pytest.mark.asyncio
     async def test_service_start_and_stop(self):
-        from backend.services.async_storage import AsyncStorageService
+        from services.async_storage import AsyncStorageService
 
         service = AsyncStorageService()
 
@@ -79,7 +84,7 @@ class TestAsyncStorageService:
 
     @pytest.mark.asyncio
     async def test_enqueue_task(self):
-        from backend.services.async_storage import AsyncStorageService, StorageTask
+        from services.async_storage import AsyncStorageService, StorageTask
 
         service = AsyncStorageService()
 
@@ -99,7 +104,7 @@ class TestAsyncStorageService:
 
     @pytest.mark.asyncio
     async def test_get_stats(self):
-        from backend.services.async_storage import AsyncStorageService
+        from services.async_storage import AsyncStorageService
 
         service = AsyncStorageService()
 
@@ -113,7 +118,7 @@ class TestAsyncStorageService:
 
     @pytest.mark.asyncio
     async def test_set_memory_engine(self):
-        from backend.services.async_storage import AsyncStorageService
+        from services.async_storage import AsyncStorageService
 
         service = AsyncStorageService()
 
@@ -124,7 +129,7 @@ class TestAsyncStorageService:
 
     @pytest.mark.asyncio
     async def test_process_task_success(self):
-        from backend.services.async_storage import (
+        from services.async_storage import (
             AsyncStorageService,
             StorageTask,
             StorageTaskStatus,
@@ -158,7 +163,7 @@ class TestAsyncStorageService:
 
     @pytest.mark.asyncio
     async def test_process_task_db_failure(self):
-        from backend.services.async_storage import AsyncStorageService, StorageTask
+        from services.async_storage import AsyncStorageService, StorageTask
 
         service = AsyncStorageService()
 
@@ -186,7 +191,7 @@ class TestAsyncStorageService:
 
     @pytest.mark.asyncio
     async def test_retry_mechanism(self):
-        from backend.services.async_storage import AsyncStorageService, StorageTask
+        from services.async_storage import AsyncStorageService, StorageTask
 
         service = AsyncStorageService()
 
@@ -206,7 +211,7 @@ class TestAsyncStorageService:
 
     @pytest.mark.asyncio
     async def test_max_retries_exceeded(self):
-        from backend.services.async_storage import (
+        from services.async_storage import (
             AsyncStorageService,
             StorageTask,
             StorageTaskStatus,
@@ -239,7 +244,7 @@ class TestAsyncStorageService:
 
     @pytest.mark.asyncio
     async def test_store_to_db_success(self):
-        from backend.services.async_storage import AsyncStorageService, StorageTask
+        from services.async_storage import AsyncStorageService, StorageTask
 
         service = AsyncStorageService()
 
@@ -266,7 +271,7 @@ class TestAsyncStorageService:
 
     @pytest.mark.asyncio
     async def test_store_to_vector_with_engine(self):
-        from backend.services.async_storage import AsyncStorageService, StorageTask
+        from services.async_storage import AsyncStorageService, StorageTask
 
         mock_memory_engine = MagicMock()
         mock_memory_engine.store = AsyncMock(return_value="memory-id-123")
@@ -289,7 +294,7 @@ class TestAsyncStorageService:
 
     @pytest.mark.asyncio
     async def test_store_to_vector_without_engine(self):
-        from backend.services.async_storage import AsyncStorageService, StorageTask
+        from services.async_storage import AsyncStorageService, StorageTask
 
         service = AsyncStorageService()
 
@@ -308,7 +313,7 @@ class TestAsyncStorageService:
 
 class TestGetAsyncStorageService:
     def test_singleton_pattern(self):
-        from backend.services.async_storage import get_async_storage_service
+        from services.async_storage import get_async_storage_service
 
         service1 = get_async_storage_service()
         service2 = get_async_storage_service()

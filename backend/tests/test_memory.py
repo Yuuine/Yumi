@@ -1,4 +1,9 @@
 """
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 Tests for Memory Engine
 """
 
@@ -12,7 +17,7 @@ import pytest
 class TestMemoryEngine:
     @pytest.mark.asyncio
     async def test_store_memory(self, tmp_path):
-        from backend.services.memory import MemoryEngine
+        from services.memory import MemoryEngine
 
         with patch("backend.services.memory.settings") as mock_settings:
             mock_settings.vector_db.persist_dir = str(tmp_path / "chroma")
@@ -36,7 +41,7 @@ class TestMemoryEngine:
 
     @pytest.mark.asyncio
     async def test_store_duplicate_memory(self, tmp_path):
-        from backend.services.memory import MemoryEngine
+        from services.memory import MemoryEngine
 
         with patch("backend.services.memory.settings") as mock_settings:
             mock_settings.vector_db.persist_dir = str(tmp_path / "chroma")
@@ -64,7 +69,7 @@ class TestMemoryEngine:
 
     @pytest.mark.asyncio
     async def test_search_memories(self, tmp_path):
-        from backend.services.memory import MemoryEngine
+        from services.memory import MemoryEngine
 
         with patch("backend.services.memory.settings") as mock_settings:
             mock_settings.vector_db.persist_dir = str(tmp_path / "chroma")
@@ -99,7 +104,7 @@ class TestMemoryEngine:
 
     @pytest.mark.asyncio
     async def test_get_recent_memories(self, tmp_path):
-        from backend.services.memory import MemoryEngine
+        from services.memory import MemoryEngine
 
         with patch("backend.services.memory.settings") as mock_settings:
             mock_settings.vector_db.persist_dir = str(tmp_path / "chroma")
@@ -129,7 +134,7 @@ class TestMemoryEngine:
 
     @pytest.mark.asyncio
     async def test_get_turn_count(self, tmp_path):
-        from backend.services.memory import MemoryEngine
+        from services.memory import MemoryEngine
 
         with patch("backend.services.memory.settings") as mock_settings:
             mock_settings.vector_db.persist_dir = str(tmp_path / "chroma")
@@ -145,7 +150,7 @@ class TestMemoryEngine:
 
     @pytest.mark.asyncio
     async def test_summarize(self, tmp_path):
-        from backend.services.memory import MemoryEngine
+        from services.memory import MemoryEngine
 
         with patch("backend.services.memory.settings") as mock_settings:
             mock_settings.vector_db.persist_dir = str(tmp_path / "chroma")
@@ -171,7 +176,7 @@ class TestMemoryEngine:
 
     @pytest.mark.asyncio
     async def test_get_stats(self, tmp_path):
-        from backend.services.memory import MemoryEngine
+        from services.memory import MemoryEngine
 
         with patch("backend.services.memory.settings") as mock_settings:
             mock_settings.vector_db.persist_dir = str(tmp_path / "chroma")
@@ -199,7 +204,7 @@ class TestMemoryEngine:
 
     @pytest.mark.asyncio
     async def test_delete_memory(self, tmp_path):
-        from backend.services.memory import MemoryEngine
+        from services.memory import MemoryEngine
 
         with patch("backend.services.memory.settings") as mock_settings:
             mock_settings.vector_db.persist_dir = str(tmp_path / "chroma")
@@ -216,7 +221,7 @@ class TestMemoryEngine:
 
     @pytest.mark.asyncio
     async def test_clear_user_memories(self, tmp_path):
-        from backend.services.memory import MemoryEngine
+        from services.memory import MemoryEngine
 
         with patch("backend.services.memory.settings") as mock_settings:
             mock_settings.vector_db.persist_dir = str(tmp_path / "chroma")
@@ -239,7 +244,7 @@ class TestMemoryEngine:
 
 class TestMemoryImportance:
     def test_calculate_importance_high(self, tmp_path):
-        from backend.services.memory import MemoryEngine
+        from services.memory import MemoryEngine
 
         with patch("backend.services.memory.settings") as mock_settings:
             mock_settings.vector_db.persist_dir = str(tmp_path / "chroma")
@@ -251,7 +256,7 @@ class TestMemoryImportance:
             assert importance >= 0.5
 
     def test_calculate_importance_low(self, tmp_path):
-        from backend.services.memory import MemoryEngine
+        from services.memory import MemoryEngine
 
         with patch("backend.services.memory.settings") as mock_settings:
             mock_settings.vector_db.persist_dir = str(tmp_path / "chroma")
@@ -267,7 +272,7 @@ class TestMemoryDecay:
     def test_calculate_decay_recent(self, tmp_path):
         from datetime import datetime
 
-        from backend.services.memory import MemoryEngine
+        from services.memory import MemoryEngine
 
         with patch("backend.services.memory.settings") as mock_settings:
             mock_settings.vector_db.persist_dir = str(tmp_path / "chroma")
@@ -284,7 +289,7 @@ class TestMemoryDecay:
     def test_calculate_decay_old(self, tmp_path):
         from datetime import datetime, timedelta
 
-        from backend.services.memory import MemoryEngine
+        from services.memory import MemoryEngine
 
         with patch("backend.services.memory.settings") as mock_settings:
             mock_settings.vector_db.persist_dir = str(tmp_path / "chroma")

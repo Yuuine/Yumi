@@ -1,4 +1,9 @@
 """
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 Tests for Storage API Router
 """
 
@@ -15,8 +20,8 @@ class TestStorageStatusEndpoint:
         from fastapi import FastAPI
         from httpx import ASGITransport, AsyncClient
 
-        from backend.routers.storage import router
-        from backend.services.async_storage import StorageTask
+        from routers.storage import router
+        from services.async_storage import StorageTask
 
         mock_task = StorageTask.create(
             message_id="msg-1",
@@ -54,7 +59,7 @@ class TestStorageStatusEndpoint:
         from fastapi import FastAPI
         from httpx import ASGITransport, AsyncClient
 
-        from backend.routers.storage import router
+        from routers.storage import router
 
         app = FastAPI()
         app.include_router(router, prefix="/api")
@@ -82,7 +87,7 @@ class TestStorageStatsEndpoint:
         from fastapi import FastAPI
         from httpx import ASGITransport, AsyncClient
 
-        from backend.routers.storage import router
+        from routers.storage import router
 
         mock_stats = {
             "queue_size": 5,
@@ -119,7 +124,7 @@ class TestStorageStatsEndpoint:
         from fastapi import FastAPI
         from httpx import ASGITransport, AsyncClient
 
-        from backend.routers.storage import router
+        from routers.storage import router
 
         mock_stats = {
             "queue_size": 0,
@@ -154,7 +159,7 @@ class TestStorageStatsEndpoint:
 
 class TestStorageResponseModels:
     def test_storage_status_response_model(self):
-        from backend.routers.storage import StorageStatusResponse
+        from routers.storage import StorageStatusResponse
 
         response = StorageStatusResponse(
             taskId="task-123",
@@ -173,7 +178,7 @@ class TestStorageResponseModels:
         assert response.storedAt == "2024-01-01T00:00:00Z"
 
     def test_storage_stats_response_model(self):
-        from backend.routers.storage import StorageStatsResponse
+        from routers.storage import StorageStatsResponse
 
         response = StorageStatsResponse(
             queueLength=10,

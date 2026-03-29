@@ -79,7 +79,7 @@ interface ConversationPair {
 }
 
 interface Props {
-  modelValue: string
+  modelValue: string | ConversationPair[]
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -87,7 +87,7 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const emit = defineEmits<{
-  (e: 'update:modelValue', value: string): void
+  (e: 'update:modelValue', value: string | ConversationPair[]): void
 }>()
 
 const pairs = ref<ConversationPair[]>([])
@@ -131,7 +131,11 @@ function serializeConversationPairs(pairsList: ConversationPair[]): string {
 }
 
 function initializePairs() {
-  pairs.value = parseConversationPairs(props.modelValue)
+  if (Array.isArray(props.modelValue)) {
+    pairs.value = props.modelValue
+  } else {
+    pairs.value = parseConversationPairs(props.modelValue)
+  }
 }
 
 initializePairs()
@@ -166,7 +170,11 @@ function removePair(index: number) {
 }
 
 function updateModelValue() {
-  emit('update:modelValue', serializeConversationPairs(pairs.value))
+  if (Array.isArray(props.modelValue)) {
+    emit('update:modelValue', pairs.value)
+  } else {
+    emit('update:modelValue', serializeConversationPairs(pairs.value))
+  }
 }
 </script>
 

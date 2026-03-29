@@ -1,6 +1,11 @@
 """prompt_builder 消息数组规范化与不变量测试。"""
 
-from backend.services.prompt_builder import (
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from services.prompt_builder import (
     finalize_history_and_current_message,
     _verify_messages_invariants,
 )

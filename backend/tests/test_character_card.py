@@ -1,5 +1,10 @@
 """Tests for character card persistence."""
 
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from __future__ import annotations
 
 import pytest
@@ -7,8 +12,8 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_get_or_create_default_card_for_user() -> None:
-    from backend.database import get_db, init_db
-    from backend.services.character_card import get_or_create_character_card
+    from database import get_db, init_db
+    from services.character_card import get_or_create_character_card
 
     await init_db()
     uid = "test-char-user-1"
@@ -29,8 +34,8 @@ async def test_get_or_create_default_card_for_user() -> None:
 
 @pytest.mark.asyncio
 async def test_get_or_create_clones_default_for_conversation() -> None:
-    from backend.database import get_db, init_db
-    from backend.services.character_card import (
+    from database import get_db, init_db
+    from services.character_card import (
         get_character_card_by_conversation,
         get_or_create_character_card,
     )

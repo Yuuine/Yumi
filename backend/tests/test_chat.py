@@ -1,4 +1,9 @@
 """
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 Tests for chat router
 """
 
@@ -24,8 +29,8 @@ class TestChatRouter:
     ):
         from httpx import ASGITransport, AsyncClient
 
-        from backend.core.auth import get_current_user_id
-        from backend.routers.chat import router
+        from core.auth import get_current_user_id
+        from routers.chat import router
 
         app = FastAPI()
         app.state.memory_engine = mock_memory_engine
@@ -86,8 +91,8 @@ class TestChatRouter:
     ):
         from httpx import ASGITransport, AsyncClient
 
-        from backend.core.auth import get_current_user_id
-        from backend.routers.chat import router
+        from core.auth import get_current_user_id
+        from routers.chat import router
 
         mock_memory_engine.search = AsyncMock(
             return_value=[
@@ -159,9 +164,9 @@ class TestChatRouter:
     ):
         from httpx import ASGITransport, AsyncClient
 
-        from backend.core.auth import get_current_user_id
-        from backend.core.exceptions import LLMException
-        from backend.routers.chat import router
+        from core.auth import get_current_user_id
+        from core.exceptions import LLMException
+        from routers.chat import router
 
         mock_llm_service.chat = AsyncMock(side_effect=LLMException("LLM error"))
 
@@ -176,7 +181,7 @@ class TestChatRouter:
 
         app.dependency_overrides[get_current_user_id] = override_get_current_user_id
 
-        from backend.core.error_handlers import setup_exception_handlers
+        from core.error_handlers import setup_exception_handlers
         setup_exception_handlers(app)
 
         app.include_router(router, prefix="/api")
@@ -201,9 +206,9 @@ class TestChatRouter:
     ):
         from httpx import ASGITransport, AsyncClient
 
-        from backend.core.auth import get_current_user_id
-        from backend.routers.chat import router
-        from backend.database_sqlmodel import get_session
+        from core.auth import get_current_user_id
+        from routers.chat import router
+        from database_sqlmodel import get_session
 
         app = FastAPI()
         app.include_router(router, prefix="/api")
@@ -238,7 +243,7 @@ class TestChatRouter:
 
 class TestChatRequest:
     def test_chat_request_validation(self):
-        from backend.routers.chat import ChatRequest
+        from routers.chat import ChatRequest
 
         request = ChatRequest(
             userId="test-user",
@@ -249,7 +254,7 @@ class TestChatRequest:
         assert request.temperature == 0.85
 
     def test_chat_request_with_custom_temperature(self):
-        from backend.routers.chat import ChatRequest
+        from routers.chat import ChatRequest
 
         request = ChatRequest(
             userId="test-user",
@@ -261,8 +266,8 @@ class TestChatRequest:
 
 class TestChatResponse:
     def test_chat_response_model(self):
-        from backend.routers.chat import ChatResponse
-        from backend.services.emotion import EmotionData
+        from routers.chat import ChatResponse
+        from services.emotion import EmotionData
 
         response = ChatResponse(
             reply="Hello!",
@@ -275,8 +280,8 @@ class TestChatResponse:
         assert response.newSummary is None
 
     def test_chat_response_with_summary(self):
-        from backend.routers.chat import ChatResponse
-        from backend.services.emotion import EmotionData
+        from routers.chat import ChatResponse
+        from services.emotion import EmotionData
 
         response = ChatResponse(
             reply="Hello!",

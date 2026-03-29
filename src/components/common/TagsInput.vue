@@ -37,7 +37,7 @@
 import { ref, nextTick, watch } from 'vue'
 
 interface Props {
-  modelValue: string
+  modelValue: string | string[]
   separator?: string
   placeholder?: string
 }
@@ -48,7 +48,7 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const emit = defineEmits<{
-  (e: 'update:modelValue', value: string): void
+  (e: 'update:modelValue', value: string | string[]): void
 }>()
 
 const inputRef = ref<HTMLInputElement | null>(null)
@@ -70,11 +70,15 @@ function parseBracketContent(value: string): string[] {
 }
 
 function initializeTags() {
-  const bracketTags = parseBracketContent(props.modelValue)
-  if (bracketTags.length > 0) {
-    tags.value = bracketTags
+  if (Array.isArray(props.modelValue)) {
+    tags.value = props.modelValue.filter(t => t.trim())
   } else {
-    tags.value = props.modelValue.split(props.separator).filter(t => t.trim())
+    const bracketTags = parseBracketContent(props.modelValue)
+    if (bracketTags.length > 0) {
+      tags.value = bracketTags
+    } else {
+      tags.value = props.modelValue.split(props.separator).filter(t => t.trim())
+    }
   }
 }
 
@@ -131,7 +135,11 @@ function removeTag(index: number) {
 }
 
 function updateModelValue() {
-  emit('update:modelValue', tags.value.join(props.separator))
+  if (Array.isArray(props.modelValue)) {
+    emit('update:modelValue', tags.value)
+  } else {
+    emit('update:modelValue', tags.value.join(props.separator))
+  }
 }
 </script>
 

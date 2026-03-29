@@ -1,4 +1,9 @@
 """
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 Tests for Emotion Engine
 """
 
@@ -12,7 +17,7 @@ import pytest
 class TestKeywordEmotionAnalyzer:
     @pytest.mark.asyncio
     async def test_analyze_positive_text(self):
-        from backend.services.emotion import KeywordEmotionAnalyzer
+        from services.emotion import KeywordEmotionAnalyzer
 
         analyzer = KeywordEmotionAnalyzer()
         await analyzer.initialize()
@@ -24,7 +29,7 @@ class TestKeywordEmotionAnalyzer:
 
     @pytest.mark.asyncio
     async def test_analyze_negative_text(self):
-        from backend.services.emotion import KeywordEmotionAnalyzer
+        from services.emotion import KeywordEmotionAnalyzer
 
         analyzer = KeywordEmotionAnalyzer()
         await analyzer.initialize()
@@ -36,7 +41,7 @@ class TestKeywordEmotionAnalyzer:
 
     @pytest.mark.asyncio
     async def test_analyze_neutral_text(self):
-        from backend.services.emotion import KeywordEmotionAnalyzer
+        from services.emotion import KeywordEmotionAnalyzer
 
         analyzer = KeywordEmotionAnalyzer()
         await analyzer.initialize()
@@ -47,7 +52,7 @@ class TestKeywordEmotionAnalyzer:
 
     @pytest.mark.asyncio
     async def test_analyze_high_arousal(self):
-        from backend.services.emotion import KeywordEmotionAnalyzer
+        from services.emotion import KeywordEmotionAnalyzer
 
         analyzer = KeywordEmotionAnalyzer()
         await analyzer.initialize()
@@ -58,7 +63,7 @@ class TestKeywordEmotionAnalyzer:
 
     @pytest.mark.asyncio
     async def test_analyze_low_arousal(self):
-        from backend.services.emotion import KeywordEmotionAnalyzer
+        from services.emotion import KeywordEmotionAnalyzer
 
         analyzer = KeywordEmotionAnalyzer()
         await analyzer.initialize()
@@ -68,7 +73,7 @@ class TestKeywordEmotionAnalyzer:
         assert result.arousal < 0.5
 
     def test_get_emotion_label(self):
-        from backend.services.emotion import KeywordEmotionAnalyzer
+        from services.emotion import KeywordEmotionAnalyzer
 
         analyzer = KeywordEmotionAnalyzer()
 
@@ -83,7 +88,7 @@ class TestKeywordEmotionAnalyzer:
 class TestEmotionEngine:
     @pytest.mark.asyncio
     async def test_initialize_keyword_analyzer(self):
-        from backend.services.emotion import EmotionEngine
+        from services.emotion import EmotionEngine
 
         with patch("backend.services.emotion.settings") as mock_settings:
             mock_settings.emotion.model = "keyword"
@@ -96,7 +101,7 @@ class TestEmotionEngine:
 
     @pytest.mark.asyncio
     async def test_analyze_disabled(self):
-        from backend.services.emotion import EmotionEngine
+        from services.emotion import EmotionEngine
 
         with patch("backend.services.emotion.settings") as mock_settings:
             mock_settings.emotion.detection_enabled = False
@@ -112,7 +117,7 @@ class TestEmotionEngine:
 
     @pytest.mark.asyncio
     async def test_get_empathy_response(self):
-        from backend.services.emotion import EmotionData, EmotionEngine
+        from services.emotion import EmotionData, EmotionEngine
 
         with patch("backend.services.emotion.settings") as mock_settings:
             mock_settings.emotion.model = "keyword"
@@ -134,7 +139,7 @@ class TestEmotionEngine:
 
 class TestEmotionData:
     def test_emotion_data_model(self):
-        from backend.services.emotion import EmotionData
+        from services.emotion import EmotionData
 
         emotion = EmotionData(
             valence=0.5,
@@ -149,7 +154,7 @@ class TestEmotionData:
         assert emotion.confidence == 0.8
 
     def test_emotion_data_defaults(self):
-        from backend.services.emotion import EmotionData
+        from services.emotion import EmotionData
 
         emotion = EmotionData(valence=0.0, arousal=0.0)
 

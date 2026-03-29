@@ -18,6 +18,8 @@ export default defineConfig({
       'src/components.d.ts',
       'node_modules',
       'src-tauri/**',
+      'src/__tests__/visual/**',
+      'src/__tests__/benchmark/**',
     ],
     coverage: {
       provider: 'v8',
@@ -26,6 +28,8 @@ export default defineConfig({
       exclude: [
         'node_modules/',
         'src-tauri/',
+        'demo/',
+        'e.g/',
         'src/**/*.d.ts',
         'src/auto-imports.d.ts',
         'src/components.d.ts',

@@ -4,9 +4,13 @@ Authentication Service Tests - 认证服务测试
 
 import pytest
 import asyncio
+import sys
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from backend.services.auth_service import (
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from services.auth_service import (
     PasswordService,
     ValidatorService,
     JWTService,

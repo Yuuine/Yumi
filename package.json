@@ -18,6 +18,10 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:visual": "vitest --run --config vitest.visual.config.ts",
+    "test:benchmark": "vitest --run --config vitest.benchmark.config.ts",
     "check": "npm run lint:check && npm run format:check && npm run typecheck && npm run test:run"
   },
   "dependencies": {
@@ -36,6 +40,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
+    "@playwright/test": "^1.58.2",
     "@tauri-apps/cli": "^2.0.0",
     "@types/node": "^25.5.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
