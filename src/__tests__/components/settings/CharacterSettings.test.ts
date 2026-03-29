@@ -36,7 +36,7 @@ vi.mock('@/components/common/ConversationPairInput', () => ({
 }))
 
 const mockAccountStore = {
-  currentAccount: null,
+  currentAccount: null as any,
   currentAccountId: null,
   currentConfig: { activeCharacterId: 'char-1' },
   loadCharacters: vi.fn(),
@@ -58,7 +58,7 @@ describe('CharacterSettings', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
-    
+
     vi.mocked(useAccountStore).mockReturnValue(mockAccountStore as any)
     vi.mocked(useToast).mockReturnValue(mockToast as any)
   })
@@ -70,126 +70,153 @@ describe('CharacterSettings', () => {
           AutoResizeTextarea: true,
           TagsInput: true,
           ConversationPairInput: true,
-        }
-      }
+        },
+      },
     })
-    
+
     expect(wrapper.find('.character-settings').exists()).toBe(true)
   })
 
   it('shows loading state when no draft data', () => {
     mockAccountStore.currentAccount = null
-    
+
     const wrapper = mount(CharacterSettings, {
       global: {
         stubs: {
           AutoResizeTextarea: true,
           TagsInput: true,
           ConversationPairInput: true,
-        }
-      }
+        },
+      },
     })
-    
+
     expect(wrapper.find('.character-empty').exists()).toBe(true)
   })
 
   it('renders section navigation', async () => {
     mockAccountStore.currentAccount = { id: 'test-account' }
-    mockAccountStore.loadCharacters.mockResolvedValue([{
-      id: 'char-1',
-      name: '测试角色',
-    }])
+    mockAccountStore.loadCharacters.mockResolvedValue([
+      {
+        id: 'char-1',
+        name: '测试角色',
+      },
+    ])
     mockAccountStore.getCharacter.mockResolvedValue({
       id: 'char-1',
       name: '测试角色',
       roleOverview: '这是一个测试角色的描述',
       personality: { core: [], selfPerception: [], attitudeToUser: [], likes: [], dislikes: [] },
       communication: { toneBase: [], wordHabits: '', emotionRules: '', lengthPref: '' },
-      appearance: { race: '', gender: '男', visualAge: '', actualAge: '', location: '', description: '' },
+      appearance: {
+        race: '',
+        gender: '男',
+        visualAge: '',
+        actualAge: '',
+        location: '',
+        description: '',
+      },
       nickname: [],
       specialLogic: [],
       fewShotExamples: [],
     })
-    
+
     const wrapper = mount(CharacterSettings, {
       global: {
         stubs: {
           AutoResizeTextarea: true,
           TagsInput: true,
           ConversationPairInput: true,
-        }
-      }
+        },
+      },
     })
-    
+
     await new Promise(resolve => setTimeout(resolve, 0))
-    
+
     expect(wrapper.find('.section-nav').exists()).toBe(true)
   })
 
   it('has correct section navigation items', async () => {
     mockAccountStore.currentAccount = { id: 'test-account' }
-    mockAccountStore.loadCharacters.mockResolvedValue([{
-      id: 'char-1',
-      name: '测试角色',
-    }])
+    mockAccountStore.loadCharacters.mockResolvedValue([
+      {
+        id: 'char-1',
+        name: '测试角色',
+      },
+    ])
     mockAccountStore.getCharacter.mockResolvedValue({
       id: 'char-1',
       name: '测试角色',
       roleOverview: '这是一个测试角色的描述',
       personality: { core: [], selfPerception: [], attitudeToUser: [], likes: [], dislikes: [] },
       communication: { toneBase: [], wordHabits: '', emotionRules: '', lengthPref: '' },
-      appearance: { race: '', gender: '男', visualAge: '', actualAge: '', location: '', description: '' },
+      appearance: {
+        race: '',
+        gender: '男',
+        visualAge: '',
+        actualAge: '',
+        location: '',
+        description: '',
+      },
       nickname: [],
       specialLogic: [],
       fewShotExamples: [],
     })
-    
+
     const wrapper = mount(CharacterSettings, {
       global: {
         stubs: {
           AutoResizeTextarea: true,
           TagsInput: true,
           ConversationPairInput: true,
-        }
-      }
+        },
+      },
     })
-    
+
     await new Promise(resolve => setTimeout(resolve, 0))
-    
+
     const navItems = wrapper.findAll('.section-nav-item')
     expect(navItems.length).toBeGreaterThan(0)
   })
 
   it('renders config scroll container', async () => {
     mockAccountStore.currentAccount = { id: 'test-account' }
-    mockAccountStore.loadCharacters.mockResolvedValue([{
-      id: 'char-1',
-      name: '测试角色',
-    }])
+    mockAccountStore.loadCharacters.mockResolvedValue([
+      {
+        id: 'char-1',
+        name: '测试角色',
+      },
+    ])
     mockAccountStore.getCharacter.mockResolvedValue({
       id: 'char-1',
       name: '测试角色',
       roleOverview: '这是一个测试角色的描述',
       personality: { core: [], selfPerception: [], attitudeToUser: [], likes: [], dislikes: [] },
       communication: { toneBase: [], wordHabits: '', emotionRules: '', lengthPref: '' },
-      appearance: { race: '', gender: '男', visualAge: '', actualAge: '', location: '', description: '' },
+      appearance: {
+        race: '',
+        gender: '男',
+        visualAge: '',
+        actualAge: '',
+        location: '',
+        description: '',
+      },
       nickname: [],
       specialLogic: [],
       fewShotExamples: [],
     })
-    
+
     const wrapper = mount(CharacterSettings, {
       global: {
         stubs: {
           AutoResizeTextarea: true,
           TagsInput: true,
           ConversationPairInput: true,
-        }
-      }
+        },
+      },
     })
-    
+
     await new Promise(resolve => setTimeout(resolve, 0))
-    
+
     expect(wrapper.find('.config-scroll').exists()).toBe(true)
   })
 })

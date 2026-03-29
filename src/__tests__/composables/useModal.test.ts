@@ -30,10 +30,10 @@ describe('useModal - 模态框', () => {
 
     it('toggle 方法切换 visible 状态', () => {
       const modal = useModal(false)
-      
+
       modal.toggle()
       expect(modal.visible.value).toBe(true)
-      
+
       modal.toggle()
       expect(modal.visible.value).toBe(false)
     })

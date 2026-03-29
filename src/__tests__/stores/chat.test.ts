@@ -3,7 +3,6 @@ import { setActivePinia, createPinia } from 'pinia'
 import { useChatStore } from '@/stores/chat'
 import { chatApi } from '@/api/chat'
 import { conversationsApi } from '@/api/conversations'
-import { useModelsStore } from '@/stores/models'
 
 vi.mock('@/api/chat', () => ({
   chatApi: {
@@ -42,9 +41,7 @@ vi.mock('@/stores/account', () => ({
 }))
 
 const mockModelsStore = {
-  models: [
-    { id: 'model-1', isEnabled: true, apiKey: 'test-key' },
-  ],
+  models: [{ id: 'model-1', isEnabled: true, apiKey: 'test-key' }],
 }
 
 vi.mock('@/stores/models', () => ({
@@ -135,9 +132,9 @@ describe('useChatStore - 对话管理', () => {
 
   it('startNewConversation 开始新对话', async () => {
     const store = useChatStore()
-    
+
     const conversationId = await store.startNewConversation('char-456')
-    
+
     expect(conversationId).toBeTruthy()
     expect(store.currentConversationId).toBe(conversationId)
     expect(store.messages).toEqual([])
@@ -147,14 +144,14 @@ describe('useChatStore - 对话管理', () => {
     const store = useChatStore()
     store.currentConversationId = 'old-conv'
     store.messages.push({ id: '1', role: 'user', content: 'test', timestamp: '2024-01-01' } as any)
-    
+
     mockAccountStore.getConversation = vi.fn().mockResolvedValue({
       id: 'new-conv',
       messages: [],
     })
-    
+
     await store.switchConversation('new-conv')
-    
+
     expect(store.currentConversationId).toBe('new-conv')
   })
 
@@ -201,12 +198,13 @@ describe('useChatStore - 发送消息', () => {
 
   it('成功发送消息', async () => {
     const store = useChatStore()
-    
+
     vi.mocked(chatApi.sendMessage).mockResolvedValue({
       reply: 'Hello!',
       conversationId: 'conv-123',
       emotion: { valence: 0.5, arousal: 0.5 },
-    })
+      memoryUsed: 0,
+    } as any)
 
     const result = await store.sendMessage('Hi')
 
@@ -216,7 +214,7 @@ describe('useChatStore - 发送消息', () => {
 
   it('发送消息失败时添加错误消息', async () => {
     const store = useChatStore()
-    
+
     vi.mocked(chatApi.sendMessage).mockRejectedValue({
       code: 'API_ERROR',
       message: 'API failed',
@@ -238,26 +236,26 @@ describe('useChatStore - 历史记录', () => {
   it('loadHistory 加载历史记录', async () => {
     const store = useChatStore()
     await store.startNewConversation()
-    
+
     vi.mocked(chatApi.getHistory).mockResolvedValue({
       messages: [],
     })
 
     await store.loadHistory()
-    
+
     expect(chatApi.getHistory).toHaveBeenCalled()
   })
 
   it('loadMoreMessages 加载更多消息', async () => {
     const store = useChatStore()
     await store.startNewConversation()
-    
+
     vi.mocked(chatApi.getHistory).mockResolvedValue({
       messages: [],
     })
 
     const result = await store.loadMoreMessages()
-    
+
     expect(typeof result).toBe('boolean')
   })
 })
@@ -311,7 +309,7 @@ describe('useChatStore - 初始化对话', () => {
     const store = useChatStore()
     const conversations = [
       { id: 'conv-1', updatedAt: '2024-01-01' },
-      { id: 'conv-2', updatedAt: '2024-01-02' }
+      { id: 'conv-2', updatedAt: '2024-01-02' },
     ]
     mockAccountStore.loadConversations.mockResolvedValue(conversations)
     mockAccountStore.getConversation.mockResolvedValue(null)
@@ -345,7 +343,8 @@ describe('useChatStore - 发送消息深度测试', () => {
       reply: 'Hello with deep thinking!',
       conversationId: 'conv-123',
       emotion: { valence: 0.5, arousal: 0.5 },
-    })
+      memoryUsed: 0,
+    } as any)
 
     const result = await store.sendMessage('Hi', true)
 
@@ -358,7 +357,9 @@ describe('useChatStore - 发送消息深度测试', () => {
     store.currentConversationId = null
     vi.mocked(chatApi.sendMessage).mockResolvedValue({
       reply: 'Hello!',
-    })
+      emotion: { valence: 0.5, arousal: 0.5 },
+      memoryUsed: 0,
+    } as any)
 
     await store.sendMessage('Hi')
 
@@ -371,7 +372,9 @@ describe('useChatStore - 发送消息深度测试', () => {
     vi.mocked(chatApi.sendMessage).mockResolvedValue({
       reply: 'Hello!',
       conversationId: 'new-conv-id',
-    })
+      emotion: { valence: 0.5, arousal: 0.5 },
+      memoryUsed: 0,
+    } as any)
 
     await store.sendMessage('Hi')
 
@@ -384,7 +387,9 @@ describe('useChatStore - 发送消息深度测试', () => {
     vi.mocked(chatApi.sendMessage).mockResolvedValue({
       reply: 'Hello!',
       newSummary: 'New summary',
-    })
+      emotion: { valence: 0.5, arousal: 0.5 },
+      memoryUsed: 0,
+    } as any)
 
     const result = await store.sendMessage('Hi')
 
@@ -393,9 +398,9 @@ describe('useChatStore - 发送消息深度测试', () => {
 
   it('sendMessage 空消息返回 null', async () => {
     const store = useChatStore()
-    
+
     const result = await store.sendMessage('   ')
-    
+
     expect(result).toBeNull()
   })
 })
@@ -408,27 +413,27 @@ describe('useChatStore - 开始新对话深入测试', () => {
 
   it('startNewConversation 有 characterId 时设置为活跃角色', async () => {
     const store = useChatStore()
-    
+
     await store.startNewConversation('char-new')
-    
+
     expect(mockAccountStore.setActiveCharacterId).toHaveBeenCalledWith('char-new')
   })
 
   it('startNewConversation 创建对话 API 失败时使用本地模式', async () => {
     const store = useChatStore()
     vi.mocked(conversationsApi.createConversation).mockRejectedValue(new Error('API failed'))
-    
+
     const conversationId = await store.startNewConversation()
-    
+
     expect(conversationId).toBeTruthy()
     expect(mockAccountStore.saveConversation).toHaveBeenCalled()
   })
 
   it('startNewConversation 保存本地对话记录', async () => {
     const store = useChatStore()
-    
+
     await store.startNewConversation('char-123')
-    
+
     expect(mockAccountStore.saveConversation).toHaveBeenCalled()
   })
 })
@@ -443,7 +448,7 @@ describe('useChatStore - 切换对话深入测试', () => {
     const store = useChatStore()
     await store.startNewConversation('char-1')
     mockAccountStore.getConversation.mockResolvedValue(null)
-    
+
     await store.switchConversation('conv-2')
   })
 
@@ -451,9 +456,9 @@ describe('useChatStore - 切换对话深入测试', () => {
     const store = useChatStore()
     await store.startNewConversation()
     mockAccountStore.getConversation.mockResolvedValue(null)
-    
+
     await store.switchConversation('conv-reset')
-    
+
     expect(store.hasMoreHistory).toBe(true)
   })
 })
@@ -470,20 +475,24 @@ describe('useChatStore - 组合场景测试', () => {
     vi.mocked(chatApi.sendMessage).mockResolvedValue({
       reply: 'First response',
       conversationId: 'conv-1',
-    })
+      emotion: { valence: 0.5, arousal: 0.5 },
+      memoryUsed: 0,
+    } as any)
 
     await store.startNewConversation('char-1')
     await store.sendMessage('Hello')
-    
+
     expect(store.messages.length).toBe(2)
     expect(store.currentConversationId).toBe('conv-1')
 
     vi.mocked(chatApi.sendMessage).mockResolvedValue({
       reply: 'Second response',
-    })
-    
+      emotion: { valence: 0.5, arousal: 0.5 },
+      memoryUsed: 0,
+    } as any)
+
     await store.sendMessage('How are you?')
-    
+
     expect(store.messages.length).toBe(4)
     expect(store.conversationCount).toBe(2)
   })
@@ -491,39 +500,41 @@ describe('useChatStore - 组合场景测试', () => {
   it('多次切换对话状态保持正确', async () => {
     const store = useChatStore()
     mockAccountStore.getConversation.mockResolvedValue(null)
-    
+
     await store.startNewConversation('char-1')
     expect(store.currentConversationId).not.toBeNull()
-    
+
     const firstConvId = store.currentConversationId
     await store.switchConversation('conv-2')
-    
+
     expect(store.currentConversationId).toBe('conv-2')
-    
+
     await store.switchConversation(firstConvId!)
-    
+
     expect(store.currentConversationId).toBe(firstConvId)
   })
 
   it('发送消息失败后清除错误继续发送', async () => {
     const store = useChatStore()
     await store.startNewConversation()
-    
+
     vi.mocked(chatApi.sendMessage).mockRejectedValue({
       code: 'ERROR',
       message: 'Test error',
     })
-    
+
     await store.sendMessage('Hello')
     expect(store.lastError).not.toBeNull()
-    
+
     store.clearError()
     expect(store.lastError).toBeNull()
-    
+
     vi.mocked(chatApi.sendMessage).mockResolvedValue({
       reply: 'Success!',
-    })
-    
+      emotion: { valence: 0.5, arousal: 0.5 },
+      memoryUsed: 0,
+    } as any)
+
     const result = await store.sendMessage('Try again')
     expect(result).not.toBeNull()
   })

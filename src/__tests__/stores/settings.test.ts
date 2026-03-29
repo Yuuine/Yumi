@@ -40,7 +40,7 @@ describe('useSettingsStore - 设置 Store', () => {
 
   it('初始化默认设置', () => {
     const store = useSettingsStore()
-    
+
     expect(store.showReasoning).toBe(true)
     expect(store.verboseTest).toBe(true)
     expect(store.theme).toBe('light')
@@ -49,7 +49,7 @@ describe('useSettingsStore - 设置 Store', () => {
   it('setShowReasoning 更新设置并保存', () => {
     const store = useSettingsStore()
     store.setShowReasoning(false)
-    
+
     expect(store.showReasoning).toBe(false)
     expect(localStorageMock.setItem).toHaveBeenCalled()
   })
@@ -57,7 +57,7 @@ describe('useSettingsStore - 设置 Store', () => {
   it('setVerboseTest 更新设置并保存', () => {
     const store = useSettingsStore()
     store.setVerboseTest(false)
-    
+
     expect(store.verboseTest).toBe(false)
     expect(localStorageMock.setItem).toHaveBeenCalled()
   })
@@ -65,7 +65,7 @@ describe('useSettingsStore - 设置 Store', () => {
   it('setTheme 更新设置并保存', () => {
     const store = useSettingsStore()
     store.setTheme('dark')
-    
+
     expect(store.theme).toBe('dark')
     expect(localStorageMock.setItem).toHaveBeenCalled()
   })
@@ -75,11 +75,11 @@ describe('useSettingsStore - 设置 Store', () => {
     store.setShowReasoning(false)
     store.setVerboseTest(false)
     store.setTheme('dark')
-    
+
     localStorageMock.setItem.mockClear()
-    
+
     store.saveSettings()
-    
+
     expect(localStorageMock.setItem).toHaveBeenCalled()
   })
 
@@ -90,10 +90,10 @@ describe('useSettingsStore - 设置 Store', () => {
       theme: 'dark',
     }
     localStorageMock.getItem.mockReturnValue(JSON.stringify(savedSettings))
-    
+
     const store = useSettingsStore()
     store.loadSettings()
-    
+
     expect(store.showReasoning).toBe(false)
     expect(store.verboseTest).toBe(false)
     expect(store.theme).toBe('dark')
@@ -101,10 +101,10 @@ describe('useSettingsStore - 设置 Store', () => {
 
   it('loadSettings 在没有保存设置时使用默认值', () => {
     localStorageMock.getItem.mockReturnValue(null)
-    
+
     const store = useSettingsStore()
     store.loadSettings()
-    
+
     expect(store.showReasoning).toBe(true)
     expect(store.verboseTest).toBe(true)
     expect(store.theme).toBe('light')
@@ -112,19 +112,19 @@ describe('useSettingsStore - 设置 Store', () => {
 
   it('loadSettings 在数据无效时使用默认值', () => {
     localStorageMock.getItem.mockReturnValue('invalid-json')
-    
+
     const store = useSettingsStore()
-    
+
     expect(() => store.loadSettings()).not.toThrow()
   })
 
   it('settings 计算属性返回正确的值', () => {
     const store = useSettingsStore()
-    
+
     store.setShowReasoning(false)
     store.setVerboseTest(false)
     store.setTheme('dark')
-    
+
     expect(store.settings.showReasoning).toBe(false)
     expect(store.settings.verboseTest).toBe(false)
     expect(store.settings.theme).toBe('dark')

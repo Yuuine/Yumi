@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { mount, flushPromises } from '@vue/test-utils'
+import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import ChatInput from '@/components/chat/ChatInput.vue'
 
@@ -101,11 +101,11 @@ describe('ChatInput - 聊天输入组件', () => {
     it('可以正确设置和获取 deepThinking v-model', async () => {
       const wrapper = mount(ChatInput, {
         props: {
-          'deepThinking': false,
+          deepThinking: false,
           'onUpdate:deepThinking': vi.fn(),
         },
       })
-      
+
       expect(wrapper.props('deepThinking')).toBe(false)
     })
 

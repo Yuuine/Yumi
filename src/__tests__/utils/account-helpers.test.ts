@@ -199,14 +199,16 @@ describe('account-helpers.ts - 账户辅助工具', () => {
 
     it('解密有 apiSecret 的模型', async () => {
       const mockDecrypt = vi.mocked(cryptoService.decrypt)
-      mockDecrypt.mockResolvedValueOnce(JSON.stringify({ apiKey: 'decrypted-key', apiSecret: 'decrypted-secret' }))
+      mockDecrypt.mockResolvedValueOnce(
+        JSON.stringify({ apiKey: 'decrypted-key', apiSecret: 'decrypted-secret' })
+      )
 
       const models = [
         {
           id: '1',
           apiKey: 'encrypted-key',
           apiSecret: JSON.stringify({ iv: 'iv', salt: 'salt' }),
-        },
+        } as any,
       ]
 
       const result = await decryptModelSecrets(models, 'password')
@@ -222,7 +224,7 @@ describe('account-helpers.ts - 账户辅助工具', () => {
           id: '1',
           apiKey: 'plain-key',
           apiSecret: undefined,
-        },
+        } as any,
       ]
 
       const result = await decryptModelSecrets(models, 'password')
@@ -240,7 +242,7 @@ describe('account-helpers.ts - 账户辅助工具', () => {
           id: '1',
           apiKey: 'encrypted-key',
           apiSecret: JSON.stringify({ iv: 'iv', salt: 'salt' }),
-        },
+        } as any,
       ]
 
       const result = await decryptModelSecrets(models, 'password')
@@ -255,7 +257,9 @@ describe('account-helpers.ts - 账户辅助工具', () => {
     it('混合模型 - 部分解密成功，部分失败', async () => {
       const mockDecrypt = vi.mocked(cryptoService.decrypt)
       mockDecrypt
-        .mockResolvedValueOnce(JSON.stringify({ apiKey: 'success-key', apiSecret: 'success-secret' }))
+        .mockResolvedValueOnce(
+          JSON.stringify({ apiKey: 'success-key', apiSecret: 'success-secret' })
+        )
         .mockRejectedValueOnce(new Error('Failed'))
 
       const models = [
@@ -263,17 +267,17 @@ describe('account-helpers.ts - 账户辅助工具', () => {
           id: '1',
           apiKey: 'key1',
           apiSecret: JSON.stringify({ iv: 'iv1', salt: 'salt1' }),
-        },
+        } as any,
         {
           id: '2',
           apiKey: 'key2',
           apiSecret: JSON.stringify({ iv: 'iv2', salt: 'salt2' }),
-        },
+        } as any,
         {
           id: '3',
           apiKey: 'plain-key',
           apiSecret: undefined,
-        },
+        } as any,
       ]
 
       const result = await decryptModelSecrets(models, 'password')
@@ -289,7 +293,12 @@ describe('account-helpers.ts - 账户辅助工具', () => {
         char1: { id: 'char1', name: 'Character 1', accountId: 'old-acc' } as any,
       }
       const conversations = {
-        conv1: { id: 'conv1', accountId: 'old-acc', characterId: 'char1', messages: [{ id: 'msg1' }] },
+        conv1: {
+          id: 'conv1',
+          accountId: 'old-acc',
+          characterId: 'char1',
+          messages: [{ id: 'msg1' }],
+        },
       }
       const config = { activeCharacterId: 'char1' }
       const accountId = 'new-acc-id'

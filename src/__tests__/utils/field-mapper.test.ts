@@ -34,7 +34,7 @@ describe('field-mapper.ts - 字段映射工具', () => {
         userName: 'test',
         characterId: 'char-123',
       }
-      const result = toSnakeCase(obj)
+      const result = toSnakeCase(obj) as any
       expect(result.user_id).toBe(123)
       expect(result.user_name).toBe('test')
       expect(result.character_id).toBe('char-123')
@@ -46,7 +46,7 @@ describe('field-mapper.ts - 字段映射工具', () => {
         user_name: 'test',
         character_id: 'char-123',
       }
-      const result = toCamelCase(obj)
+      const result = toCamelCase(obj) as any
       expect(result.userId).toBe(123)
       expect(result.userName).toBe('test')
       expect(result.characterId).toBe('char-123')
@@ -59,7 +59,7 @@ describe('field-mapper.ts - 字段映射工具', () => {
           userName: 'test',
         },
       }
-      const result = toSnakeCase(obj)
+      const result = toSnakeCase(obj) as any
       expect(result.user_info).toBeTruthy()
     })
 
@@ -70,7 +70,7 @@ describe('field-mapper.ts - 字段映射工具', () => {
           user_name: 'test',
         },
       }
-      const result = toCamelCase(obj)
+      const result = toCamelCase(obj) as any
       expect(result.userInfo).toBeTruthy()
     })
 
@@ -131,10 +131,7 @@ describe('field-mapper.ts - 字段映射工具', () => {
     })
 
     it('toConversationListDTO 转换对话列表', () => {
-      const rawList = [
-        { id: 'conv-1' },
-        { id: 'conv-2' },
-      ]
+      const rawList = [{ id: 'conv-1' }, { id: 'conv-2' }]
       const result = toConversationListDTO(rawList)
       expect(result.length).toBe(2)
     })
@@ -186,10 +183,7 @@ describe('field-mapper.ts - 字段映射工具', () => {
     })
 
     it('toCharacterCardListDTO 转换角色卡列表', () => {
-      const rawList = [
-        { id: 'char-1' },
-        { id: 'char-2' },
-      ]
+      const rawList = [{ id: 'char-1' }, { id: 'char-2' }]
       const result = toCharacterCardListDTO(rawList)
       expect(result.length).toBe(2)
     })

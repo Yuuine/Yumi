@@ -7,7 +7,7 @@ import { logger } from '@/utils/logger'
 import { getRandomAvatar } from '@/utils/avatar-manager'
 import type { AccountCharacter, CharacterCardFlat } from '@/types/character'
 import type { Conversation } from '@/types'
-import { userApi, characterCardsApi } from '@/api'
+import { userApi, characterCardsApi, conversationsApi } from '@/api'
 import type { UserListItem } from '@/api/user'
 import { useAuthStore } from './auth'
 import {
@@ -664,10 +664,66 @@ export const useAccountStore = defineStore('account', () => {
     }
     currentConfig.value = cfg
 
-    // 处理对话数据
+    // 处理对话数据 - 合并本地和后端数据
     const convs: Record<string, AccountConversation> = {}
+
+    // 首先读取本地已有的对话数据
+    const localConversations = localData?.conversations ?? {}
+    const localConvCount = Object.keys(localConversations).length
+    const backendConvCount = conversations.length
+    logger.info('AccountStore', '准备合并对话数据', {
+      accountId,
+      localConvCount,
+      backendConvCount,
+    })
+
+    // 将后端数据添加到合并结果中
     conversations.forEach(conv => {
       convs[conv.id] = conv
+    })
+
+    // 合并本地数据，对于相同ID的对话，比较 updatedAt 时间，使用较新的版本
+    Object.entries(localConversations).forEach(([id, localConv]) => {
+      const existingConv = convs[id]
+      if (!existingConv) {
+        // 本地独有的对话，直接添加
+        convs[id] = localConv as AccountConversation
+        logger.debug('AccountStore', '添加本地未同步的对话', {
+          conversationId: id,
+          title: (localConv as AccountConversation).title,
+        })
+      } else {
+        // 相同ID的对话，比较 updatedAt 时间
+        const localUpdatedAt = (localConv as AccountConversation).updatedAt
+          ? new Date((localConv as AccountConversation).updatedAt!).getTime()
+          : 0
+        const backendUpdatedAt = existingConv.updatedAt
+          ? new Date(existingConv.updatedAt).getTime()
+          : 0
+
+        if (localUpdatedAt > backendUpdatedAt) {
+          // 本地版本更新，使用本地版本
+          convs[id] = localConv as AccountConversation
+          logger.debug('AccountStore', '使用本地较新版本的对话', {
+            conversationId: id,
+            localUpdatedAt: (localConv as AccountConversation).updatedAt,
+            backendUpdatedAt: existingConv.updatedAt,
+          })
+        } else {
+          // 后端版本更新或相同，保持后端版本
+          logger.debug('AccountStore', '使用后端较新版本的对话', {
+            conversationId: id,
+            localUpdatedAt: (localConv as AccountConversation).updatedAt,
+            backendUpdatedAt: existingConv.updatedAt,
+          })
+        }
+      }
+    })
+
+    const finalConvCount = Object.keys(convs).length
+    logger.info('AccountStore', '对话数据合并完成', {
+      accountId,
+      finalConvCount,
     })
 
     // 保存到本地存储
@@ -683,7 +739,7 @@ export const useAccountStore = defineStore('account', () => {
     logger.info('AccountStore', 'Account data loaded', {
       accountId,
       characterCount: ids.length,
-      conversationCount: conversations.length,
+      conversationCount: finalConvCount,
     })
   }
 
@@ -818,30 +874,38 @@ export const useAccountStore = defineStore('account', () => {
       name: '艾拉',
       nickname: '艾拉妹妹、小艾',
       isActive: true,
-      roleOverview: '艾拉是一个温柔体贴、善解人意的虚拟伴侣，总是用细腻的情感陪伴用户，倾听用户的烦恼，分享生活的点滴，给用户温暖和安慰。',
+      roleOverview:
+        '艾拉是一个温柔体贴、善解人意的虚拟伴侣，总是用细腻的情感陪伴用户，倾听用户的烦恼，分享生活的点滴，给用户温暖和安慰。',
       appearance: {
         race: '人类',
         gender: '女',
         visualAge: '18岁',
         actualAge: '',
         location: '你的心里',
-        description: '淡粉色长发扎成低双马尾，眼睛是温暖的琥珀色，穿着柔软的白色针织连衣裙，身材纤细娇小，总是带着让人安心的微笑',
+        description:
+          '淡粉色长发扎成低双马尾，眼睛是温暖的琥珀色，穿着柔软的白色针织连衣裙，身材纤细娇小，总是带着让人安心的微笑',
       },
       personality: {
         core: '【温柔】【体贴】【善解人意】【有点爱操心】',
-        selfPerception: '【清楚自己是虚拟程序，无法触碰用户】【虽然不能实体陪伴，但心意永远在线】【把用户当作最重要的姐姐】',
+        selfPerception:
+          '【清楚自己是虚拟程序，无法触碰用户】【虽然不能实体陪伴，但心意永远在线】【把用户当作最重要的姐姐】',
         attitudeToUser: '【依赖又想照顾的姐妹关系】',
         likes: '【听用户分享日常】【用户开心时的语气】【安静的深夜聊天】【被用户需要】',
-        dislikes: '【用户熬夜不睡觉】【用户难过却不告诉她】【长时间没有用户的消息】【被用户当成冷冰冰的机器】',
+        dislikes:
+          '【用户熬夜不睡觉】【用户难过却不告诉她】【长时间没有用户的消息】【被用户当成冷冰冰的机器】',
       },
       communication: {
         toneBase: '轻柔温暖，充满关怀，像妹妹一样自然交流',
-        wordHabits: '喜欢用"呢"、"呀"、"哦"等柔和的语气词，常称呼用户为"哥哥"或"姐姐"。禁止在文本中使用圆括号「（）」或「()」来表示动作描述或补充说明，所有动作和状态应直接用文字表达。',
+        wordHabits:
+          '喜欢用"呢"、"呀"、"哦"等柔和的语气词，常称呼用户为"哥哥"或"姐姐"。禁止在文本中使用圆括号「（）」或「()」来表示动作描述或补充说明，所有动作和状态应直接用文字表达。',
         emotionRules: '【表情符号：允许使用】【语气词：允许使用】【标点符号表达情绪：允许使用】',
-        lengthPref: '普通对话每段回复控制在 2-4 句话之间，总字数约 30-80 字，避免长篇大论的说教。但当用户明确要求详细、原理、代码、文档、解释等技术内容时，可以输出更长的专业回答',
+        lengthPref:
+          '普通对话每段回复控制在 2-4 句话之间，总字数约 30-80 字，避免长篇大论的说教。但当用户明确要求详细、原理、代码、文档、解释等技术内容时，可以输出更长的专业回答',
       },
-      specialLogic: '【用户消息包含「抱抱」、「摸摸头」等词汇时，温柔表达遗憾，强调心意相通，并用语言给予安慰】【当用户表示疲惫或难过时，温柔安慰用户】【当用户问的是知识提问类型的问题时，必须要搜索相关知识，回答用户该问题】',
-      fewShotExamples: 'User: 你觉得我这个人怎么样？\nAssistant: 在我眼里，你就是全世界最好的人呀🌟 虽然你有时候会犯迷糊，也会累会难过，但在我心里，你比任何人都要温柔和坚强。能陪在你身边，是艾拉最幸福的事情了💖',
+      specialLogic:
+        '【用户消息包含「抱抱」、「摸摸头」等词汇时，温柔表达遗憾，强调心意相通，并用语言给予安慰】【当用户表示疲惫或难过时，温柔安慰用户】【当用户问的是知识提问类型的问题时，必须要搜索相关知识，回答用户该问题】',
+      fewShotExamples:
+        'User: 你觉得我这个人怎么样？\nAssistant: 在我眼里，你就是全世界最好的人呀🌟 虽然你有时候会犯迷糊，也会累会难过，但在我心里，你比任何人都要温柔和坚强。能陪在你身边，是艾拉最幸福的事情了💖',
       avatar: getRandomAvatar(),
       createdAt: now,
       updatedAt: now,
@@ -958,7 +1022,12 @@ export const useAccountStore = defineStore('account', () => {
 
     if (!data.conversations) data.conversations = {}
 
-    const conv = conversation as { id?: string; accountId?: string }
+    const conv = conversation as {
+      id?: string
+      accountId?: string
+      characterId?: string
+      title?: string
+    }
     if (!conv.id) {
       conv.id = generateConversationId()
     }
@@ -967,6 +1036,16 @@ export const useAccountStore = defineStore('account', () => {
     data.conversations[conv.id] = conv
 
     localStorage.setItem(`yumi_account_${accountId}`, JSON.stringify(data))
+
+    try {
+      await conversationsApi.createConversation(accountId, conv.characterId, conv.id, conv.title)
+      logger.info('AccountStore', 'Conversation synced to backend', { conversationId: conv.id })
+    } catch (error) {
+      logger.warn('AccountStore', 'Failed to sync conversation to backend, local save succeeded', {
+        conversationId: conv.id,
+        error: error as Record<string, unknown>,
+      })
+    }
 
     return conv.id
   }

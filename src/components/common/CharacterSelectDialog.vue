@@ -64,22 +64,22 @@ const sortedCharacters = computed(() => {
   return [...props.characters].sort((a, b) => {
     const aHasOverview = a.roleOverview && a.roleOverview.trim().length > 0
     const bHasOverview = b.roleOverview && b.roleOverview.trim().length > 0
-    
+
     if (aHasOverview && !bHasOverview) return -1
     if (!aHasOverview && bHasOverview) return 1
-    
+
     const aUpdated = new Date(a.updatedAt).getTime()
     const bUpdated = new Date(b.updatedAt).getTime()
     if (aUpdated !== bUpdated) {
       return bUpdated - aUpdated
     }
-    
+
     const aCreated = new Date(a.createdAt).getTime()
     const bCreated = new Date(b.createdAt).getTime()
     if (aCreated !== bCreated) {
       return bCreated - aCreated
     }
-    
+
     return a.name.localeCompare(b.name)
   })
 })

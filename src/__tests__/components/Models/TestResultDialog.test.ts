@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
-import TestResultDialog from '@/components/Models/TestResultDialog.vue'
+import TestResultDialog from '@/components/models/TestResultDialog.vue'
 import type { ModelTestResponse } from '@/types'
 
 vi.mock('@/components/common/MarkdownRenderer.vue', () => ({

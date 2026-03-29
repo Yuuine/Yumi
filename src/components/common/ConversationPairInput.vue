@@ -1,11 +1,7 @@
 <template>
   <div class="conversation-pair-input-wrapper">
     <div class="conversation-pairs-container">
-      <div
-        v-for="(pair, index) in pairs"
-        :key="index"
-        class="conversation-pair-item"
-      >
+      <div v-for="(pair, index) in pairs" :key="index" class="conversation-pair-item">
         <div class="conversation-pair-content" @click="toggleExpand(index)">
           <div class="conversation-message" :class="{ 'message-expanded': expandedPairs[index] }">
             <span class="message-role">User:</span>
@@ -16,18 +12,17 @@
             <span class="message-text">{{ pair.assistant }}</span>
           </div>
         </div>
-        <button
-          type="button"
-          class="pair-remove"
-          @click="removePair(index)"
-          aria-label="移除"
-        >
+        <button type="button" class="pair-remove" @click="removePair(index)" aria-label="移除">
           <svg class="pair-remove-icon" viewBox="0 0 20 20" fill="currentColor">
-            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+            <path
+              fill-rule="evenodd"
+              d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+              clip-rule="evenodd"
+            />
           </svg>
         </button>
       </div>
-      
+
       <div class="add-pair-container" v-if="showAddForm">
         <div class="add-pair-form">
           <div class="form-group">
@@ -54,15 +49,14 @@
           </div>
         </div>
       </div>
-      
-      <button
-        v-else
-        type="button"
-        class="add-pair-button"
-        @click="showAddForm = true"
-      >
+
+      <button v-else type="button" class="add-pair-button" @click="showAddForm = true">
         <svg class="add-icon" viewBox="0 0 20 20" fill="currentColor">
-          <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
+          <path
+            fill-rule="evenodd"
+            d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z"
+            clip-rule="evenodd"
+          />
         </svg>
         <span>添加对话示例</span>
       </button>
@@ -109,10 +103,10 @@ function toggleExpand(index: number): void {
 function parseConversationPairs(value: string): ConversationPair[] {
   const result: ConversationPair[] = []
   if (!value) return result
-  
+
   const regex = /User:\s*([\s\S]*?)\s*Assistant:\s*([\s\S]*?)(?=\n\nUser:|$)/g
   let match
-  
+
   while ((match = regex.exec(value)) !== null) {
     const user = match[1].trim()
     const assistant = match[2].trim()
@@ -120,14 +114,12 @@ function parseConversationPairs(value: string): ConversationPair[] {
       result.push({ user, assistant })
     }
   }
-  
+
   return result
 }
 
 function serializeConversationPairs(pairsList: ConversationPair[]): string {
-  return pairsList
-    .map(pair => `User: ${pair.user}\nAssistant: ${pair.assistant}`)
-    .join('\n\n')
+  return pairsList.map(pair => `User: ${pair.user}\nAssistant: ${pair.assistant}`).join('\n\n')
 }
 
 function initializePairs() {

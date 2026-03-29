@@ -19,9 +19,7 @@ describe('models.ts - 模型 API', () => {
 
   describe('getModels', () => {
     it('获取模型列表', async () => {
-      const mockResponse = [
-        { id: 'model-1', name: 'GPT-4' },
-      ]
+      const mockResponse = [{ id: 'model-1', name: 'GPT-4' }]
       vi.mocked(httpClient.get).mockResolvedValue(mockResponse)
 
       const result = await modelsApi.getModels('acc-123')

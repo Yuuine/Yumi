@@ -49,7 +49,7 @@ const inputValue = ref(props.modelValue)
 
 watch(
   () => props.modelValue,
-  (newValue) => {
+  newValue => {
     inputValue.value = newValue
   }
 )

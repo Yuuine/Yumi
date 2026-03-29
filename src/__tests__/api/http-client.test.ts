@@ -187,7 +187,7 @@ describe('http-client.ts - HTTP 客户端', () => {
         },
       }
 
-      const result = await responseInterceptorRejected(mockError).catch(e => e)
+      const result = await responseInterceptorRejected(mockError).catch((e: any) => e)
 
       expect(result.code).toBe('VALIDATION_ERROR')
       expect(result.message).toBe('参数验证失败')
@@ -201,7 +201,7 @@ describe('http-client.ts - HTTP 客户端', () => {
         },
       }
 
-      const result = await responseInterceptorRejected(mockError).catch(e => e)
+      const result = await responseInterceptorRejected(mockError).catch((e: any) => e)
 
       expect(result.code).toBe('HTTP_ERROR')
       expect(result.message).toBe('详细错误信息')
@@ -215,7 +215,7 @@ describe('http-client.ts - HTTP 客户端', () => {
         },
       }
 
-      const result = await responseInterceptorRejected(mockError).catch(e => e)
+      const result = await responseInterceptorRejected(mockError).catch((e: any) => e)
 
       expect(result.code).toBe('DETAIL_ERROR')
       expect(result.message).toBe('详细信息')
@@ -229,7 +229,7 @@ describe('http-client.ts - HTTP 客户端', () => {
         },
       }
 
-      const result = await responseInterceptorRejected(mockError).catch(e => e)
+      const result = await responseInterceptorRejected(mockError).catch((e: any) => e)
 
       expect(result.code).toBe('DIRECT_ERROR')
       expect(result.message).toBe('直接消息')
@@ -256,7 +256,7 @@ describe('http-client.ts - HTTP 客户端', () => {
           },
         }
 
-        const result = await responseInterceptorRejected(mockError).catch(e => e)
+        const result = await responseInterceptorRejected(mockError).catch((e: any) => e)
         expect(result.code).toBe(`HTTP_${testCase.status}`)
         expect(result.message).toBe(testCase.expectedMessage)
       }
@@ -268,7 +268,7 @@ describe('http-client.ts - HTTP 客户端', () => {
         response: undefined,
       }
 
-      const result = await responseInterceptorRejected(mockError).catch(e => e)
+      const result = await responseInterceptorRejected(mockError).catch((e: any) => e)
 
       expect(result.code).toBe('TIMEOUT')
       expect(result.message).toBe('请求超时，请稍后再试')
@@ -281,7 +281,7 @@ describe('http-client.ts - HTTP 客户端', () => {
         response: undefined,
       }
 
-      const result = await responseInterceptorRejected(mockError).catch(e => e)
+      const result = await responseInterceptorRejected(mockError).catch((e: any) => e)
 
       expect(result.code).toBe('TIMEOUT')
       expect(result.message).toBe('请求超时，请稍后再试')
@@ -293,7 +293,7 @@ describe('http-client.ts - HTTP 客户端', () => {
         response: undefined,
       }
 
-      const result = await responseInterceptorRejected(mockError).catch(e => e)
+      const result = await responseInterceptorRejected(mockError).catch((e: any) => e)
 
       expect(result.code).toBe('NETWORK_ERROR')
       expect(result.message).toBe('网络连接失败，请检查网络')
@@ -305,7 +305,7 @@ describe('http-client.ts - HTTP 客户端', () => {
         response: undefined,
       }
 
-      const result = await responseInterceptorRejected(mockError).catch(e => e)
+      const result = await responseInterceptorRejected(mockError).catch((e: any) => e)
 
       expect(result.code).toBe('UNKNOWN_ERROR')
       expect(result.message).toBe('Something went wrong')

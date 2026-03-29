@@ -74,7 +74,7 @@ describe('constants - 常量模块', () => {
     it('生成正确的选项列表', () => {
       expect(Array.isArray(PROVIDER_OPTIONS)).toBe(true)
       expect(PROVIDER_OPTIONS.length).toBe(3)
-      
+
       PROVIDER_OPTIONS.forEach(option => {
         expect(option).toHaveProperty('value')
         expect(option).toHaveProperty('label')

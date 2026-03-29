@@ -65,10 +65,9 @@ describe('conversations.ts - 对话 API', () => {
 
       await conversationsApi.updateTitle('conv-123', '新标题')
 
-      expect(httpClient.put).toHaveBeenCalledWith(
-        '/conversations/conv-123/title',
-        { title: '新标题' }
-      )
+      expect(httpClient.put).toHaveBeenCalledWith('/conversations/conv-123/title', {
+        title: '新标题',
+      })
     })
   })
 

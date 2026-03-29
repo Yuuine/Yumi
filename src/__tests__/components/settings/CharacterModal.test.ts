@@ -54,7 +54,7 @@ describe('CharacterModal', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
-    
+
     vi.mocked(useAccountStore).mockReturnValue(mockAccountStore as any)
     vi.mocked(useToast).mockReturnValue(mockToast as any)
   })
@@ -63,10 +63,10 @@ describe('CharacterModal', () => {
     const wrapper = mount(CharacterModal, {
       props: { visible: true },
       global: {
-        stubs: defaultStubs
-      }
+        stubs: defaultStubs,
+      },
     })
-    
+
     expect(wrapper.find('.character-modal-overlay').exists()).toBe(true)
     expect(wrapper.find('.character-modal').exists()).toBe(true)
   })
@@ -75,10 +75,10 @@ describe('CharacterModal', () => {
     const wrapper = mount(CharacterModal, {
       props: { visible: false },
       global: {
-        stubs: defaultStubs
-      }
+        stubs: defaultStubs,
+      },
     })
-    
+
     expect(wrapper.find('.character-modal-overlay').exists()).toBe(false)
   })
 
@@ -86,10 +86,10 @@ describe('CharacterModal', () => {
     const wrapper = mount(CharacterModal, {
       props: { visible: true },
       global: {
-        stubs: defaultStubs
-      }
+        stubs: defaultStubs,
+      },
     })
-    
+
     expect(wrapper.find('.modal-title').text()).toBe('角色配置')
   })
 
@@ -97,10 +97,10 @@ describe('CharacterModal', () => {
     const wrapper = mount(CharacterModal, {
       props: { visible: true },
       global: {
-        stubs: defaultStubs
-      }
+        stubs: defaultStubs,
+      },
     })
-    
+
     const toolbarButtons = wrapper.findAll('.toolbar-btn')
     expect(toolbarButtons.length).toBeGreaterThan(0)
   })
@@ -109,10 +109,10 @@ describe('CharacterModal', () => {
     const wrapper = mount(CharacterModal, {
       props: { visible: true },
       global: {
-        stubs: defaultStubs
-      }
+        stubs: defaultStubs,
+      },
     })
-    
+
     expect(wrapper.find('.close-btn').exists()).toBe(true)
   })
 
@@ -120,10 +120,10 @@ describe('CharacterModal', () => {
     const wrapper = mount(CharacterModal, {
       props: { visible: true },
       global: {
-        stubs: defaultStubs
-      }
+        stubs: defaultStubs,
+      },
     })
-    
+
     await wrapper.find('.close-btn').trigger('click')
     expect(wrapper.emitted('close')).toBeTruthy()
   })
@@ -132,10 +132,10 @@ describe('CharacterModal', () => {
     const wrapper = mount(CharacterModal, {
       props: { visible: true },
       global: {
-        stubs: defaultStubs
-      }
+        stubs: defaultStubs,
+      },
     })
-    
+
     expect(wrapper.find('.modal-body').exists()).toBe(true)
   })
 })

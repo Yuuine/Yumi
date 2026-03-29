@@ -37,7 +37,7 @@ describe('MessageItem - 消息项组件', () => {
             role: 'user',
             content: 'Hello',
             timestamp: Date.now(),
-          },
+          } as any,
         },
       })
       expect(wrapper.find('.message-item').exists()).toBe(true)
@@ -52,7 +52,7 @@ describe('MessageItem - 消息项组件', () => {
             role: 'assistant',
             content: 'Hi there',
             timestamp: Date.now(),
-          },
+          } as any,
         },
       })
       expect(wrapper.find('.message-item').exists()).toBe(true)
@@ -68,7 +68,7 @@ describe('MessageItem - 消息项组件', () => {
             role: 'user',
             content: testContent,
             timestamp: Date.now(),
-          },
+          } as any,
         },
       })
       expect(wrapper.text()).toContain(testContent)
@@ -82,7 +82,7 @@ describe('MessageItem - 消息项组件', () => {
         role: 'user',
         content: 'Test',
         timestamp: Date.now(),
-      }
+      } as any
       const wrapper = mount(MessageItem, {
         props: {
           message: testMessage,
@@ -99,7 +99,7 @@ describe('MessageItem - 消息项组件', () => {
             role: 'user',
             content: 'Test',
             timestamp: Date.now(),
-          },
+          } as any,
         },
       })
       expect(typeof wrapper.vm.$emit).toBe('function')

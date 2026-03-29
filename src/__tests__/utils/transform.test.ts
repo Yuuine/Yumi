@@ -1,9 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import {
-  convertObjectKeys,
-  keysToSnake,
-  keysToCamel,
-} from '@/utils/transform'
+import { convertObjectKeys, keysToSnake, keysToCamel } from '@/utils/transform'
 
 describe('transform.ts - 对象键名转换', () => {
   describe('keysToSnake', () => {

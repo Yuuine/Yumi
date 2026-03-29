@@ -48,26 +48,18 @@ describe('router - 路由守卫逻辑', () => {
     it('未登录时访问 / 重定向到 /login', () => {
       const guard = createRouteGuard()
       const next = vi.fn()
-      
-      guard(
-        { path: '/', meta: { requiresAuth: true } },
-        { path: '/' },
-        next
-      )
-      
+
+      guard({ path: '/', meta: { requiresAuth: true } }, { path: '/' }, next)
+
       expect(next).toHaveBeenCalledWith('/login')
     })
 
     it('未登录时可以访问 /login', () => {
       const guard = createRouteGuard()
       const next = vi.fn()
-      
-      guard(
-        { path: '/login', meta: {} },
-        { path: '/' },
-        next
-      )
-      
+
+      guard({ path: '/login', meta: {} }, { path: '/' }, next)
+
       expect(next).toHaveBeenCalled()
       expect(next).not.toHaveBeenCalledWith('/login')
     })
@@ -75,13 +67,9 @@ describe('router - 路由守卫逻辑', () => {
     it('未登录访问需要认证的路由时记录重定向日志', () => {
       const guard = createRouteGuard()
       const next = vi.fn()
-      
-      guard(
-        { path: '/', meta: { requiresAuth: true } },
-        { path: '/login' },
-        next
-      )
-      
+
+      guard({ path: '/', meta: { requiresAuth: true } }, { path: '/login' }, next)
+
       expect(logger.info).toHaveBeenCalledWith(
         'Router',
         'Navigation',
@@ -91,11 +79,8 @@ describe('router - 路由守卫逻辑', () => {
           hasToken: false,
         })
       )
-      
-      expect(logger.info).toHaveBeenCalledWith(
-        'Router',
-        'Redirecting to login'
-      )
+
+      expect(logger.info).toHaveBeenCalledWith('Router', 'Redirecting to login')
     })
   })
 
@@ -107,26 +92,18 @@ describe('router - 路由守卫逻辑', () => {
     it('已登录时访问 /login 重定向到 /', () => {
       const guard = createRouteGuard()
       const next = vi.fn()
-      
-      guard(
-        { path: '/login', meta: {} },
-        { path: '/' },
-        next
-      )
-      
+
+      guard({ path: '/login', meta: {} }, { path: '/' }, next)
+
       expect(next).toHaveBeenCalledWith('/')
     })
 
     it('已登录时可以访问 /', () => {
       const guard = createRouteGuard()
       const next = vi.fn()
-      
-      guard(
-        { path: '/', meta: { requiresAuth: true } },
-        { path: '/login' },
-        next
-      )
-      
+
+      guard({ path: '/', meta: { requiresAuth: true } }, { path: '/login' }, next)
+
       expect(next).toHaveBeenCalled()
       expect(next).not.toHaveBeenCalledWith('/login')
     })
@@ -134,13 +111,9 @@ describe('router - 路由守卫逻辑', () => {
     it('已登录访问登录页时记录重定向日志', () => {
       const guard = createRouteGuard()
       const next = vi.fn()
-      
-      guard(
-        { path: '/login', meta: {} },
-        { path: '/' },
-        next
-      )
-      
+
+      guard({ path: '/login', meta: {} }, { path: '/' }, next)
+
       expect(logger.info).toHaveBeenCalledWith(
         'Router',
         'Navigation',
@@ -149,23 +122,16 @@ describe('router - 路由守卫逻辑', () => {
           hasToken: true,
         })
       )
-      
-      expect(logger.info).toHaveBeenCalledWith(
-        'Router',
-        'Already logged in, redirecting to chat'
-      )
+
+      expect(logger.info).toHaveBeenCalledWith('Router', 'Already logged in, redirecting to chat')
     })
 
     it('正常路由切换时记录导航日志', () => {
       const guard = createRouteGuard()
       const next = vi.fn()
-      
-      guard(
-        { path: '/', meta: { requiresAuth: true } },
-        { path: '/other' },
-        next
-      )
-      
+
+      guard({ path: '/', meta: { requiresAuth: true } }, { path: '/other' }, next)
+
       expect(logger.info).toHaveBeenCalledWith(
         'Router',
         'Navigation',

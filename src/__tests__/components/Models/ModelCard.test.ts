@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
-import ModelCard from '@/components/Models/ModelCard.vue'
+import ModelCard from '@/components/models/ModelCard.vue'
 import type { ModelConfig } from '@/types'
 
 vi.mock('@/components/icons', () => ({

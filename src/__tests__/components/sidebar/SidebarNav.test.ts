@@ -54,7 +54,7 @@ vi.mock('@/composables/useToast', () => ({
 }))
 
 vi.mock('@/utils/avatar-manager', () => ({
-  getAvatarPath: vi.fn((path) => `/avatar/${path}`),
+  getAvatarPath: vi.fn(path => `/avatar/${path}`),
   DEFAULT_AVATAR_PATH: '/default-avatar.png',
 }))
 

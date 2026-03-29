@@ -127,8 +127,6 @@ describe('useModelsStore - 模型 Store', () => {
 
       expect(modelsApi.getModels).not.toHaveBeenCalled()
     })
-
-
   })
 
   describe('loadActiveModel', () => {
@@ -205,11 +203,9 @@ describe('useModelsStore - 模型 Store', () => {
 
       await store.updateModel(mockModel.id, { name: 'Updated Model' })
 
-      expect(modelsApi.updateModel).toHaveBeenCalledWith(
-        'test-account-id',
-        mockModel.id,
-        { name: 'Updated Model' }
-      )
+      expect(modelsApi.updateModel).toHaveBeenCalledWith('test-account-id', mockModel.id, {
+        name: 'Updated Model',
+      })
       expect(modelsApi.getModels).toHaveBeenCalled()
     })
 
@@ -319,7 +315,7 @@ describe('useModelsStore - 模型 Store', () => {
     it('成功切换到已启用的模型', async () => {
       const store = useModelsStore()
       store.models = [mockModel]
-      vi.mocked(modelsApi.setActiveModel).mockResolvedValue({ success: true })
+      vi.mocked(modelsApi.setActiveModel).mockResolvedValue({ success: true, message: '' } as any)
 
       const result = await store.switchModel(mockModel.id)
 

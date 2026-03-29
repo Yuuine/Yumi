@@ -38,7 +38,7 @@ describe('SettingsModal', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
-    
+
     vi.mocked(useSettingsStore).mockReturnValue(mockSettingsStore as any)
   })
 
@@ -46,10 +46,10 @@ describe('SettingsModal', () => {
     const wrapper = mount(SettingsModal, {
       props: { visible: true },
       global: {
-        stubs: defaultStubs
-      }
+        stubs: defaultStubs,
+      },
     })
-    
+
     expect(wrapper.find('.settings-modal-overlay').exists()).toBe(true)
     expect(wrapper.find('.settings-modal').exists()).toBe(true)
   })
@@ -58,10 +58,10 @@ describe('SettingsModal', () => {
     const wrapper = mount(SettingsModal, {
       props: { visible: false },
       global: {
-        stubs: defaultStubs
-      }
+        stubs: defaultStubs,
+      },
     })
-    
+
     expect(wrapper.find('.settings-modal-overlay').exists()).toBe(false)
   })
 
@@ -69,10 +69,10 @@ describe('SettingsModal', () => {
     const wrapper = mount(SettingsModal, {
       props: { visible: true },
       global: {
-        stubs: defaultStubs
-      }
+        stubs: defaultStubs,
+      },
     })
-    
+
     expect(wrapper.find('.modal-title').text()).toBe('系统设置')
   })
 
@@ -80,10 +80,10 @@ describe('SettingsModal', () => {
     const wrapper = mount(SettingsModal, {
       props: { visible: true },
       global: {
-        stubs: defaultStubs
-      }
+        stubs: defaultStubs,
+      },
     })
-    
+
     expect(wrapper.find('.close-btn').exists()).toBe(true)
   })
 
@@ -91,10 +91,10 @@ describe('SettingsModal', () => {
     const wrapper = mount(SettingsModal, {
       props: { visible: true },
       global: {
-        stubs: defaultStubs
-      }
+        stubs: defaultStubs,
+      },
     })
-    
+
     await wrapper.find('.close-btn').trigger('click')
     expect(wrapper.emitted('close')).toBeTruthy()
   })
@@ -103,10 +103,10 @@ describe('SettingsModal', () => {
     const wrapper = mount(SettingsModal, {
       props: { visible: true },
       global: {
-        stubs: defaultStubs
-      }
+        stubs: defaultStubs,
+      },
     })
-    
+
     const tabs = wrapper.findAll('.tab-item')
     expect(tabs.length).toBe(2)
   })
@@ -115,10 +115,10 @@ describe('SettingsModal', () => {
     const wrapper = mount(SettingsModal, {
       props: { visible: true },
       global: {
-        stubs: defaultStubs
-      }
+        stubs: defaultStubs,
+      },
     })
-    
+
     const tabs = wrapper.findAll('.tab-item')
     expect(tabs[0].classes()).toContain('active')
   })
@@ -127,10 +127,10 @@ describe('SettingsModal', () => {
     const wrapper = mount(SettingsModal, {
       props: { visible: true },
       global: {
-        stubs: defaultStubs
-      }
+        stubs: defaultStubs,
+      },
     })
-    
+
     expect(wrapper.find('.settings-tabs').exists()).toBe(true)
   })
 
@@ -138,10 +138,10 @@ describe('SettingsModal', () => {
     const wrapper = mount(SettingsModal, {
       props: { visible: true },
       global: {
-        stubs: defaultStubs
-      }
+        stubs: defaultStubs,
+      },
     })
-    
+
     expect(wrapper.find('.settings-content').exists()).toBe(true)
   })
 
@@ -149,10 +149,10 @@ describe('SettingsModal', () => {
     const wrapper = mount(SettingsModal, {
       props: { visible: true },
       global: {
-        stubs: defaultStubs
-      }
+        stubs: defaultStubs,
+      },
     })
-    
+
     expect(wrapper.find('.modal-body').exists()).toBe(true)
   })
 
@@ -160,10 +160,10 @@ describe('SettingsModal', () => {
     const wrapper = mount(SettingsModal, {
       props: { visible: true },
       global: {
-        stubs: defaultStubs
-      }
+        stubs: defaultStubs,
+      },
     })
-    
+
     expect(wrapper.find('.settings-layout').exists()).toBe(true)
   })
 })

@@ -53,9 +53,9 @@ vi.mock('@/components/sidebar', () => ({
 }))
 
 vi.mock('@/components/chat', () => ({
-  MessageList: { 
+  MessageList: {
     template: '<div class="message-list"></div>',
-    methods: { scrollToBottom: vi.fn() }
+    methods: { scrollToBottom: vi.fn() },
   },
   ChatInput: { template: '<div class="chat-input"></div>' },
 }))

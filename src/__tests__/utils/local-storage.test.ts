@@ -41,9 +41,9 @@ describe('localStorage 工具函数', () => {
       localStorage.setItem(KEYS.CACHED_MESSAGES, '[]')
       localStorage.setItem(KEYS.LAST_SYNC, '2024-01-01')
       localStorage.setItem('other-key', 'value')
-      
+
       clearMessageCache()
-      
+
       expect(localStorage.getItem(KEYS.CACHED_MESSAGES)).toBeNull()
       expect(localStorage.getItem(KEYS.LAST_SYNC)).toBeNull()
       expect(localStorage.getItem('other-key')).toBe('value')

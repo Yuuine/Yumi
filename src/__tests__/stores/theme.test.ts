@@ -46,7 +46,7 @@ describe('useThemeStore - 主题 Store', () => {
   it('setTheme 设置主题并保存到 localStorage', () => {
     const store = useThemeStore()
     store.setTheme('dark')
-    
+
     expect(store.theme).toBe('dark')
     expect(localStorageMock.setItem).toHaveBeenCalledWith('yumi-theme', 'dark')
   })
@@ -54,28 +54,28 @@ describe('useThemeStore - 主题 Store', () => {
   it('initTheme 从 localStorage 加载已保存的主题', () => {
     localStorageMock.getItem.mockReturnValue('dark')
     const store = useThemeStore()
-    
+
     store.initTheme()
-    
+
     expect(store.theme).toBe('dark')
   })
 
   it('initTheme 在没有保存主题时不做任何改变', () => {
     localStorageMock.getItem.mockReturnValue(null)
     const store = useThemeStore()
-    
+
     const initialTheme = store.theme
     store.initTheme()
-    
+
     expect(store.theme).toBe(initialTheme)
   })
 
   it('切换主题时更新 localStorage', () => {
     const store = useThemeStore()
-    
+
     store.setTheme('dark')
     expect(localStorageMock.setItem).toHaveBeenCalledWith('yumi-theme', 'dark')
-    
+
     store.setTheme('light')
     expect(localStorageMock.setItem).toHaveBeenCalledWith('yumi-theme', 'light')
   })

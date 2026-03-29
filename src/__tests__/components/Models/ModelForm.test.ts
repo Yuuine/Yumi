@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
-import ModelForm from '@/components/Models/ModelForm.vue'
+import ModelForm from '@/components/models/ModelForm.vue'
 
 vi.mock('@/components/icons', () => ({
   IconChevronDown: { template: '<span data-test="icon-chevron-down"></span>' },

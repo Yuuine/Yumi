@@ -20,7 +20,7 @@ describe('AuthStore', () => {
   it('setTokens 设置令牌和用户信息', () => {
     const store = useAuthStore()
     store.setTokens('access-token', 'refresh-token', 'user-123', '测试用户')
-    
+
     expect(store.accessToken).toBe('access-token')
     expect(store.refreshToken).toBe('refresh-token')
     expect(store.userId).toBe('user-123')
@@ -35,7 +35,7 @@ describe('AuthStore', () => {
   it('setTokens 没有昵称时不设置昵称', () => {
     const store = useAuthStore()
     store.setTokens('access-token', 'refresh-token', 'user-123')
-    
+
     expect(store.nickname).toBeNull()
     expect(localStorage.getItem('yumi_nickname')).toBeNull()
   })
@@ -44,7 +44,7 @@ describe('AuthStore', () => {
     const store = useAuthStore()
     store.setTokens('access-token', 'refresh-token', 'user-123', '测试用户')
     store.clearTokens()
-    
+
     expect(store.accessToken).toBeNull()
     expect(store.refreshToken).toBeNull()
     expect(store.userId).toBeNull()

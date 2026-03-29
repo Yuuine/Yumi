@@ -39,7 +39,7 @@ const internalValue = ref(props.modelValue)
 
 watch(
   () => props.modelValue,
-  (newVal) => {
+  newVal => {
     internalValue.value = newVal
     nextTick(() => adjustHeight())
   }
@@ -57,10 +57,10 @@ const wrapperStyle = computed(() => ({
 
 function adjustHeight() {
   if (!textareaRef.value) return
-  
+
   textareaRef.value.style.height = 'auto'
   const scrollHeight = textareaRef.value.scrollHeight
-  
+
   if (scrollHeight <= props.maxHeight) {
     textareaRef.value.style.height = `${scrollHeight}px`
   } else {
@@ -121,7 +121,7 @@ onMounted(() => {
     background: #d1d5db;
     border-radius: 3px;
     transition: background 0.2s ease;
-    
+
     &:hover {
       background: #9ca3af;
     }
