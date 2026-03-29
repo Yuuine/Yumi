@@ -99,9 +99,7 @@
             <h2 class="modal-title">确认重置</h2>
           </div>
           <div class="modal-body">
-            <p class="confirm-message">
-              是否确认重置该角色卡为默认配置，此操作不可撤销。
-            </p>
+            <p class="confirm-message">是否确认重置该角色卡为默认配置，此操作不可撤销。</p>
           </div>
           <div class="modal-footer">
             <button type="button" class="toolbar-btn" @click="showResetConfirm = false">
@@ -152,23 +150,16 @@ const currentCharacterName = computed(() => {
 
 async function getRelatedConversationIds(characterId: string): Promise<Set<string>> {
   if (!accountStore.currentAccount) return new Set()
-  
+
   const [backendResult, localConversations] = await Promise.all([
-    conversationsApi.getConversations(
-      accountStore.currentAccount.id,
-      characterId,
-      200,
-      0
-    ),
+    conversationsApi.getConversations(accountStore.currentAccount.id, characterId, 200, 0),
     accountStore.loadConversations(),
   ])
 
   const localMatches = localConversations.filter(
-    conv =>
-      (conv.characterId || (conv as { character_id?: string }).character_id) ===
-      characterId
+    conv => (conv.characterId || (conv as { character_id?: string }).character_id) === characterId
   )
-  
+
   return new Set<string>([
     ...backendResult.conversations.map(conv => conv.id),
     ...localMatches.map(conv => conv.id),

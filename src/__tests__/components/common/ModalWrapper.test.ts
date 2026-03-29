@@ -6,7 +6,7 @@ describe('ModalWrapper', () => {
   const defaultStubs = {
     Teleport: { template: '<div><slot /></div>' },
     Transition: { template: '<div><slot /></div>' },
-    IconClose: true
+    IconClose: true,
   }
 
   it('renders correctly with visible prop true', () => {
@@ -15,8 +15,8 @@ describe('ModalWrapper', () => {
         visible: true,
       },
       global: {
-        stubs: defaultStubs
-      }
+        stubs: defaultStubs,
+      },
     })
     expect(wrapper.find('.modal-wrapper-overlay').exists()).toBe(true)
     expect(wrapper.find('.modal-wrapper-container').exists()).toBe(true)
@@ -28,8 +28,8 @@ describe('ModalWrapper', () => {
         visible: false,
       },
       global: {
-        stubs: defaultStubs
-      }
+        stubs: defaultStubs,
+      },
     })
     expect(wrapper.find('.modal-wrapper-overlay').exists()).toBe(false)
   })
@@ -41,8 +41,8 @@ describe('ModalWrapper', () => {
         title: 'Test Title',
       },
       global: {
-        stubs: defaultStubs
-      }
+        stubs: defaultStubs,
+      },
     })
     expect(wrapper.find('.modal-wrapper-title').text()).toBe('Test Title')
   })
@@ -54,8 +54,8 @@ describe('ModalWrapper', () => {
         size: 'large',
       },
       global: {
-        stubs: defaultStubs
-      }
+        stubs: defaultStubs,
+      },
     })
     expect(wrapper.find('.modal-wrapper-container').classes()).toContain('modal-wrapper-large')
   })
@@ -67,8 +67,8 @@ describe('ModalWrapper', () => {
         customClass: 'custom-modal-class',
       },
       global: {
-        stubs: defaultStubs
-      }
+        stubs: defaultStubs,
+      },
     })
     expect(wrapper.find('.modal-wrapper-container').classes()).toContain('custom-modal-class')
   })
@@ -80,8 +80,8 @@ describe('ModalWrapper', () => {
         showClose: true,
       },
       global: {
-        stubs: defaultStubs
-      }
+        stubs: defaultStubs,
+      },
     })
     const closeButton = wrapper.find('.modal-wrapper-close')
     expect(closeButton.exists()).toBe(true)
@@ -98,8 +98,8 @@ describe('ModalWrapper', () => {
         default: '<div class="test-content">Test Content</div>',
       },
       global: {
-        stubs: defaultStubs
-      }
+        stubs: defaultStubs,
+      },
     })
     expect(wrapper.find('.test-content').text()).toBe('Test Content')
   })

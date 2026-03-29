@@ -5,10 +5,10 @@ describe('datetime 工具函数', () => {
   describe('formatRelativeTime', () => {
     it('格式化相对时间', () => {
       const now = new Date()
-      
+
       const result = formatRelativeTime(now.toISOString())
       expect(typeof result).toBe('string')
-      
+
       const oneMinuteAgo = new Date(now.getTime() - 60 * 1000)
       const result2 = formatRelativeTime(oneMinuteAgo.toISOString())
       expect(typeof result2).toBe('string')

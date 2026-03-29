@@ -198,7 +198,7 @@ function hashCode(str: string): number {
 }
 
 function getCharacterAvatar(characterId: string): string {
-  const char = characters.value.find((c) => c.id === characterId)
+  const char = characters.value.find(c => c.id === characterId)
   if (char?.avatar) {
     return getAvatarPath(char.avatar)
   }
@@ -221,7 +221,7 @@ function sortByUpdatedAt(a: Conversation, b: Conversation): number {
 }
 
 const characterGroups = computed<CharacterGroup[]>(() => {
-  const charMap = new Map(characters.value.map((c) => [c.id, c]))
+  const charMap = new Map(characters.value.map(c => [c.id, c]))
   const groups = new Map<string, Conversation[]>()
 
   for (const char of characters.value) {
@@ -285,7 +285,7 @@ async function handleCreateConversationLocal(characterId: string) {
       )
       const newConv = mapToConversation(sortedLocal[0])
 
-      const existingIndex = conversations.value.findIndex((c) => c.id === newConv.id)
+      const existingIndex = conversations.value.findIndex(c => c.id === newConv.id)
       if (existingIndex === -1) {
         conversations.value.unshift(newConv)
       } else {
@@ -300,7 +300,9 @@ async function handleCreateConversationLocal(characterId: string) {
       toast.success('对话已创建')
     }
   } catch (error) {
-    logger.warn('SidebarNav', 'Failed to add new conversation locally, falling back to full load', { error })
+    logger.warn('SidebarNav', 'Failed to add new conversation locally, falling back to full load', {
+      error,
+    })
     await loadConversations(true)
     toast.success('对话已创建')
   }
@@ -330,7 +332,7 @@ function cancelEdit() {
 async function updateConversationTitle(conversationId: string, title: string) {
   try {
     await conversationsApi.updateTitle(conversationId, title)
-    const conv = conversations.value.find((c) => c.id === conversationId)
+    const conv = conversations.value.find(c => c.id === conversationId)
     if (conv) {
       conv.title = title
       await accountStore.saveConversation(conv)
@@ -350,17 +352,22 @@ function confirmDelete(conv: Conversation) {
     true,
     async () => {
       logger.info('SidebarNav', 'Starting conversation deletion', { conversationId: conv.id })
-      
+
       const isActiveConversation = currentConversationId.value === conv.id
-      const conversationIndex = conversations.value.findIndex((c) => c.id === conv.id)
+      const conversationIndex = conversations.value.findIndex(c => c.id === conv.id)
       const backupConversation = { ...conv }
 
       try {
-        logger.debug('SidebarNav', 'Performing optimistic update', { conversationId: conv.id, isActiveConversation })
+        logger.debug('SidebarNav', 'Performing optimistic update', {
+          conversationId: conv.id,
+          isActiveConversation,
+        })
         conversations.value.splice(conversationIndex, 1)
 
         if (isActiveConversation) {
-          logger.info('SidebarNav', 'Deleted conversation is active, emitting delete event', { conversationId: conv.id })
+          logger.info('SidebarNav', 'Deleted conversation is active, emitting delete event', {
+            conversationId: conv.id,
+          })
           emit('deleteConversation', conv.id)
         }
 
@@ -373,10 +380,13 @@ function confirmDelete(conv: Conversation) {
         logger.info('SidebarNav', 'Conversation deleted successfully', { conversationId: conv.id })
         toast.success('对话已删除')
       } catch (error) {
-        logger.error('SidebarNav', 'Failed to delete conversation, rolling back', { conversationId: conv.id, error })
-        
+        logger.error('SidebarNav', 'Failed to delete conversation, rolling back', {
+          conversationId: conv.id,
+          error,
+        })
+
         conversations.value.splice(conversationIndex, 0, backupConversation)
-        
+
         toast.error('删除对话失败，请重试')
         logger.warn('SidebarNav', 'UI state rolled back', { conversationId: conv.id })
       }
@@ -423,8 +433,8 @@ async function loadConversations(force = false) {
     const localConversations = (await accountStore.loadConversations()).map(mapToConversation)
 
     const merged = new Map<string, Conversation>()
-    backendConversations.forEach((conv) => merged.set(conv.id, conv))
-    localConversations.forEach((conv) => {
+    backendConversations.forEach(conv => merged.set(conv.id, conv))
+    localConversations.forEach(conv => {
       if (!merged.has(conv.id)) {
         merged.set(conv.id, conv)
       }
@@ -432,7 +442,7 @@ async function loadConversations(force = false) {
 
     conversations.value = Array.from(merged.values()).sort(sortByUpdatedAt)
 
-    characterGroups.value.forEach((group) => {
+    characterGroups.value.forEach(group => {
       if (group.conversations.length > 0) {
         expandedCharacters.value.add(group.characterId)
       }
@@ -452,7 +462,7 @@ onMounted(() => {
 
 watch(
   () => accountStore.isInitialized,
-  (isInitialized) => {
+  isInitialized => {
     if (isInitialized && accountStore.currentAccount) {
       loadConversations()
     }

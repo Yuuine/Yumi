@@ -29,13 +29,13 @@ describe('useModalState - 模态框状态', () => {
 
   it('toggle 方法切换 visible 状态', () => {
     const modal = useModalState(false)
-    
+
     modal.toggle()
     expect(modal.visible.value).toBe(true)
-    
+
     modal.toggle()
     expect(modal.visible.value).toBe(false)
-    
+
     modal.toggle()
     expect(modal.visible.value).toBe(true)
   })
@@ -45,7 +45,7 @@ describe('useModalState - 模态框状态', () => {
     const modal2 = useModalState(false)
 
     modal1.open()
-    
+
     expect(modal1.visible.value).toBe(true)
     expect(modal2.visible.value).toBe(false)
   })

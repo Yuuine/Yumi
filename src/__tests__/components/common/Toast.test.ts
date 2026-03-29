@@ -9,14 +9,14 @@ vi.mock('@/composables/useToast', () => ({
     message: ref('Test message'),
     type: ref('success'),
     hide: vi.fn(),
-  })
+  }),
 }))
 
 vi.mock('@/components/icons', () => ({
   IconSuccess: { template: '<span data-test="icon-success"></span>' },
   IconError: { template: '<span data-test="icon-error"></span>' },
   IconWarning: { template: '<span data-test="icon-warning"></span>' },
-  IconInfo: { template: '<span data-test="icon-info"></span>' }
+  IconInfo: { template: '<span data-test="icon-info"></span>' },
 }))
 
 describe('Toast', () => {
@@ -25,9 +25,9 @@ describe('Toast', () => {
       global: {
         stubs: {
           Teleport: { template: '<div><slot /></div>' },
-          Transition: { template: '<div><slot /></div>' }
-        }
-      }
+          Transition: { template: '<div><slot /></div>' },
+        },
+      },
     })
     expect(wrapper.find('.toast-container').exists()).toBe(true)
     expect(wrapper.find('.toast-message').text()).toBe('Test message')
@@ -38,9 +38,9 @@ describe('Toast', () => {
       global: {
         stubs: {
           Teleport: { template: '<div><slot /></div>' },
-          Transition: { template: '<div><slot /></div>' }
-        }
-      }
+          Transition: { template: '<div><slot /></div>' },
+        },
+      },
     })
     expect(wrapper.find('.toast-container').classes()).toContain('toast-success')
   })
@@ -50,9 +50,9 @@ describe('Toast', () => {
       global: {
         stubs: {
           Teleport: { template: '<div><slot /></div>' },
-          Transition: { template: '<div><slot /></div>' }
-        }
-      }
+          Transition: { template: '<div><slot /></div>' },
+        },
+      },
     })
     expect(wrapper.find('[data-test="icon-success"]').exists()).toBe(true)
   })

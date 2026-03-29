@@ -127,8 +127,6 @@ describe('useModelsStore - 模型 Store', () => {
 
       expect(modelsApi.getModels).not.toHaveBeenCalled()
     })
-
-
   })
 
   describe('loadActiveModel', () => {
@@ -205,11 +203,9 @@ describe('useModelsStore - 模型 Store', () => {
 
       await store.updateModel(mockModel.id, { name: 'Updated Model' })
 
-      expect(modelsApi.updateModel).toHaveBeenCalledWith(
-        'test-account-id',
-        mockModel.id,
-        { name: 'Updated Model' }
-      )
+      expect(modelsApi.updateModel).toHaveBeenCalledWith('test-account-id', mockModel.id, {
+        name: 'Updated Model',
+      })
       expect(modelsApi.getModels).toHaveBeenCalled()
     })
 

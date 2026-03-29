@@ -101,11 +101,11 @@ describe('ChatInput - 聊天输入组件', () => {
     it('可以正确设置和获取 deepThinking v-model', async () => {
       const wrapper = mount(ChatInput, {
         props: {
-          'deepThinking': false,
+          deepThinking: false,
           'onUpdate:deepThinking': vi.fn(),
         },
       })
-      
+
       expect(wrapper.props('deepThinking')).toBe(false)
     })
 

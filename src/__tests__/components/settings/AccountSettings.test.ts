@@ -55,7 +55,7 @@ describe('AccountSettings', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
-    
+
     vi.mocked(useAccountStore).mockReturnValue(mockAccountStore as any)
     vi.mocked(useAuthStore).mockReturnValue(mockAuthStore as any)
     vi.mocked(useToast).mockReturnValue(mockToast as any)
@@ -68,16 +68,16 @@ describe('AccountSettings', () => {
       displayName: '测试用户',
       createdAt: '2024-01-01T00:00:00.000Z',
     }
-    
+
     const wrapper = mount(AccountSettings, {
       global: {
         stubs: {
           IconCopy: true,
           IconLogout: true,
-        }
-      }
+        },
+      },
     })
-    
+
     expect(wrapper.find('.account-settings-content').exists()).toBe(true)
   })
 
@@ -87,16 +87,16 @@ describe('AccountSettings', () => {
       displayName: '测试用户',
       createdAt: '2024-01-01T00:00:00.000Z',
     }
-    
+
     const wrapper = mount(AccountSettings, {
       global: {
         stubs: {
           IconCopy: true,
           IconLogout: true,
-        }
-      }
+        },
+      },
     })
-    
+
     expect(wrapper.text()).toContain('测试用户')
     expect(wrapper.text()).toContain('test-account-id')
   })
@@ -107,16 +107,16 @@ describe('AccountSettings', () => {
       displayName: '测试用户',
       createdAt: '2024-01-01T00:00:00.000Z',
     }
-    
+
     const wrapper = mount(AccountSettings, {
       global: {
         stubs: {
           IconCopy: true,
           IconLogout: true,
-        }
-      }
+        },
+      },
     })
-    
+
     expect(wrapper.find('.copy-btn').exists()).toBe(true)
   })
 
@@ -126,31 +126,31 @@ describe('AccountSettings', () => {
       displayName: '测试用户',
       createdAt: '2024-01-01T00:00:00.000Z',
     }
-    
+
     const wrapper = mount(AccountSettings, {
       global: {
         stubs: {
           IconCopy: true,
           IconLogout: true,
-        }
-      }
+        },
+      },
     })
-    
+
     expect(wrapper.find('.logout-btn').exists()).toBe(true)
   })
 
   it('shows placeholder when no account data', () => {
     mockAccountStore.currentAccount = null
-    
+
     const wrapper = mount(AccountSettings, {
       global: {
         stubs: {
           IconCopy: true,
           IconLogout: true,
-        }
-      }
+        },
+      },
     })
-    
+
     const infoValues = wrapper.findAll('.info-value')
     expect(infoValues.length).toBeGreaterThan(0)
   })

@@ -11,9 +11,9 @@ describe('LoadingState', () => {
       global: {
         stubs: {
           Teleport: { template: '<div><slot /></div>' },
-          Transition: { template: '<div><slot /></div>' }
-        }
-      }
+          Transition: { template: '<div><slot /></div>' },
+        },
+      },
     })
     expect(wrapper.find('.loading-overlay').exists()).toBe(true)
     expect(wrapper.find('.loading-content').exists()).toBe(true)
@@ -28,9 +28,9 @@ describe('LoadingState', () => {
       global: {
         stubs: {
           Teleport: { template: '<div><slot /></div>' },
-          Transition: { template: '<div><slot /></div>' }
-        }
-      }
+          Transition: { template: '<div><slot /></div>' },
+        },
+      },
     })
     expect(wrapper.find('.loading-overlay').exists()).toBe(false)
   })
@@ -43,9 +43,9 @@ describe('LoadingState', () => {
       global: {
         stubs: {
           Teleport: { template: '<div><slot /></div>' },
-          Transition: { template: '<div><slot /></div>' }
-        }
-      }
+          Transition: { template: '<div><slot /></div>' },
+        },
+      },
     })
     expect(wrapper.find('.loading-text').text()).toBe('加载中...')
   })
@@ -59,9 +59,9 @@ describe('LoadingState', () => {
       global: {
         stubs: {
           Teleport: { template: '<div><slot /></div>' },
-          Transition: { template: '<div><slot /></div>' }
-        }
-      }
+          Transition: { template: '<div><slot /></div>' },
+        },
+      },
     })
     expect(wrapper.find('.loading-text').text()).toBe('正在处理...')
   })
@@ -75,9 +75,9 @@ describe('LoadingState', () => {
       global: {
         stubs: {
           Teleport: { template: '<div><slot /></div>' },
-          Transition: { template: '<div><slot /></div>' }
-        }
-      }
+          Transition: { template: '<div><slot /></div>' },
+        },
+      },
     })
     expect(wrapper.find('.loading-text').exists()).toBe(false)
   })

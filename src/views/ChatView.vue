@@ -55,8 +55,16 @@ const modelsStore = useModelsStore()
 const toast = useToast()
 const messageListRef = ref<InstanceType<typeof MessageList> | null>(null)
 const { visible: showModelsModal, open: openModelsModal, close: closeModelsModal } = useModalState()
-const { visible: showCharacterModal, open: openCharacterModal, close: closeCharacterModal } = useModalState()
-const { visible: showSettingsModal, open: openSettingsModal, close: closeSettingsModal } = useModalState()
+const {
+  visible: showCharacterModal,
+  open: openCharacterModal,
+  close: closeCharacterModal,
+} = useModalState()
+const {
+  visible: showSettingsModal,
+  open: openSettingsModal,
+  close: closeSettingsModal,
+} = useModalState()
 const isDeepThinking = ref(false)
 const hasConversations = ref(false)
 const sidebarExpanded = ref(true)
@@ -157,16 +165,18 @@ async function selectConversation(conversationId: string) {
 async function handleDeleteConversation(deletedConversationId: string) {
   try {
     logger.info('ChatView', 'Handling deleted conversation', { deletedConversationId })
-    
+
     const conversations = await accountStore.loadConversations()
-    
+
     if (conversations.length > 0) {
       const sortedConversations = [...conversations].sort(
         (a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()
       )
-      
+
       const firstConversation = sortedConversations[0]
-      logger.info('ChatView', 'Switching to next conversation', { conversationId: firstConversation.id })
+      logger.info('ChatView', 'Switching to next conversation', {
+        conversationId: firstConversation.id,
+      })
       await chatStore.switchConversation(firstConversation.id)
       nextTick(() => {
         messageListRef.value?.scrollToBottom()

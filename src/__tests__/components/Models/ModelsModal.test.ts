@@ -176,6 +176,4 @@ describe('ModelsModal - 模型管理模态框', () => {
       expect(typeof wrapper.vm.$emit).toBe('function')
     })
   })
-
-
 })

@@ -21,10 +21,13 @@ class ApiCache {
     const sortedParams = params
       ? Object.keys(params)
           .sort()
-          .reduce((acc, key) => {
-            acc[key] = params[key]
-            return acc
-          }, {} as Record<string, unknown>)
+          .reduce(
+            (acc, key) => {
+              acc[key] = params[key]
+              return acc
+            },
+            {} as Record<string, unknown>
+          )
       : {}
     return `${method}:${url}:${JSON.stringify(sortedParams)}`
   }
@@ -52,7 +55,13 @@ class ApiCache {
     return entry.data
   }
 
-  set<T>(method: string, url: string, data: T, ttl = 300000, params?: Record<string, unknown>): void {
+  set<T>(
+    method: string,
+    url: string,
+    data: T,
+    ttl = 300000,
+    params?: Record<string, unknown>
+  ): void {
     const key = this.generateKey(method, url, params)
     this.cache.set(key, {
       data,
@@ -76,7 +85,10 @@ class ApiCache {
       }
     }
     keysToDelete.forEach(key => this.cache.delete(key))
-    logger.debug('ApiCache', 'Cache INVALIDATED BY PATTERN', { pattern, count: keysToDelete.length })
+    logger.debug('ApiCache', 'Cache INVALIDATED BY PATTERN', {
+      pattern,
+      count: keysToDelete.length,
+    })
   }
 
   clear(): void {

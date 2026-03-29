@@ -131,10 +131,7 @@ describe('field-mapper.ts - 字段映射工具', () => {
     })
 
     it('toConversationListDTO 转换对话列表', () => {
-      const rawList = [
-        { id: 'conv-1' },
-        { id: 'conv-2' },
-      ]
+      const rawList = [{ id: 'conv-1' }, { id: 'conv-2' }]
       const result = toConversationListDTO(rawList)
       expect(result.length).toBe(2)
     })
@@ -186,10 +183,7 @@ describe('field-mapper.ts - 字段映射工具', () => {
     })
 
     it('toCharacterCardListDTO 转换角色卡列表', () => {
-      const rawList = [
-        { id: 'char-1' },
-        { id: 'char-2' },
-      ]
+      const rawList = [{ id: 'char-1' }, { id: 'char-2' }]
       const result = toCharacterCardListDTO(rawList)
       expect(result.length).toBe(2)
     })

@@ -179,7 +179,7 @@ function clearApiCache(): void {
 
 onMounted(async () => {
   window.addEventListener('beforeunload', clearApiCache)
-  
+
   // 首先验证用户认证状态
   const isAuthenticated = await authStore.initializeAuth()
 

@@ -20,27 +20,26 @@
             <h3 class="section-heading">基础档案</h3>
             <p class="section-desc">定义角色的基本身份与外貌信息</p>
             <p class="section-required-note">
-              <span class="required-mark">*</span> 为必填项
+              <span class="required-mark">*</span>
+              为必填项
             </p>
           </header>
           <div class="form-grid">
             <div class="form-group">
               <label class="form-label">
-                正式名 <span class="required-mark">*</span>
+                正式名
+                <span class="required-mark">*</span>
               </label>
               <input v-model="draft.name" class="form-input" type="text" maxlength="30" />
             </div>
             <div class="form-group full-width">
               <label class="form-label">昵称</label>
-              <TagsInput
-                v-model="draft.nickname"
-                separator="、"
-                placeholder="输入后按回车添加"
-              />
+              <TagsInput v-model="draft.nickname" separator="、" placeholder="输入后按回车添加" />
             </div>
             <div class="form-group full-width">
               <label class="form-label">
-                角色概述 <span class="required-mark">*</span>
+                角色概述
+                <span class="required-mark">*</span>
               </label>
               <AutoResizeTextarea
                 v-model="draft.roleOverview"
@@ -167,11 +166,7 @@
             <label class="form-label">情感表达规则</label>
             <div class="emotion-rules-container">
               <label class="emotion-rule-item">
-                <input
-                  type="checkbox"
-                  v-model="emotionRules.emoji"
-                  @change="updateEmotionRules"
-                />
+                <input type="checkbox" v-model="emotionRules.emoji" @change="updateEmotionRules" />
                 <span class="emotion-rule-label">表情符号</span>
               </label>
               <label class="emotion-rule-item">
@@ -210,11 +205,7 @@
           </header>
           <div class="form-group">
             <label class="form-label">特殊情境反应逻辑</label>
-            <TagsInput
-              v-model="draft.specialLogic"
-              separator="、"
-              placeholder="输入后按回车添加"
-            />
+            <TagsInput v-model="draft.specialLogic" separator="、" placeholder="输入后按回车添加" />
           </div>
         </section>
 
@@ -225,9 +216,7 @@
           </header>
           <div class="form-group">
             <label class="form-label">Few-Shot 示例对话</label>
-            <ConversationPairInput
-              v-model="draft.fewShotExamples"
-            />
+            <ConversationPairInput v-model="draft.fewShotExamples" />
           </div>
         </section>
       </div>
@@ -254,7 +243,7 @@ import ConversationPairInput from '@/components/common/ConversationPairInput.vue
 const genderOptions = [
   { value: '男', label: '男', icon: '♂' },
   { value: '女', label: '女', icon: '♀' },
-  { value: '中性', label: '中性', icon: '⚪' }
+  { value: '中性', label: '中性', icon: '⚪' },
 ]
 
 const props = defineProps<{
@@ -285,13 +274,13 @@ function parseEmotionRules(value: string) {
     modalParticles: true,
     punctuationEmotion: true,
   }
-  
+
   if (!value) return rules
-  
+
   const emojiMatch = value.match(/【表情符号：([^】]+)】/)
   const modalMatch = value.match(/【语气词：([^】]+)】/)
   const punctuationMatch = value.match(/【标点符号表达情绪：([^】]+)】/)
-  
+
   if (emojiMatch) {
     rules.emoji = emojiMatch[1].includes('允许')
   }
@@ -301,24 +290,26 @@ function parseEmotionRules(value: string) {
   if (punctuationMatch) {
     rules.punctuationEmotion = punctuationMatch[1].includes('允许')
   }
-  
+
   return rules
 }
 
 function updateEmotionRules() {
   if (!draft.value) return
-  
+
   const parts: string[] = []
   parts.push(`【表情符号：${emotionRules.value.emoji ? '允许使用' : '禁止使用'}】`)
   parts.push(`【语气词：${emotionRules.value.modalParticles ? '允许使用' : '禁止使用'}】`)
-  parts.push(`【标点符号表达情绪：${emotionRules.value.punctuationEmotion ? '允许使用' : '禁止使用'}】`)
-  
+  parts.push(
+    `【标点符号表达情绪：${emotionRules.value.punctuationEmotion ? '允许使用' : '禁止使用'}】`
+  )
+
   draft.value.communication.emotionRules = parts.join('')
 }
 
 watch(
   () => draft.value?.communication.emotionRules,
-  (newVal) => {
+  newVal => {
     if (newVal !== undefined) {
       emotionRules.value = parseEmotionRules(newVal)
     }
@@ -358,7 +349,9 @@ async function findCharacter(targetCharacterId?: string): Promise<AccountCharact
   const list = await accountStore.loadCharacters()
   const aid = targetCharacterId ?? accountStore.currentConfig?.activeCharacterId
 
-  let char: AccountCharacter | null = aid ? ((await accountStore.getCharacter(aid)) as AccountCharacter | null) : null
+  let char: AccountCharacter | null = aid
+    ? ((await accountStore.getCharacter(aid)) as AccountCharacter | null)
+    : null
 
   if (!char && list.length > 0) {
     char = list[0]
@@ -482,7 +475,7 @@ watch(
 
 watch(
   () => props.characterId,
-  (newId) => {
+  newId => {
     if (newId) {
       void loadCharacter(newId)
     }
@@ -491,14 +484,14 @@ watch(
 
 async function resetToDefault(): Promise<void> {
   if (!accountStore.currentAccount) return
-  
+
   const defaultChar = accountStore.createBlankCharacter()
   if (draft.value) {
     defaultChar.id = draft.value.id
     defaultChar.createdAt = draft.value.createdAt
     defaultChar.updatedAt = new Date().toISOString()
   }
-  
+
   draft.value = defaultChar
   captureBaseline()
   await save()
@@ -836,7 +829,7 @@ defineExpose({
   }
 }
 
-.emotion-rule-item input[type="checkbox"] {
+.emotion-rule-item input[type='checkbox'] {
   width: 22px;
   height: 22px;
   cursor: pointer;
