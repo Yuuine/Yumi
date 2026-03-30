@@ -79,7 +79,7 @@ describe('logger - 日志系统', () => {
 
     const { entries } = useLogger()
     const entry = entries.value.find(e => e.message === 'Test with array')
-    const data = entry?.data as unknown as Array<Record<string, unknown>>
+    const data = (entry?.data as unknown) as Array<Record<string, unknown>>
 
     expect(data[0].apiKey).toBe('***REDACTED***')
     expect(data[1].apiKey).toBe('***REDACTED***')

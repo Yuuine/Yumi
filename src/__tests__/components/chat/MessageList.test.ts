@@ -50,9 +50,7 @@ describe('MessageList - 消息列表组件', () => {
 
   describe('Props 和 Emits', () => {
     it('接受 messages prop', () => {
-      const testMessages = [
-        { id: '1', role: 'user', content: 'Hello', timestamp: Date.now() },
-      ] as any
+      const testMessages = [{ id: '1', role: 'user', content: 'Hello', timestamp: Date.now() }] as any
       const wrapper = mount(MessageList, {
         props: {
           messages: testMessages,

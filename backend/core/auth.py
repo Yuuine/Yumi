@@ -60,11 +60,13 @@ async def require_current_user(
         HTTPException: 401 Unauthorized - 用户未认证
     """
     if not current_user_id:
+        logger.debug("require_current_user: No user ID found, returning 401")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="未授权，请先登录",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    logger.debug("require_current_user: Authenticated user_id=%s", current_user_id)
     return current_user_id
 
 
@@ -79,7 +81,10 @@ def validate_user_access(request_user_id: str, current_user_id: str) -> None:
     Raises:
         HTTPException: 403 Forbidden - 无权访问
     """
+    logger.debug("validate_user_access: request_user_id=%s, current_user_id=%s", 
+                 request_user_id, current_user_id)
     if request_user_id != current_user_id:
+        logger.warning("validate_user_access: Access denied - IDs don't match!")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="无权访问此资源"
