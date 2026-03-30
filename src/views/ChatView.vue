@@ -31,6 +31,7 @@
       :disabled="chatStore.isLoading || chatStore.isStreaming"
       :sidebar-collapsed="!sidebarExpanded"
     />
+    <div :class="['bottom-overlay', { 'sidebar-collapsed': !sidebarExpanded }]"></div>
     <ModelsModal :visible="showModelsModal" @close="closeModelsModal" />
     <CharacterModal :visible="showCharacterModal" @close="closeCharacterModal" />
     <SettingsModal :visible="showSettingsModal" @close="closeSettingsModal" />
@@ -197,6 +198,7 @@ async function handleDeleteConversation(deletedConversationId: string) {
   flex-direction: column;
   height: 100vh;
   background: #ffffff;
+  position: relative;
 
   .toggle-button {
     position: fixed;
@@ -239,10 +241,24 @@ async function handleDeleteConversation(deletedConversationId: string) {
     overflow: hidden;
     margin-left: 280px;
     transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
 
     &.sidebar-collapsed {
       margin-left: 0;
     }
+  }
+
+  .bottom-overlay {
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 0;
+    width: 800px;
+    height: 160px;
+    background: white;
+    z-index: 40;
+    pointer-events: none;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
 }
 </style>

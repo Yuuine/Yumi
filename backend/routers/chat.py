@@ -23,11 +23,13 @@ from ..core import (
     NoActiveModelException,
     get_active_model,
     get_logger,
+    log_with_context,
     set_active_model,
     settings,
     require_current_user,
     validate_user_access,
 )
+import logging
 from ..database_sqlmodel import get_session
 from ..models import ConversationLog, ModelConfig, ConversationResponse
 from ..services.async_storage import StorageTask, get_async_storage_service
@@ -777,10 +779,10 @@ async def get_conversations(
     
     cached = cache_service.conversation_list.get(cache_key)
     if cached is not None:
-        logger.debug("ChatRouter", "Cache HIT", {"key": cache_key})
+        log_with_context(logger, logging.DEBUG, f"ChatRouter Cache HIT: key={cache_key}", key=cache_key)
         return cached
     
-    logger.debug("ChatRouter", "Cache MISS", {"key": cache_key})
+    log_with_context(logger, logging.DEBUG, f"ChatRouter Cache MISS: key={cache_key}", key=cache_key)
     conversations = await conversation_service.get_user_conversations(
         user_id=userId,
         limit=limit,

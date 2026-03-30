@@ -10,8 +10,9 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..core import get_logger
+from ..core import get_logger, log_with_context
 from ..core.cache import LRUCache, TTLCache
+import logging
 
 logger = get_logger(__name__)
 
@@ -66,10 +67,10 @@ class TrackedLRUCache:
             value = self._cache.get(key)
             if value is not None:
                 self._stats.hits += 1
-                logger.debug("CacheService", "HIT", {"cache": self._name, "key": key})
+                log_with_context(logger, logging.DEBUG, f"CacheService HIT: cache={self._name}, key={key}", cache=self._name, key=key)
             else:
                 self._stats.misses += 1
-                logger.debug("CacheService", "MISS", {"cache": self._name, "key": key})
+                log_with_context(logger, logging.DEBUG, f"CacheService MISS: cache={self._name}, key={key}", cache=self._name, key=key)
             return value
 
     def set(self, key: str, value: Any, ttl: float | None = None) -> None:
@@ -81,21 +82,21 @@ class TrackedLRUCache:
             self._stats.sets += 1
             if old_size == new_size and old_size > 0:
                 self._stats.evictions += 1
-                logger.debug("CacheService", "EVICT", {"cache": self._name, "key": key})
-            logger.debug("CacheService", "SET", {"cache": self._name, "key": key})
+                log_with_context(logger, logging.DEBUG, f"CacheService EVICT: cache={self._name}, key={key}", cache=self._name, key=key)
+            log_with_context(logger, logging.DEBUG, f"CacheService SET: cache={self._name}, key={key}", cache=self._name, key=key)
 
     def delete(self, key: str) -> bool:
         with self._lock:
             result = self._cache.delete(key)
             if result:
                 self._stats.deletes += 1
-                logger.debug("CacheService", "DELETE", {"cache": self._name, "key": key})
+                log_with_context(logger, logging.DEBUG, f"CacheService DELETE: cache={self._name}, key={key}", cache=self._name, key=key)
             return result
 
     def clear(self) -> None:
         with self._lock:
             self._cache.clear()
-            logger.info("CacheService", "CLEAR", {"cache": self._name})
+            log_with_context(logger, logging.INFO, f"CacheService CLEAR: cache={self._name}", cache=self._name)
 
     def size(self) -> int:
         return self._cache.size()
@@ -107,7 +108,7 @@ class TrackedLRUCache:
     def reset_stats(self) -> None:
         with self._lock:
             self._stats = CacheStats()
-            logger.info("CacheService", "RESET_STATS", {"cache": self._name})
+            log_with_context(logger, logging.INFO, f"CacheService RESET_STATS: cache={self._name}", cache=self._name)
 
 
 class TrackedTTLCache:
@@ -197,7 +198,7 @@ class CacheService:
             "settings": self._settings_cache,
         }
 
-        logger.info("CacheService", "Initialized")
+        log_with_context(logger, logging.INFO, "CacheService Initialized")
 
     @property
     def user(self) -> TrackedLRUCache:
@@ -236,21 +237,22 @@ class CacheService:
     def reset_all_stats(self) -> None:
         for cache in self._caches.values():
             cache.reset_stats()
-        logger.info("CacheService", "All stats reset")
+        log_with_context(logger, logging.INFO, "CacheService All stats reset")
 
     def invalidate_user(self, user_id: str) -> None:
         """失效用户相关的所有缓存"""
         self._user_cache.delete(f"user:{user_id}")
         self._character_list_cache.delete(f"chars:{user_id}")
         self._conversation_list_cache.delete(f"convs:{user_id}")
-        logger.debug("CacheService", "Invalidate user", {"user_id": user_id})
+        log_with_context(logger, logging.DEBUG, f"CacheService Invalidate user: user_id={user_id}", user_id=user_id)
 
     def invalidate_character(self, user_id: str, char_id: str) -> None:
         """失效角色卡相关缓存"""
         self._character_cache.delete(f"char:{user_id}:{char_id}")
         self._character_list_cache.delete(f"chars:{user_id}")
-        logger.debug(
-            "CacheService", "Invalidate character", {"user_id": user_id, "char_id": char_id}
+        log_with_context(
+            logger, logging.DEBUG, f"CacheService Invalidate character: user_id={user_id}, char_id={char_id}", 
+            user_id=user_id, char_id=char_id
         )
 
     def invalidate_conversation(self, user_id: str, conv_id: str) -> None:
@@ -258,8 +260,9 @@ class CacheService:
         self._conversation_cache.delete(f"conv:{user_id}:{conv_id}")
         self._conversation_list_cache.delete(f"convs:{user_id}")
         self._message_cache.delete(f"msgs:{user_id}:{conv_id}")
-        logger.debug(
-            "CacheService", "Invalidate conversation", {"user_id": user_id, "conv_id": conv_id}
+        log_with_context(
+            logger, logging.DEBUG, f"CacheService Invalidate conversation: user_id={user_id}, conv_id={conv_id}", 
+            user_id=user_id, conv_id=conv_id
         )
 
 

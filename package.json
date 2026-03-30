@@ -25,6 +25,7 @@
     "check": "npm run lint:check && npm run format:check && npm run typecheck && npm run test:run"
   },
   "dependencies": {
+    "@chenglou/pretext": "^0.0.3",
     "@element-plus/icons-vue": "^2.3.1",
     "@tauri-apps/api": "^2.0.0",
     "@tauri-apps/plugin-shell": "^2.0.0",
