@@ -25,11 +25,12 @@
     </div>
 
     <ScrollToBottom :visible="showScrollButton" @click="onScrollToBottomClick" />
+    <div id="bottom-anchor" class="bottom-anchor"></div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, watch, nextTick, onMounted, onUnmounted, computed } from 'vue'
 import { useChatStore } from '@/stores'
 import type { ChatMessage } from '@/types'
 import MessageItem from './MessageItem.vue'
@@ -63,10 +64,36 @@ const isInternalUpdate = ref(false)
 const isInitialLoad = ref(true)
 const scrollDebounceTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 const showScrollButton = ref(false)
+const resizeTimeout = ref<ReturnType<typeof setTimeout> | null>(null)
+const isStickyFollowActive = ref(false)
 
 const SCROLL_THRESHOLD = 150
 const DEBOUNCE_DELAY = 100
 const BOTTOM_THRESHOLD = 50
+const RESIZE_THROTTLE = 20
+
+function waitForDomUpdate(): Promise<void> {
+  return new Promise(resolve => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => resolve())
+    })
+  })
+}
+
+async function waitForDomWithNextTick(): Promise<void> {
+  await nextTick()
+  return waitForDomUpdate()
+}
+
+function getTargetScrollTop(): {
+  scrollHeight: number
+  clientHeight: number
+  target: number
+} | null {
+  if (!containerRef.value) return null
+  const { scrollHeight, clientHeight } = containerRef.value
+  return { scrollHeight, clientHeight, target: scrollHeight - clientHeight }
+}
 
 function isAtBottom(): boolean {
   if (!containerRef.value) return true
@@ -74,119 +101,92 @@ function isAtBottom(): boolean {
   return scrollHeight - scrollTop - clientHeight < BOTTOM_THRESHOLD
 }
 
-function scrollToBottom(): void {
-  nextTick(() => {
-    if (containerRef.value) {
-      containerRef.value.scrollTop = containerRef.value.scrollHeight
+function shouldAutoScroll(): boolean {
+  return isAtBottom() || isStickyFollowActive.value
+}
+
+function performScrollToBottom(smooth: boolean): void {
+  waitForDomWithNextTick().then(() => {
+    const scrollData = getTargetScrollTop()
+    if (!scrollData || !containerRef.value) return
+
+    if (smooth && typeof containerRef.value.scrollTo === 'function') {
+      containerRef.value.scrollTo({
+        top: scrollData.target,
+        behavior: 'smooth',
+      })
+    } else {
+      containerRef.value.scrollTop = scrollData.target
     }
   })
 }
 
-function beginStickyFollow(): void {}
+function scrollToBottomSmooth(): void {
+  performScrollToBottom(true)
+}
 
-function endStickyFollow(): void {}
+function scrollToBottomInstant(): void {
+  performScrollToBottom(false)
+}
+
+function scrollToBottom(): void {
+  scrollToBottomSmooth()
+}
+
+function beginStickyFollow(): void {
+  isStickyFollowActive.value = true
+  scrollToBottom()
+}
+
+function endStickyFollow(): void {
+  isStickyFollowActive.value = false
+}
 
 async function completeStickyFollowSession(): Promise<void> {
   await nextTick()
   scrollToBottom()
-}
-
-function scrollToBottomInstant(): void {
-  scrollToBottom()
-}
-
-function scrollToBottomSmooth(): void {
-  scrollToBottom()
+  isStickyFollowActive.value = false
 }
 
 function onScrollToBottomClick(): void {
   scrollToBottom()
 }
 
-watch(
-  () => chatStore.currentConversationId,
-  (id, prev) => {
-    if (id === prev) return
-    if (prev === undefined) return
-    isInitialLoad.value = true
-  }
-)
+function handleCopy(content: string) {
+  emit('copy-content', content)
+}
 
-onMounted(() => {
-  nextTick(() => {
-    const wrap = wrapperRef.value
-    if (!wrap || typeof ResizeObserver === 'undefined') return
-    resizeObserver = new ResizeObserver(() => {
-      if (isAtBottom()) {
-        scrollToBottom()
-      }
-    })
-    resizeObserver.observe(wrap)
-  })
+function setHasMoreHistory(value: boolean) {
+  hasMoreHistory.value = value
+}
+
+function setLoadingMore(value: boolean) {
+  isLoadingMore.value = value
+}
+
+const scrollProgress = computed(() => {
+  if (!containerRef.value) return 0
+  const { scrollTop, scrollHeight, clientHeight } = containerRef.value
+  const maxScroll = scrollHeight - clientHeight
+  return maxScroll > 0 ? (scrollTop / maxScroll) * 100 : 100
 })
 
-onUnmounted(() => {
-  resizeObserver?.disconnect()
-  resizeObserver = null
-  if (scrollDebounceTimer.value) {
-    clearTimeout(scrollDebounceTimer.value)
-  }
+function getScrollProgress(): number {
+  return scrollProgress.value
+}
+
+const messageProgress = computed(() => {
+  if (!containerRef.value || displayMessages.value.length === 0) return 0
+  const { scrollTop, scrollHeight, clientHeight } = containerRef.value
+  const messageHeight = scrollHeight / displayMessages.value.length
+  const visibleMessages = Math.ceil(clientHeight / messageHeight)
+  const currentMessageIndex = Math.floor(scrollTop / messageHeight)
+  return ((currentMessageIndex + visibleMessages) / displayMessages.value.length) * 100
 })
 
-watch(
-  () => props.messages,
-  (newMessages, oldMessages) => {
-    const prevLength = oldMessages?.length || 0
-    const newLength = newMessages.length
-
-    if (isInitialLoad.value) {
-      displayMessages.value = [...newMessages]
-      isInitialLoad.value = false
-      nextTick(() => {
-        scrollToBottom()
-        emit('scrollStateChange', true)
-      })
-      return
-    }
-
-    if (isInternalUpdate.value) {
-      displayMessages.value = [...newMessages]
-      isInternalUpdate.value = false
-      return
-    }
-
-    if (newLength > prevLength) {
-      displayMessages.value = [...newMessages]
-      if (isAtBottom()) {
-        nextTick(() => {
-          scrollToBottom()
-          emit('scrollStateChange', true)
-        })
-      }
-      return
-    }
-
-    if (newLength === prevLength && oldMessages) {
-      const isUpdatingLastMessage =
-        newLength > 0 &&
-        oldMessages[newMessages.length - 1]?.id === newMessages[newMessages.length - 1]?.id &&
-        oldMessages[newMessages.length - 1]?.content !==
-          newMessages[newMessages.length - 1]?.content
-
-      displayMessages.value = [...newMessages]
-
-      if (isUpdatingLastMessage && isAtBottom()) {
-        nextTick(() => {
-          scrollToBottom()
-          emit('scrollStateChange', true)
-        })
-      }
-    } else {
-      displayMessages.value = [...newMessages]
-    }
-  },
-  { deep: true, immediate: true }
-)
+function getMessageProgress(): number {
+  return messageProgress.value
+}
 
 function getFirstVisibleMessageId(): string | null {
   if (!containerRef.value) return null
@@ -210,6 +210,99 @@ function scrollToMessage(messageId: string | null) {
     messageEl.scrollIntoView({ block: 'start', behavior: 'auto' })
   }
 }
+
+function handleInitialLoad(newMessages: ChatMessage[]) {
+  displayMessages.value = [...newMessages]
+  isInitialLoad.value = false
+  nextTick(() => {
+    scrollToBottom()
+    emit('scrollStateChange', true)
+  })
+}
+
+function handleInternalUpdate(newMessages: ChatMessage[]) {
+  displayMessages.value = [...newMessages]
+  isInternalUpdate.value = false
+}
+
+function handleMessageAdded(newMessages: ChatMessage[]) {
+  displayMessages.value = [...newMessages]
+  if (shouldAutoScroll()) {
+    nextTick(() => {
+      scrollToBottom()
+      emit('scrollStateChange', true)
+    })
+  }
+}
+
+function isLastMessageUpdated(
+  oldMessages: ChatMessage[] | undefined,
+  newMessages: ChatMessage[]
+): boolean {
+  if (!oldMessages || newMessages.length === 0) return false
+  const lastOld = oldMessages[newMessages.length - 1]
+  const lastNew = newMessages[newMessages.length - 1]
+  return lastOld?.id === lastNew?.id && lastOld?.content !== lastNew?.content
+}
+
+function handleMessageUpdated(newMessages: ChatMessage[], isUpdatingLast: boolean) {
+  displayMessages.value = [...newMessages]
+  if (isUpdatingLast && shouldAutoScroll()) {
+    nextTick(() => {
+      scrollToBottom()
+      emit('scrollStateChange', true)
+    })
+  }
+}
+
+watch(
+  () => props.messages,
+  (newMessages, oldMessages) => {
+    const prevLength = oldMessages?.length || 0
+    const newLength = newMessages.length
+
+    if (isInitialLoad.value) {
+      handleInitialLoad(newMessages)
+      return
+    }
+
+    if (isInternalUpdate.value) {
+      handleInternalUpdate(newMessages)
+      return
+    }
+
+    if (newLength > prevLength) {
+      handleMessageAdded(newMessages)
+      return
+    }
+
+    if (newLength === prevLength) {
+      const isUpdatingLast = isLastMessageUpdated(oldMessages, newMessages)
+      handleMessageUpdated(newMessages, isUpdatingLast)
+    } else {
+      displayMessages.value = [...newMessages]
+    }
+  },
+  { deep: true, immediate: true }
+)
+
+watch(
+  () => chatStore.currentConversationId,
+  (id, prev) => {
+    if (id === prev) return
+    if (prev === undefined) return
+    isInitialLoad.value = true
+  }
+)
+
+watch(
+  () => chatStore.typewriterRenderCount,
+  () => {
+    if (shouldAutoScroll()) {
+      scrollToBottom()
+    }
+  }
+)
 
 function handleScroll() {
   if (!containerRef.value) return
@@ -255,52 +348,46 @@ async function loadMoreHistory() {
   })
 }
 
-function waitForDomUpdate(): Promise<void> {
-  return new Promise(resolve => {
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => resolve())
+onMounted(() => {
+  nextTick(() => {
+    const wrap = wrapperRef.value
+    if (!wrap || typeof ResizeObserver === 'undefined') return
+
+    resizeObserver = new ResizeObserver(() => {
+      if (resizeTimeout.value) {
+        clearTimeout(resizeTimeout.value)
+      }
+      resizeTimeout.value = setTimeout(() => {
+        if (isAtBottom()) {
+          scrollToBottom()
+        }
+        resizeTimeout.value = null
+      }, RESIZE_THROTTLE)
     })
+    resizeObserver.observe(wrap)
   })
-}
+})
 
-function handleCopy(content: string) {
-  emit('copy-content', content)
-}
-
-function setHasMoreHistory(value: boolean) {
-  hasMoreHistory.value = value
-}
-
-function setLoadingMore(value: boolean) {
-  isLoadingMore.value = value
-}
-
-function getScrollProgress(): number {
-  if (!containerRef.value) return 0
-  const { scrollTop, scrollHeight, clientHeight } = containerRef.value
-  const maxScroll = scrollHeight - clientHeight
-  return maxScroll > 0 ? (scrollTop / maxScroll) * 100 : 100
-}
-
-function getMessageProgress(): number {
-  if (!containerRef.value || displayMessages.value.length === 0) return 0
-  const { scrollTop, scrollHeight, clientHeight } = containerRef.value
-  const messageHeight = scrollHeight / displayMessages.value.length
-  const visibleMessages = Math.ceil(clientHeight / messageHeight)
-  const currentMessageIndex = Math.floor(scrollTop / messageHeight)
-  return ((currentMessageIndex + visibleMessages) / displayMessages.value.length) * 100
-}
+onUnmounted(() => {
+  resizeObserver?.disconnect()
+  resizeObserver = null
+  if (scrollDebounceTimer.value) {
+    clearTimeout(scrollDebounceTimer.value)
+  }
+  if (resizeTimeout.value) {
+    clearTimeout(resizeTimeout.value)
+    resizeTimeout.value = null
+  }
+})
 
 defineExpose({
-  /** 瞬时到底（兼容旧调用：切换会话、挂载） */
-  scrollToBottom: scrollToBottomInstant,
+  scrollToBottom,
   scrollToBottomInstant,
   scrollToBottomSmooth,
-  smoothScrollToBottom: onScrollToBottomClick,
+  smoothScrollToBottom: scrollToBottomSmooth,
   beginStickyFollow,
   endStickyFollow,
   completeStickyFollowSession,
-  /** @deprecated 使用 beginStickyFollow */
   forceScrollToBottom: beginStickyFollow,
   isAtBottom,
   addMessage: (message: ChatMessage) => {
@@ -319,14 +406,21 @@ defineExpose({
   position: relative;
   flex: 1;
   overflow-y: auto;
-  padding: 24px 24px 120px;
+  padding: 24px 24px 160px;
   padding-left: 88px;
   /* 自动滚动由 JS 控制 behavior，避免与 scrollTo 叠加 */
+  /* 底部内边距 160px 确保聊天内容始终在遮罩层上方，不会被遮挡 */
 
   .messages-wrapper {
     max-width: 800px;
     margin: 0 auto;
   }
+}
+
+.bottom-anchor {
+  width: 100%;
+  height: 1px;
+  flex-shrink: 0;
 }
 
 .loading-indicator {

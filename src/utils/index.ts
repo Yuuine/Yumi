@@ -10,6 +10,17 @@ export {
   keysToSnake,
   keysToCamel,
 } from './common'
+export {
+  TypewriterBuffer,
+  createTypewriterBuffer,
+  type TypewriterBufferConfig,
+} from './typewriter-buffer'
+export {
+  measureTextHeight,
+  clearMeasurementCache,
+  createTextMeasurer,
+  type TextMeasurementConfig,
+} from './text-measurement'
 export { convertObjectKeys } from './transform'
 export { dayjs, formatRelativeTime } from './datetime'
 export { renderMarkdown } from './markdown'

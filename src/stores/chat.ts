@@ -9,10 +9,14 @@ import dayjs from 'dayjs'
 import { logger } from '@/utils/logger'
 import { clearMessageCache, saveToStorage, loadFromStorage } from '@/utils/local-storage'
 import { sortMessages, mergeMessageHistory, dedupeMessagesById } from '@/utils/message'
-import { generateConversationId } from '@/utils'
+import { generateConversationId, createTypewriterBuffer } from '@/utils'
+import type { TypewriterBuffer } from '@/utils'
 
 const INITIAL_LOAD_LIMIT = 10
 const LOAD_MORE_LIMIT = 20
+const TEMPERATURE = 1.00
+const TYPEWRITER_BUFFER_THRESHOLD = 20
+const TYPEWRITER_CHARS_PER_SECOND = 30
 
 const KEYS = {
   MESSAGES_PREFIX: 'yumi_conversation_messages_',
@@ -38,6 +42,8 @@ export const useChatStore = defineStore('chat', () => {
   const abortController = ref<AbortController | null>(null)
   const historyPage = ref(0)
   const hasMoreHistory = ref(true)
+  const typewriterBuffer = ref<TypewriterBuffer | null>(null)
+  const typewriterRenderCount = ref(0)
 
   function ensureCurrentUserId(): string {
     if (currentUserId.value && currentUserId.value !== 'default') {
@@ -54,27 +60,15 @@ export const useChatStore = defineStore('chat', () => {
     return accountId
   }
 
-  async function initializeConversation(): Promise<void> {
-    const accountStore = useAccountStore()
-    const conversations = await accountStore.loadConversations()
-
-    if (conversations.length > 0) {
-      const typedConversations = conversations as Array<{ id: string; updatedAt?: string }>
-      const latestConv = typedConversations.sort(
-        (a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()
-      )[0]
-
-      await switchConversation(latestConv.id)
+  function checkEnabledModels(): boolean {
+    const modelsStore = useModelsStore()
+    const enabledModels = modelsStore.models.filter(m => m.isEnabled && m.apiKey)
+    if (enabledModels.length === 0) {
+      logger.error('ChatStore', 'No available models to send message')
+      return false
     }
+    return true
   }
-
-  const recentMessages = computed(() => {
-    return messages.value.slice(-20)
-  })
-
-  const userMessages = computed(() => {
-    return messages.value.filter(m => m.role === 'user')
-  })
 
   function getConversationStorageKey(conversationId: string): string {
     return `${KEYS.MESSAGES_PREFIX}${conversationId}`
@@ -89,6 +83,67 @@ export const useChatStore = defineStore('chat', () => {
   function loadConversationMessages(conversationId: string): ChatMessage[] {
     return loadFromStorage<ChatMessage[]>(getConversationStorageKey(conversationId), [])
   }
+
+  function createMessage(
+    role: 'user' | 'assistant',
+    content: string,
+    emotion?: EmotionData
+  ): ChatMessage {
+    const timestamp = dayjs().toISOString()
+    return {
+      id: `${role}-${Date.now()}`,
+      role,
+      content: content.trim(),
+      timestamp,
+      emotion,
+    }
+  }
+
+  function createErrorMessage(): ChatMessage {
+    return createMessage('assistant', '抱歉，我遇到了一些问题，请稍后再试。')
+  }
+
+  function resetConversationState(): void {
+    messages.value = []
+    currentConversationId.value = null
+    conversationCount.value = 0
+    lastError.value = null
+    streamingContent.value = ''
+    historyPage.value = 0
+    hasMoreHistory.value = true
+  }
+
+  function clearTypewriterBuffer(): void {
+    if (typewriterBuffer.value) {
+      typewriterBuffer.value.stop()
+      typewriterBuffer.value = null
+    }
+  }
+
+  function updateLastAssistantMessage(content: string): void {
+    if (messages.value.length === 0) return
+    const lastMessage = messages.value[messages.value.length - 1]
+    if (lastMessage.role === 'assistant') {
+      lastMessage.content = content
+    }
+  }
+
+  async function initializeConversation(): Promise<void> {
+    const accountStore = useAccountStore()
+    const conversations = await accountStore.loadConversations()
+
+    if (conversations.length === 0) return
+
+    const typedConversations = conversations as Array<{ id: string; updatedAt?: string }>
+    const latestConv = typedConversations.sort(
+      (a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()
+    )[0]
+
+    await switchConversation(latestConv.id)
+  }
+
+  const recentMessages = computed(() => messages.value.slice(-20))
+  const userMessages = computed(() => messages.value.filter(m => m.role === 'user'))
 
   async function switchConversation(conversationId: string): Promise<void> {
     if (currentConversationId.value) {
@@ -126,14 +181,10 @@ export const useChatStore = defineStore('chat', () => {
       saveCurrentConversationMessages()
     }
 
+    resetConversationState()
+
     const newId = generateConversationId()
     currentConversationId.value = newId
-    messages.value = []
-    conversationCount.value = 0
-    lastError.value = null
-    streamingContent.value = ''
-    historyPage.value = 0
-    hasMoreHistory.value = true
 
     const accountStore = useAccountStore()
     ensureCurrentUserId()
@@ -159,34 +210,6 @@ export const useChatStore = defineStore('chat', () => {
     return newId
   }
 
-  function createUserMessage(content: string): ChatMessage {
-    return {
-      id: `user-${Date.now()}`,
-      role: 'user',
-      content: content.trim(),
-      timestamp: dayjs().toISOString(),
-    }
-  }
-
-  function createAssistantMessage(reply: string, emotion?: EmotionData): ChatMessage {
-    return {
-      id: `assistant-${Date.now()}`,
-      role: 'assistant',
-      content: reply,
-      timestamp: dayjs().toISOString(),
-      emotion,
-    }
-  }
-
-  function createErrorMessage(): ChatMessage {
-    return {
-      id: `error-${Date.now()}`,
-      role: 'assistant',
-      content: '抱歉，我遇到了一些问题，请稍后再试。',
-      timestamp: dayjs().toISOString(),
-    }
-  }
-
   async function buildChatRequest(content: string, deepThinking: boolean): Promise<ChatRequest> {
     const accountStore = useAccountStore()
     const characterId = accountStore.currentConfig?.activeCharacterId ?? undefined
@@ -196,7 +219,7 @@ export const useChatStore = defineStore('chat', () => {
       userId,
       conversationId: currentConversationId.value ?? undefined,
       message: content.trim(),
-      temperature: 0.85,
+      temperature: TEMPERATURE,
       deepThinking,
       ...(characterId ? { characterId } : {}),
     }
@@ -227,13 +250,7 @@ export const useChatStore = defineStore('chat', () => {
 
   async function sendMessage(content: string, deepThinking = false): Promise<ChatResponse | null> {
     if (!content.trim() || isLoading.value) return null
-
-    const modelsStore = useModelsStore()
-    const enabledModels = modelsStore.models.filter(m => m.isEnabled && m.apiKey)
-    if (enabledModels.length === 0) {
-      logger.error('ChatStore', 'No available models to send message')
-      return null
-    }
+    if (!checkEnabledModels()) return null
 
     lastError.value = null
 
@@ -241,7 +258,7 @@ export const useChatStore = defineStore('chat', () => {
       await startNewConversation()
     }
 
-    const userMessage = createUserMessage(content)
+    const userMessage = createMessage('user', content)
     messages.value.push(userMessage)
     isLoading.value = true
 
@@ -257,7 +274,7 @@ export const useChatStore = defineStore('chat', () => {
         currentConversationId.value = response.conversationId
       }
 
-      const assistantMessage = createAssistantMessage(response.reply, response.emotion)
+      const assistantMessage = createMessage('assistant', response.reply, response.emotion)
       messages.value.push(assistantMessage)
       conversationCount.value++
       saveCurrentConversationMessages()
@@ -283,24 +300,25 @@ export const useChatStore = defineStore('chat', () => {
     streamingContent.value = ''
     isStreaming.value = true
     abortController.value = new AbortController()
+
+    typewriterBuffer.value = createTypewriterBuffer({
+      bufferThreshold: TYPEWRITER_BUFFER_THRESHOLD,
+      charsPerSecond: TYPEWRITER_CHARS_PER_SECOND,
+    })
+
+    typewriterBuffer.value.onRender(text => {
+      streamingContent.value = text
+      updateLastAssistantMessage(text)
+    })
+
+    typewriterBuffer.value.onProgress(() => {
+      typewriterRenderCount.value++
+    })
   }
 
   function createUserAndAssistantMessages(content: string): void {
-    const userMessage: ChatMessage = {
-      id: `user-${Date.now()}`,
-      role: 'user',
-      content: content.trim(),
-      timestamp: dayjs().toISOString(),
-    }
-    messages.value.push(userMessage)
-
-    const assistantMessage: ChatMessage = {
-      id: `assistant-${Date.now()}`,
-      role: 'assistant',
-      content: '',
-      timestamp: dayjs().toISOString(),
-    }
-    messages.value.push(assistantMessage)
+    messages.value.push(createMessage('user', content))
+    messages.value.push(createMessage('assistant', ''))
   }
 
   async function fetchStreamResponse(
@@ -314,7 +332,7 @@ export const useChatStore = defineStore('chat', () => {
     const params = new URLSearchParams({
       userId,
       message: content.trim(),
-      temperature: '0.85',
+      temperature: String(TEMPERATURE),
     })
     if (currentConversationId.value) {
       params.set('conversationId', currentConversationId.value)
@@ -353,22 +371,28 @@ export const useChatStore = defineStore('chat', () => {
       if (parsed.conversationId) {
         currentConversationId.value = parsed.conversationId
       }
-      if (messages.value.length === 0) return false
-      const lastMessage = messages.value[messages.value.length - 1]
-      if (lastMessage.role === 'assistant' && parsed.emotion) {
-        lastMessage.emotion = parsed.emotion
+      if (messages.value.length > 0) {
+        const lastMessage = messages.value[messages.value.length - 1]
+        if (lastMessage.role === 'assistant' && parsed.emotion) {
+          lastMessage.emotion = parsed.emotion
+        }
       }
+
+      if (typewriterBuffer.value) {
+        typewriterBuffer.value.endStream()
+      }
+
       conversationCount.value++
       saveCurrentConversationMessages()
       return false
     }
 
     if (parsed.content) {
-      streamingContent.value += parsed.content
-      if (messages.value.length === 0) return false
-      const lastMessage = messages.value[messages.value.length - 1]
-      if (lastMessage.role === 'assistant') {
-        lastMessage.content = streamingContent.value
+      if (typewriterBuffer.value) {
+        typewriterBuffer.value.pushCharacters(parsed.content)
+      } else {
+        streamingContent.value += parsed.content
+        updateLastAssistantMessage(streamingContent.value)
       }
     }
 
@@ -430,13 +454,7 @@ export const useChatStore = defineStore('chat', () => {
 
   async function sendMessageStream(content: string): Promise<void> {
     if (!content.trim() || isLoading.value || isStreaming.value) return
-
-    const modelsStore = useModelsStore()
-    const enabledModels = modelsStore.models.filter(m => m.isEnabled && m.apiKey)
-    if (enabledModels.length === 0) {
-      logger.error('ChatStore', 'No available models to send message')
-      return
-    }
+    if (!checkEnabledModels()) return
 
     initializeStreamState()
     createUserAndAssistantMessages(content)
@@ -452,6 +470,7 @@ export const useChatStore = defineStore('chat', () => {
       saveCurrentConversationMessages()
       isStreaming.value = false
       abortController.value = null
+      clearTypewriterBuffer()
     }
   }
 
@@ -459,6 +478,7 @@ export const useChatStore = defineStore('chat', () => {
     if (abortController.value) {
       abortController.value.abort()
     }
+    clearTypewriterBuffer()
   }
 
   async function loadHistory(limit = INITIAL_LOAD_LIMIT): Promise<void> {
@@ -525,16 +545,6 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  function resetConversationState(): void {
-    messages.value = []
-    currentConversationId.value = null
-    conversationCount.value = 0
-    lastError.value = null
-    streamingContent.value = ''
-    historyPage.value = 0
-    hasMoreHistory.value = true
-  }
-
   function clearMessages(): void {
     resetConversationState()
     clearMessageCache()
@@ -556,6 +566,7 @@ export const useChatStore = defineStore('chat', () => {
     recentMessages,
     userMessages,
     hasMoreHistory,
+    typewriterRenderCount,
     sendMessage,
     sendMessageStream,
     stopStreaming,
