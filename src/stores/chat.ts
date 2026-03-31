@@ -14,7 +14,7 @@ import type { TypewriterBuffer } from '@/utils'
 
 const INITIAL_LOAD_LIMIT = 10
 const LOAD_MORE_LIMIT = 20
-const TEMPERATURE = 1.00
+const TEMPERATURE = 1.0
 const TYPEWRITER_BUFFER_THRESHOLD = 20
 const TYPEWRITER_CHARS_PER_SECOND = 30
 
